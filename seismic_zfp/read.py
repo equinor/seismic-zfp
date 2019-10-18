@@ -1,7 +1,7 @@
 import numpy as np
 from pyzfp import decompress
 
-from utils import pad
+from .utils import pad
 
 
 class SzReader:

@@ -1,3 +1,8 @@
 venv/*
 .idea
 seismic_zfp/__pycache__/*
+build/*
+dist/*
+seismic_zfp.egg-info/*
+
+

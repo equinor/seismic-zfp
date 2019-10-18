@@ -2,7 +2,7 @@ import numpy as np
 import segyio
 from pyzfp import compress
 
-from utils import pad
+from .utils import pad
 
 
 def convert_segy(in_filename, out_filename, method="InMemory"):
