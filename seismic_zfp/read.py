@@ -13,9 +13,9 @@ class SzReader:
         self.ilines = ilines
         self.rate = rate
 
-        self.blockshape = (4, 4, 256)
+        self.blockshape = (4, 4, 2048//self.rate)
 
-        self.shape_pad = (pad(self.ilines, 4), pad(self.xlines, 4), pad(self.tracelength, 256))
+        self.shape_pad = (pad(self.ilines, 4), pad(self.xlines, 4), pad(self.tracelength, 2048//self.rate))
 
     def read_inline(self, il_id):
         il_block_offset = il_id//4 * (self.shape_pad[2] * self.shape_pad[1] * 4)
