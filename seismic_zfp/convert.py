@@ -3,7 +3,7 @@ import segyio
 from pyzfp import compress
 import asyncio
 
-from .utils import pad
+from .utils import pad, np_float_to_bytes
 
 import time
 
@@ -16,43 +16,26 @@ def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="InMemory")
         print("Converting: In={}, Out={}".format(in_filename, out_filename))
         convert_segy_stream(in_filename, out_filename, bits_per_voxel)
     else:
-        raise NotImplementedError("So far can only convert SEG-Y files which fit in memory")
+        raise NotImplementedError("Invalid conversion method {}, try 'InMemory' or 'Stream'".format(method))
 
 def make_header(in_filename, bits_per_voxel):
-    with segyio.open(in_filename) as segyfile:
-        n_samples = len(segyfile.samples)
-        n_xlines = len(segyfile.xlines)
-        n_ilines = len(segyfile.ilines)
-
-        samples_start = int((segyfile.samples[0]).astype(int))
-        xline_start = int((segyfile.xlines[0]).astype(int))
-        iline_start = int((segyfile.ilines[0]).astype(int))
-
-        samples_step = int((segyfile.samples[1] - segyfile.samples[0]).astype(int))
-        xline_step = int((segyfile.xlines[1] - segyfile.xlines[0]).astype(int))
-        iline_step = int((segyfile.ilines[1] - segyfile.ilines[0]).astype(int))
-
-
-    print("n_samples={}, n_xlines={}, n_ilines={}".format(n_samples, n_xlines, n_ilines))
-    print("samples_start={}, xline_start={}, iline_start={}".format(samples_start, xline_start, iline_start))
-    print("samples_step={}, xline_step={}, iline_step={}".format(samples_step, xline_step, iline_step))
-
 
     header_blocks = 1
     buffer = bytearray(4096 * header_blocks)
     buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
 
-    buffer[4:8] = n_samples.to_bytes(4, byteorder='little')
-    buffer[8:12] = n_xlines.to_bytes(4, byteorder='little')
-    buffer[12:16] = n_ilines.to_bytes(4, byteorder='little')
+    with segyio.open(in_filename) as segyfile:
+        buffer[4:8] = len(segyfile.samples).to_bytes(4, byteorder='little')
+        buffer[8:12] = len(segyfile.xlines).to_bytes(4, byteorder='little')
+        buffer[12:16] = len(segyfile.ilines).to_bytes(4, byteorder='little')
 
-    buffer[16:20] = samples_start.to_bytes(4, byteorder='little')
-    buffer[20:24] = xline_start.to_bytes(4, byteorder='little')
-    buffer[24:28] = iline_start.to_bytes(4, byteorder='little')
+        buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
+        buffer[20:24] = np_float_to_bytes(segyfile.xlines[0])
+        buffer[24:28] = np_float_to_bytes(segyfile.ilines[0])
 
-    buffer[28:32] = samples_step.to_bytes(4, byteorder='little')
-    buffer[32:36] = xline_step.to_bytes(4, byteorder='little')
-    buffer[36:40] = iline_step.to_bytes(4, byteorder='little')
+        buffer[28:32] = np_float_to_bytes(segyfile.samples[1] - segyfile.samples[0])
+        buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
+        buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
 
     buffer[40:44] = bits_per_voxel.to_bytes(4, byteorder='little')
 
@@ -90,8 +73,6 @@ async def produce(queue, in_filename, bits_per_voxel):
         n_ilines = len(segyfile.ilines)
 
         padded_shape = (pad(n_ilines, 4), pad(n_xlines, 4), pad(trace_length, 2048 // bits_per_voxel))
-
-        print("Trace length={}, n_xlines={}, n_ilines={}, padded_shape={}".format(trace_length, n_xlines, n_ilines, padded_shape))
 
         for plane_set_id in range(padded_shape[0] // 4):
             segy_buffer = np.zeros((4, padded_shape[1], padded_shape[2]), dtype=np.float32)
