@@ -15,7 +15,7 @@ CLIP = 0.2
 SCALE = 1.0/(2.0*CLIP)
 
 t0 = time.time()
-reader = SzReader(os.path.join(base_path, '0_4.sz'), 901, 605, 385, 4)
+reader = SzReader(os.path.join(base_path, '0.sz'))
 slice_sz = reader.read_crossline(LINE_NO)
 print("SzReader took", time.time() - t0)
 

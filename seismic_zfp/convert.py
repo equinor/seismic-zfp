@@ -18,8 +18,49 @@ def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="InMemory")
     else:
         raise NotImplementedError("So far can only convert SEG-Y files which fit in memory")
 
+def make_header(in_filename, bits_per_voxel):
+    with segyio.open(in_filename) as segyfile:
+        n_samples = len(segyfile.samples)
+        n_xlines = len(segyfile.xlines)
+        n_ilines = len(segyfile.ilines)
+
+        samples_start = int((segyfile.samples[0]).astype(int))
+        xline_start = int((segyfile.xlines[0]).astype(int))
+        iline_start = int((segyfile.ilines[0]).astype(int))
+
+        samples_step = int((segyfile.samples[1] - segyfile.samples[0]).astype(int))
+        xline_step = int((segyfile.xlines[1] - segyfile.xlines[0]).astype(int))
+        iline_step = int((segyfile.ilines[1] - segyfile.ilines[0]).astype(int))
+
+
+    print("n_samples={}, n_xlines={}, n_ilines={}".format(n_samples, n_xlines, n_ilines))
+    print("samples_start={}, xline_start={}, iline_start={}".format(samples_start, xline_start, iline_start))
+    print("samples_step={}, xline_step={}, iline_step={}".format(samples_step, xline_step, iline_step))
+
+
+    header_blocks = 1
+    buffer = bytearray(4096 * header_blocks)
+    buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
+
+    buffer[4:8] = n_samples.to_bytes(4, byteorder='little')
+    buffer[8:12] = n_xlines.to_bytes(4, byteorder='little')
+    buffer[12:16] = n_ilines.to_bytes(4, byteorder='little')
+
+    buffer[16:20] = samples_start.to_bytes(4, byteorder='little')
+    buffer[20:24] = xline_start.to_bytes(4, byteorder='little')
+    buffer[24:28] = iline_start.to_bytes(4, byteorder='little')
+
+    buffer[28:32] = samples_step.to_bytes(4, byteorder='little')
+    buffer[32:36] = xline_step.to_bytes(4, byteorder='little')
+    buffer[36:40] = iline_step.to_bytes(4, byteorder='little')
+
+    buffer[40:44] = bits_per_voxel.to_bytes(4, byteorder='little')
+
+    return buffer
 
 def convert_segy_inmem(in_filename, out_filename, bits_per_voxel):
+    header = make_header(in_filename, bits_per_voxel)
+
     t0 = time.time()
 
     data = segyio.tools.cube(in_filename)
@@ -32,6 +73,7 @@ def convert_segy_inmem(in_filename, out_filename, bits_per_voxel):
     t2 = time.time()
 
     with open(out_filename, 'wb') as f:
+        f.write(header)
         f.write(compressed)
     t3 = time.time()
 
@@ -64,8 +106,9 @@ async def produce(queue, in_filename, bits_per_voxel):
             await queue.put(segy_buffer)
 
 
-async def consume(queue, out_filename, bits_per_voxel):
+async def consume(header, queue, out_filename, bits_per_voxel):
     with open(out_filename, 'wb') as f:
+        f.write(header)
         while True:
             segy_buffer = await queue.get()
             compressed = compress(segy_buffer, rate=bits_per_voxel)
@@ -74,9 +117,11 @@ async def consume(queue, out_filename, bits_per_voxel):
 
 
 async def run(in_filename, out_filename, bits_per_voxel):
+    header = make_header(in_filename, bits_per_voxel)
+
     queue = asyncio.Queue(maxsize=16)
     # schedule the consumer
-    consumer = asyncio.ensure_future(consume(queue, out_filename, bits_per_voxel))
+    consumer = asyncio.ensure_future(consume(header, queue, out_filename, bits_per_voxel))
     # run the producer and wait for completion
     await produce(queue, in_filename, bits_per_voxel)
     # wait until the consumer has processed all items
