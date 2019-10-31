@@ -16,20 +16,20 @@ SCALE = 1.0/(2.0*CLIP)
 
 t0 = time.time()
 reader = SzReader(os.path.join(base_path, '0_4.sz'), 901, 605, 385, 4)
-slice_sz = reader.read_inline(LINE_NO)
+slice_sz = reader.read_zslice(LINE_NO)
 print("SzReader took", time.time() - t0)
 
 
 im = Image.fromarray(np.uint8(cm.seismic((slice_sz.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
-im.save(os.path.join(base_path, 'out_inline-sz.png'))
+im.save(os.path.join(base_path, 'out_zslice-sz.png'))
 
 t0 = time.time()
 with segyio.open(os.path.join(base_path, '0.segy')) as segyfile:
-    slice_segy = segyfile.iline[segyfile.ilines[LINE_NO]]
+    slice_segy = segyfile.depth_slice[LINE_NO]
 print("segyio took", time.time() - t0)
 
 im = Image.fromarray(np.uint8(cm.seismic((slice_segy.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
-im.save(os.path.join(base_path, 'out_inline-segy.png'))
+im.save(os.path.join(base_path, 'out_zslice-segy.png'))
 
 im = Image.fromarray(np.uint8(cm.seismic(((slice_segy-slice_sz).T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
-im.save(os.path.join(base_path, 'out_inline-diff.png'))
+im.save(os.path.join(base_path, 'out_zslice-diff.png'))
