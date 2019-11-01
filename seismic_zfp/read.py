@@ -1,7 +1,7 @@
 import numpy as np
 from pyzfp import decompress
 
-from .utils import pad
+from .utils import pad, bytes_to_int
 
 
 class SzReader:
@@ -10,15 +10,15 @@ class SzReader:
         self.filename = filename
         with open(self.filename, 'rb') as f:
             buffer = f.read(4096)
-            self.header_blocks = int.from_bytes(buffer[0:4], byteorder='little')
+            self.header_blocks = bytes_to_int(buffer[0:4])
             if self.header_blocks != 1:
                 f.seek(0)
                 buffer = f.read(4096*self.header_blocks)
 
-        self.tracelength = int.from_bytes(buffer[4:8], byteorder='little')
-        self.xlines = int.from_bytes(buffer[8:12], byteorder='little')
-        self.ilines = int.from_bytes(buffer[12:16], byteorder='little')
-        self.rate = int.from_bytes(buffer[40:44], byteorder='little')
+        self.tracelength = bytes_to_int(buffer[4:8])
+        self.xlines = bytes_to_int(buffer[8:12])
+        self.ilines = bytes_to_int(buffer[12:16])
+        self.rate = bytes_to_int(buffer[40:44])
 
         self.shape_pad = (pad(self.ilines, 4), pad(self.xlines, 4), pad(self.tracelength, 2048//self.rate))
 
