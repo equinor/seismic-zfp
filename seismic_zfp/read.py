@@ -32,8 +32,6 @@ class SzReader:
 
         print("n_samples={}, n_xlines={}, n_ilines={}".format(self.tracelength, self.xlines, self.ilines))
 
-
-
     def read_inline(self, il_id):
         chunksize = self.blocks_per_trace * self.shape_pad[1] * self.blocksize_bytes
         il_block_offset = (chunksize//4) * (il_id//4)
@@ -81,3 +79,25 @@ class SzReader:
                                   np.dtype('float32'), rate=self.rate)
 
         return decompressed[0:self.ilines, 0:self.xlines, zslice_id % 4]
+
+    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
+        z_units = (max_z+4) // 4 - min_z // 4
+        xl_units = (max_xl+4) // 4 - min_xl // 4
+        il_units = (max_il+4) // 4 - min_il // 4
+
+        buffer = bytearray(z_units * xl_units * il_units * self.unit_size_bytes)
+
+        with open(self.filename, 'rb') as f:
+            for i in range(il_units):
+                for x in range(xl_units):
+                    f.seek(self.data_start_bytes + self.unit_size_bytes * (
+                          (i + (min_il // 4))*(self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
+                          (x + (min_xl // 4))*(self.shape_pad[2] // 4) +
+                          (min_z // 4)))
+                    buf_start = (i*xl_units*z_units + x*z_units) * self.unit_size_bytes
+                    buffer[buf_start:buf_start+self.unit_size_bytes*z_units] = f.read(self.unit_size_bytes*z_units)
+
+        decompressed = decompress(buffer, (il_units*4, xl_units*4, z_units*4),
+                                  np.dtype('float32'), rate=self.rate)
+
+        return decompressed[min_il%4:(min_il%4)+max_il-min_il, min_xl%4:(min_xl%4)+max_xl-min_xl, min_z%4:(min_z%4)+max_z-min_z]
