@@ -12,6 +12,7 @@ setuptools.setup(name='seismic-zfp',
                  author='equinor',
                  description='compress and decompress seismic data',
                  long_description=long_description,
+                 url='https://github.com/equinor/seismic-zfp',
 
                  use_scm_version=True,
 
