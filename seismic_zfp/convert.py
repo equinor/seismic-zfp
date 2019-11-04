@@ -2,11 +2,11 @@ import numpy as np
 import segyio
 from pyzfp import compress
 import asyncio
+import time
 
 from .utils import pad, np_float_to_bytes
 
-import time
-
+DISK_BLOCK_BYTES = 4096
 
 def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="InMemory"):
     if method == "InMemory":
@@ -21,7 +21,7 @@ def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="InMemory")
 def make_header(in_filename, bits_per_voxel):
 
     header_blocks = 1
-    buffer = bytearray(4096 * header_blocks)
+    buffer = bytearray(DISK_BLOCK_BYTES * header_blocks)
     buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
 
     with segyio.open(in_filename) as segyfile:

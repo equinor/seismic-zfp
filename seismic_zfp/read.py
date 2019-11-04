@@ -3,17 +3,18 @@ from pyzfp import decompress
 
 from .utils import pad, bytes_to_int
 
+DISK_BLOCK_BYTES = 4096
 
 class SzReader:
 
     def __init__(self, filename):
         self.filename = filename
         with open(self.filename, 'rb') as f:
-            buffer = f.read(4096)
+            buffer = f.read(DISK_BLOCK_BYTES)
             self.header_blocks = bytes_to_int(buffer[0:4])
             if self.header_blocks != 1:
                 f.seek(0)
-                buffer = f.read(4096*self.header_blocks)
+                buffer = f.read(DISK_BLOCK_BYTES*self.header_blocks)
 
         self.tracelength = bytes_to_int(buffer[4:8])
         self.xlines = bytes_to_int(buffer[8:12])
@@ -23,22 +24,22 @@ class SzReader:
         self.shape_pad = (pad(self.ilines, 4), pad(self.xlines, 4), pad(self.tracelength, 2048//self.rate))
 
         self.blockshape = (4, 4, 2048//self.rate)
-        self.blocksize_bytes = (self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
-        self.blocks_per_trace = self.shape_pad[2] // self.blockshape[2]
 
         self.unit_size_bytes = ((4*4*4) * self.rate) // 8
+        self.blocksize_bytes = (self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+        self.chunksize_bytes = self.blocksize_bytes * (self.shape_pad[2] // self.blockshape[2])
+        assert self.blocksize_bytes == DISK_BLOCK_BYTES
 
-        self.data_start_bytes = self.header_blocks * 4096
+        self.data_start_bytes = self.header_blocks * DISK_BLOCK_BYTES
 
         print("n_samples={}, n_xlines={}, n_ilines={}".format(self.tracelength, self.xlines, self.ilines))
 
     def read_inline(self, il_id):
-        chunksize = self.blocks_per_trace * self.shape_pad[1] * self.blocksize_bytes
-        il_block_offset = (chunksize//4) * (il_id//4)
+        il_block_offset = ((self.chunksize_bytes * self.shape_pad[1])//4) * (il_id//4)
 
         with open(self.filename, 'rb') as f:
             f.seek(self.data_start_bytes + il_block_offset, 0)
-            buffer = f.read(chunksize)
+            buffer = f.read(self.chunksize_bytes * self.shape_pad[1])
 
         decompressed = decompress(buffer, (self.blockshape[0], self.shape_pad[1], self.shape_pad[2]),
                                   np.dtype('float32'), rate=self.rate)
@@ -46,16 +47,15 @@ class SzReader:
         return decompressed[il_id % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
 
     def read_crossline(self, xl_id):
-        chunksize_bytes = self.blocksize_bytes * self.blocks_per_trace
-        xl_first_chunk_offset = xl_id//4 * chunksize_bytes
-        xl_chunk_increment = chunksize_bytes * self.shape_pad[1] // 4
+        xl_first_chunk_offset = xl_id//4 * self.chunksize_bytes
+        xl_chunk_increment = self.chunksize_bytes * self.shape_pad[1] // 4
 
-        buffer = bytearray(chunksize_bytes * self.shape_pad[0] // 4)
+        buffer = bytearray(self.chunksize_bytes * self.shape_pad[0] // 4)
 
         with open(self.filename, 'rb') as f:
             for chunk_num in range(self.shape_pad[0] // 4):
                 f.seek(self.data_start_bytes + xl_first_chunk_offset + chunk_num*xl_chunk_increment, 0)
-                buffer[chunk_num*chunksize_bytes:(chunk_num+1)*chunksize_bytes] = f.read(chunksize_bytes)
+                buffer[chunk_num*self.chunksize_bytes:(chunk_num+1)*self.chunksize_bytes] = f.read(self.chunksize_bytes)
 
         decompressed = decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
                                   np.dtype('float32'), rate=self.rate)
@@ -63,17 +63,16 @@ class SzReader:
         return decompressed[0:self.ilines, xl_id % self.blockshape[1], 0:self.tracelength]
 
     def read_zslice(self, zslice_id):
-        chunksize_bytes = self.blocksize_bytes * self.blocks_per_trace
         zslice_first_block_offset = zslice_id // self.blockshape[2]
 
         zslice_unit_in_block = (zslice_id % self.blockshape[2]) // 4
 
-        buffer = bytearray(self.blocksize_bytes * (self.shape_pad[0] // 4) * (self.shape_pad[1] // 4))
+        buffer = bytearray(self.unit_size_bytes * (self.shape_pad[0] // 4) * (self.shape_pad[1] // 4))
 
         with open(self.filename, 'rb') as f:
             for block_num in range((self.shape_pad[0] // 4) * (self.shape_pad[1] // 4)):
-                f.seek(self.data_start_bytes + zslice_first_block_offset*self.blocksize_bytes + zslice_unit_in_block*self.unit_size_bytes + block_num*chunksize_bytes)
-                buffer[block_num*self.unit_size_bytes : (block_num+1)*self.unit_size_bytes] = f.read(self.unit_size_bytes)
+                f.seek(self.data_start_bytes + zslice_first_block_offset*self.blocksize_bytes + zslice_unit_in_block*self.unit_size_bytes + block_num*self.chunksize_bytes)
+                buffer[block_num*self.unit_size_bytes:(block_num+1)*self.unit_size_bytes] = f.read(self.unit_size_bytes)
 
         decompressed = decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4),
                                   np.dtype('float32'), rate=self.rate)
