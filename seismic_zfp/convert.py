@@ -167,7 +167,7 @@ def convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, block
     print("Total conversion time: {}".format(t3-t0))
 
 
-async def produce(queue, in_filename, bits_per_voxel):
+async def produce(queue, in_filename, blockshape):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename) as segyfile:
 
@@ -176,22 +176,29 @@ async def produce(queue, in_filename, bits_per_voxel):
         n_xlines = len(segyfile.xlines)
         n_ilines = len(segyfile.ilines)
 
-        padded_shape = (pad(n_ilines, 4), pad(n_xlines, 4), pad(trace_length, 2048 // bits_per_voxel))
+        padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
         # Loop over groups of 4 inlines
-        for plane_set_id in range(padded_shape[0] // 4):
+        for plane_set_id in range(padded_shape[0] // blockshape[0]):
             # Need to allocate at every step as this is being sent to another function
-            segy_buffer = np.zeros((4, padded_shape[1], padded_shape[2]), dtype=np.float32)
-            if (plane_set_id+1)*4 > n_ilines:
-                planes_to_read = n_ilines % 4
+            if (plane_set_id+1)*blockshape[0] > n_ilines:
+                planes_to_read = n_ilines % blockshape[0]
             else:
-                planes_to_read = 4
+                planes_to_read = blockshape[0]
+
+            segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
             for i in range(planes_to_read):
-                data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*4 + i]])
+                data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + i]])
                 segy_buffer[i, 0:n_xlines, 0:trace_length] = data
 
-            await queue.put(segy_buffer)
-
+            if blockshape[0] == 4:
+                await queue.put(segy_buffer)
+            else:
+                for x in range(padded_shape[1] // blockshape[1]):
+                    for z in range(padded_shape[2] // blockshape[2]):
+                        slice = segy_buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
+                                               z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                        await queue.put(slice)
 
 async def consume(header, queue, out_filename, bits_per_voxel):
     """Fetches compressed sets of inlines and writes them to disk"""
@@ -204,8 +211,8 @@ async def consume(header, queue, out_filename, bits_per_voxel):
             queue.task_done()
 
 
-async def run(in_filename, out_filename, bits_per_voxel):
-    header = make_header(in_filename, bits_per_voxel)
+async def run(in_filename, out_filename, bits_per_voxel, blockshape):
+    header = make_header(in_filename, bits_per_voxel, blockshape)
 
     # Maxsize can be reduced for machines with little memory
     # ... or for files which are so big they might be very useful.
@@ -213,18 +220,20 @@ async def run(in_filename, out_filename, bits_per_voxel):
     # schedule the consumer
     consumer = asyncio.ensure_future(consume(header, queue, out_filename, bits_per_voxel))
     # run the producer and wait for completion
-    await produce(queue, in_filename, bits_per_voxel)
+    await produce(queue, in_filename, blockshape)
     # wait until the consumer has processed all items
     await queue.join()
     # the consumer is still awaiting for an item, cancel it
     consumer.cancel()
 
 
-def convert_segy_stream(in_filename, out_filename, bits_per_voxel):
+def convert_segy_stream(in_filename, out_filename, bits_per_voxel, blockshape):
     t0 = time.time()
 
+    bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
+
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(in_filename, out_filename, bits_per_voxel))
+    loop.run_until_complete(run(in_filename, out_filename, bits_per_voxel, blockshape))
     loop.close()
 
     t3 = time.time()
