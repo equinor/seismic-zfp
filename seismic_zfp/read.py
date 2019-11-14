@@ -49,9 +49,15 @@ class SzReader:
         self.ilines = bytes_to_int(buffer[12:16])
         self.rate = bytes_to_int(buffer[40:44])
 
-        self.shape_pad = (pad(self.ilines, 4), pad(self.xlines, 4), pad(self.tracelength, 2048//self.rate))
+        self.blockshape = (bytes_to_int(buffer[44:48]), bytes_to_int(buffer[48:52]), bytes_to_int(buffer[52:56]))
 
-        self.blockshape = (4, 4, 2048//self.rate)
+        # ytilibitapmoc
+        if self.blockshape[0] == 0 or self.blockshape[1] == 0 or self.blockshape[2] == 0:
+            self.blockshape = (4, 4, 2048//self.rate)
+
+        self.shape_pad = (pad(self.ilines, self.blockshape[0]),
+                          pad(self.xlines, self.blockshape[1]),
+                          pad(self.tracelength, self.blockshape[2]))
 
         self.unit_bytes = ((4*4*4) * self.rate) // 8
         self.block_bytes = (self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
@@ -132,25 +138,51 @@ class SzReader:
         zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
             The specified zslice (time or depth, depending on file contents), decompressed
         """
+        blocks_per_dim = tuple(dim // size for dim, size in zip(self.shape_pad, self.blockshape))
         zslice_first_block_offset = zslice_id // self.blockshape[2]
 
-        zslice_unit_in_block = (zslice_id % self.blockshape[2]) // 4
+        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
+            zslice_unit_in_block = (zslice_id % self.blockshape[2]) // 4
 
-        # Allocate memory for compressed data
-        buffer = bytearray(self.unit_bytes * (self.shape_pad[0] // 4) * (self.shape_pad[1] // 4))
+            # Allocate memory for compressed data
+            buffer = bytearray(self.unit_bytes * (blocks_per_dim[0]) * (blocks_per_dim[1]))
 
-        with open(self.filename, 'rb') as f:
-            for block_num in range((self.shape_pad[0] // 4) * (self.shape_pad[1] // 4)):
-                f.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes
-                                             + zslice_unit_in_block*self.unit_bytes
-                                             + block_num*self.chunk_bytes, 0)
-                buffer[block_num*self.unit_bytes:(block_num+1)*self.unit_bytes] = f.read(self.unit_bytes)
+            with open(self.filename, 'rb') as f:
+                for block_num in range((blocks_per_dim[0]) * (blocks_per_dim[1])):
+                    f.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes
+                                                 + zslice_unit_in_block*self.unit_bytes
+                                                 + block_num*self.chunk_bytes, 0)
+                    buffer[block_num*self.unit_bytes:(block_num+1)*self.unit_bytes] = f.read(self.unit_bytes)
 
-        # Specify dtype otherwise pyzfp gets upset.
-        decompressed = decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4),
-                                  np.dtype('float32'), rate=self.rate)
+            # Specify dtype otherwise pyzfp gets upset.
+            decompressed = decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4),
+                                      np.dtype('float32'), rate=self.rate)
 
-        return decompressed[0:self.ilines, 0:self.xlines, zslice_id % 4]
+            return decompressed[0:self.ilines, 0:self.xlines, zslice_id % 4]
+
+        elif self.blockshape[2] == 4:
+            sub_block_size_bytes = ((4 * 4 * self.blockshape[1]) * self.rate) // 8
+            buffer = bytearray(self.block_bytes * (self.shape_pad[0] // self.blockshape[0]) * (self.shape_pad[1] // self.blockshape[1]))
+
+            with open(self.filename, 'rb') as f:
+                for block_i in range(self.shape_pad[0] // self.blockshape[0]):
+                    for block_x in range(blocks_per_dim[1]):
+                        block_num = block_i * (blocks_per_dim[1]) + block_x
+                        f.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes + block_num*(self.block_bytes*(blocks_per_dim[2])), 0)
+                        temp_buf = f.read(self.block_bytes)
+                        for sub_block_num in range(self.blockshape[0] // 4):
+                            buf_start = block_i*self.block_bytes*(blocks_per_dim[1]) + block_x*sub_block_size_bytes + sub_block_num * ((self.shape_pad[1]*4*4*self.rate) // 8)
+                            buffer[buf_start:buf_start+sub_block_size_bytes] = \
+                                temp_buf[sub_block_num*sub_block_size_bytes:(sub_block_num + 1)*sub_block_size_bytes]
+
+            # Specify dtype otherwise pyzfp gets upset.
+            decompressed = decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4),
+                                      np.dtype('float32'), rate=self.rate)
+
+            return decompressed[0:self.ilines, 0:self.xlines, zslice_id % 4]
+        else:
+            msg = "Cannot read without il/xl blockdims of 4 OR z blockdim of 4, blockdims are {}".format(blockshape)
+            raise NotImplementedError(msg)
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file

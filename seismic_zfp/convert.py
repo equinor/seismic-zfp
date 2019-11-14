@@ -5,12 +5,12 @@ import asyncio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, np_float_to_bytes
+from .utils import pad, np_float_to_bytes, define_blockshape
 
 DISK_BLOCK_BYTES = 4096
 
 
-def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="Stream"):
+def convert_segy(in_filename, out_filename, bits_per_voxel=4, blockshape=(4,4,-1), method="Stream"):
     """General entrypoint for converting SEGY files to SZ
 
     Parameters
@@ -29,6 +29,15 @@ def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="Stream"):
         - Tested using 8-bit, 4-bit, 2-bit & 1-bit
         - Recommended using 4-bit, giving 8:1 compression
 
+    blockshape: (int, int, int)
+        The physical shape of voxels compressed to one disk block.
+        Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, 4th is redundant.
+        - Specifying -1 for one of these will calculate that one
+        - Specifying -1 for more than one of these will fail
+        - Each one must be a power of 2
+        - (4, 4, -1) - default - is good for IL/XL reading
+        - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
+
     method: str
         Flag to indicate method for reading SEGY
         - "InMemory" : Read whole SEGY cube into memory before compressing
@@ -41,17 +50,18 @@ def convert_segy(in_filename, out_filename, bits_per_voxel=4, method="Stream"):
         If method is not one of "InMemory" or Stream"
 
     """
+
     if method == "InMemory":
-        print("Converting: In={}, Out={}".format(in_filename, out_filename))
-        convert_segy_inmem(in_filename, out_filename, bits_per_voxel)
+        print("Converting: In={}, Out={}".format(in_filename, out_filename, blockshape))
+        convert_segy_inmem(in_filename, out_filename, bits_per_voxel, blockshape)
     elif method == "Stream":
         print("Converting: In={}, Out={}".format(in_filename, out_filename))
-        convert_segy_stream(in_filename, out_filename, bits_per_voxel)
+        convert_segy_stream(in_filename, out_filename, bits_per_voxel, blockshape)
     else:
         raise NotImplementedError("Invalid conversion method {}, try 'InMemory' or 'Stream'".format(method))
 
 
-def make_header(in_filename, bits_per_voxel):
+def make_header(in_filename, bits_per_voxel, blockshape=(4,4,-1)):
     """Generate header for SZ file
 
     Returns
@@ -83,10 +93,13 @@ def make_header(in_filename, bits_per_voxel):
 
     buffer[40:44] = bits_per_voxel.to_bytes(4, byteorder='little')
 
+    buffer[44:48] = blockshape[0].to_bytes(4, byteorder='little')
+    buffer[48:52] = blockshape[1].to_bytes(4, byteorder='little')
+    buffer[52:56] = blockshape[2].to_bytes(4, byteorder='little')
+
     return buffer
 
-
-def convert_segy_inmem(in_filename, out_filename, bits_per_voxel):
+def convert_segy_inmem(in_filename, out_filename, bits_per_voxel, blockshape):
     with segyio.open(in_filename) as segyfile:
         cube_bytes = len(segyfile.samples) * len(segyfile.xlines) * len(segyfile.ilines) * 4
 
@@ -94,6 +107,14 @@ def convert_segy_inmem(in_filename, out_filename, bits_per_voxel):
         print("SEGY is {} bytes, machine memory is {} bytes".format(cube_bytes, virtual_memory().total))
         raise RuntimeError("Out of memory. We wish to hold the whole sky, But we never will.")
 
+    if blockshape[0] == 4:
+        convert_segy_inmem_default(in_filename, out_filename, bits_per_voxel)
+    else:
+        convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, blockshape)
+
+def convert_segy_inmem_default(in_filename, out_filename, bits_per_voxel):
+    """Reads all data from input file to memory, compresses it and writes as .sz file to disk,
+    using ZFP's default compression unit order"""
     header = make_header(in_filename, bits_per_voxel)
 
     t0 = time.time()
@@ -113,6 +134,37 @@ def convert_segy_inmem(in_filename, out_filename, bits_per_voxel):
 
     print("Total conversion time: {}, of which read={}, compress={}, write={}".format(t3-t0, t1-t0, t2-t1, t3-t2))
 
+
+def convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, blockshape):
+    """Reads all data from input file to memory, compresses it and writes as .sz file to disk,
+    using custom compression unit order"""
+    header = make_header(in_filename, bits_per_voxel, blockshape)
+
+    t0 = time.time()
+    data = segyio.tools.cube(in_filename)
+
+    bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
+
+    padded_shape = (pad(data.shape[0], blockshape[0]),
+                    pad(data.shape[1], blockshape[1]),
+                    pad(data.shape[2], blockshape[2]))
+    data_padded = np.zeros(padded_shape, dtype=np.float32)
+
+    data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
+
+    with open(out_filename, 'wb') as f:
+        f.write(header)
+        for i in range(data_padded.shape[0] // blockshape[0]):
+            for x in range(data_padded.shape[1] // blockshape[1]):
+                for z in range(data_padded.shape[2] // blockshape[2]):
+                    slice = data_padded[i*blockshape[0] : (i+1)*blockshape[0],
+                                        x*blockshape[1] : (x+1)*blockshape[1],
+                                        z*blockshape[2] : (z+1)*blockshape[2]].copy()
+                    compressed_block = compress(slice, rate=bits_per_voxel)
+                    f.write(compressed_block)
+    t3 = time.time()
+
+    print("Total conversion time: {}".format(t3-t0))
 
 
 async def produce(queue, in_filename, bits_per_voxel):
