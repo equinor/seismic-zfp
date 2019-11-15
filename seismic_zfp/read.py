@@ -210,30 +210,59 @@ class SzReader:
         subvolume : numpy.ndarray of float32, shape (max_il - min_il, max_xl - min_xl, max_z - min_z)
             The sprcified subvolume, decompressed
         """
-        z_units = (max_z+4) // 4 - min_z // 4
-        xl_units = (max_xl+4) // 4 - min_xl // 4
-        il_units = (max_il+4) // 4 - min_il // 4
+        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
+            z_units = (max_z+4) // 4 - min_z // 4
+            xl_units = (max_xl+4) // 4 - min_xl // 4
+            il_units = (max_il+4) // 4 - min_il // 4
 
-        # Allocate memory for compressed data
-        buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
-        read_length = self.unit_bytes*z_units
+            # Allocate memory for compressed data
+            buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
+            read_length = self.unit_bytes*z_units
 
-        with open(self.filename, 'rb') as f:
-            for i in range(il_units):
-                for x in range(xl_units):
-                    # No need to loop over z... it's contiguous, so do it in one file read
-                    f.seek(self.data_start_bytes + self.unit_bytes * (
-                          (i + (min_il // 4))*(self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
-                          (x + (min_xl // 4))*(self.shape_pad[2] // 4) +
-                          (min_z // 4)), 0)
-                    buf_start = (i*xl_units*z_units + x*z_units) * self.unit_bytes
-                    buf_end = buf_start + read_length
-                    buffer[buf_start:buf_end] = f.read(read_length)
+            with open(self.filename, 'rb') as f:
+                for i in range(il_units):
+                    for x in range(xl_units):
+                        # No need to loop over z... it's contiguous, so do it in one file read
+                        f.seek(self.data_start_bytes + self.unit_bytes * (
+                              (i + (min_il // 4))*(self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
+                              (x + (min_xl // 4))*(self.shape_pad[2] // 4) +
+                              (min_z // 4)), 0)
+                        buf_start = (i*xl_units*z_units + x*z_units) * self.unit_bytes
+                        buf_end = buf_start + read_length
+                        buffer[buf_start:buf_end] = f.read(read_length)
 
-        # Specify dtype otherwise pyzfp gets upset.
-        decompressed = decompress(buffer, (il_units*4, xl_units*4, z_units*4),
-                                  np.dtype('float32'), rate=self.rate)
+            # Specify dtype otherwise pyzfp gets upset.
+            decompressed = decompress(buffer, (il_units*4, xl_units*4, z_units*4),
+                                      np.dtype('float32'), rate=self.rate)
 
-        return decompressed[min_il%4:(min_il%4)+max_il-min_il,
-                            min_xl%4:(min_xl%4)+max_xl-min_xl,
-                            min_z%4:(min_z%4)+max_z-min_z]
+            return decompressed[min_il%4:(min_il%4)+max_il-min_il,
+                                min_xl%4:(min_xl%4)+max_xl-min_xl,
+                                min_z%4:(min_z%4)+max_z-min_z]
+        else:
+            z_blocks = (max_z+self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
+            xl_blocks = (max_xl+self.blockshape[1]) // self.blockshape[1] - min_xl // self.blockshape[1]
+            il_blocks = (max_il+self.blockshape[0]) // self.blockshape[0] - min_il // self.blockshape[0]
+
+            data_padded = np.zeros((il_blocks*self.blockshape[0],
+                                    xl_blocks*self.blockshape[1],
+                                    z_blocks*self.blockshape[2]), dtype=np.float32)
+
+            with open(self.filename, 'rb') as f:
+                for i in range(il_blocks):
+                    for x in range(xl_blocks):
+                        for z in range(z_blocks):
+                            f.seek(self.data_start_bytes + self.block_bytes * (
+                                    (i + (min_il // self.blockshape[0])) * (self.shape_pad[1] // self.blockshape[1]) * (self.shape_pad[2] // self.blockshape[2]) +
+                                    (x + (min_xl // self.blockshape[1])) * (self.shape_pad[2] // self.blockshape[2]) +
+                                    (z + (min_z // self.blockshape[2]))), 0)
+                            buffer = f.read(self.block_bytes)
+                            decompressed = decompress(buffer,
+                                                      (self.blockshape[0], self.blockshape[1], self.blockshape[2]),
+                                                      np.dtype('float32'), rate=self.rate)
+                            data_padded[i*self.blockshape[0]:(i+1)*self.blockshape[0],
+                                        x*self.blockshape[1]:(x+1)*self.blockshape[1],
+                                        z*self.blockshape[2]:(z+1)*self.blockshape[2]] = decompressed
+
+            return data_padded[min_il%self.blockshape[0]:(min_il%self.blockshape[0])+max_il-min_il,
+                               min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
+                               min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
