@@ -81,18 +81,22 @@ class SzReader:
         inline : numpy.ndarray of float32, shape: (n_xlines, tracelength)
             The specified inline, decompressed
         """
-        il_block_offset = ((self.chunk_bytes * self.shape_pad[1])//4) * (il_id//4)
+        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
+            il_block_offset = ((self.chunk_bytes * self.shape_pad[1])//4) * (il_id//4)
 
-        with open(self.filename, 'rb') as f:
-            f.seek(self.data_start_bytes + il_block_offset, 0)
-            # Allocate and read in one go
-            buffer = f.read(self.chunk_bytes * self.shape_pad[1])
+            with open(self.filename, 'rb') as f:
+                f.seek(self.data_start_bytes + il_block_offset, 0)
+                # Allocate and read in one go
+                buffer = f.read(self.chunk_bytes * self.shape_pad[1])
 
-        # Specify dtype otherwise pyzfp gets upset.
-        decompressed = decompress(buffer, (self.blockshape[0], self.shape_pad[1], self.shape_pad[2]),
-                                  np.dtype('float32'), rate=self.rate)
+            # Specify dtype otherwise pyzfp gets upset.
+            decompressed = decompress(buffer, (self.blockshape[0], self.shape_pad[1], self.shape_pad[2]),
+                                      np.dtype('float32'), rate=self.rate)
 
-        return decompressed[il_id % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
+            return decompressed[il_id % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
+        else:
+            # Default to unoptimized general method
+            return np.squeeze(self.read_subvolume(il_id, il_id+1, 0, self.xlines, 0, self.tracelength))
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SZ file
@@ -107,23 +111,28 @@ class SzReader:
         crossline : numpy.ndarray of float32, shape: (n_ilines, tracelength)
             The specified crossline, decompressed
         """
-        xl_first_chunk_offset = xl_id//4 * self.chunk_bytes
-        xl_chunk_increment = self.chunk_bytes * self.shape_pad[1] // 4
+        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
+            xl_first_chunk_offset = xl_id//4 * self.chunk_bytes
+            xl_chunk_increment = self.chunk_bytes * self.shape_pad[1] // 4
 
-        # Allocate memory for compressed data
-        buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
+            # Allocate memory for compressed data
+            buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
 
-        with open(self.filename, 'rb') as f:
-            for chunk_num in range(self.shape_pad[0] // 4):
-                f.seek(self.data_start_bytes + xl_first_chunk_offset
-                                             + chunk_num*xl_chunk_increment, 0)
-                buffer[chunk_num*self.chunk_bytes:(chunk_num+1)*self.chunk_bytes] = f.read(self.chunk_bytes)
+            with open(self.filename, 'rb') as f:
+                for chunk_num in range(self.shape_pad[0] // 4):
+                    f.seek(self.data_start_bytes + xl_first_chunk_offset
+                                                 + chunk_num*xl_chunk_increment, 0)
+                    buffer[chunk_num*self.chunk_bytes:(chunk_num+1)*self.chunk_bytes] = f.read(self.chunk_bytes)
 
-        # Specify dtype otherwise pyzfp gets upset.
-        decompressed = decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
-                                  np.dtype('float32'), rate=self.rate)
+            # Specify dtype otherwise pyzfp gets upset.
+            decompressed = decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
+                                      np.dtype('float32'), rate=self.rate)
 
-        return decompressed[0:self.ilines, xl_id % self.blockshape[1], 0:self.tracelength]
+            return decompressed[0:self.ilines, xl_id % self.blockshape[1], 0:self.tracelength]
+        else:
+            # Default to unoptimized general method
+            return np.squeeze(self.read_subvolume(0, self.ilines, xl_id, xl_id+1, 0, self.tracelength))
+
 
     def read_zslice(self, zslice_id):
         """Reads one zslice from SZ file (time or depth, depending on file contents)
@@ -181,8 +190,8 @@ class SzReader:
 
             return decompressed[0:self.ilines, 0:self.xlines, zslice_id % 4]
         else:
-            msg = "Cannot read without il/xl blockdims of 4 OR z blockdim of 4, blockdims are {}".format(blockshape)
-            raise NotImplementedError(msg)
+            # Default to unoptimized general method
+            return np.squeeze(self.read_subvolume(0, self.ilines, 0, self.xlines, zslice_id, zslice_id+1))
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file
@@ -239,6 +248,10 @@ class SzReader:
                                 min_xl%4:(min_xl%4)+max_xl-min_xl,
                                 min_z%4:(min_z%4)+max_z-min_z]
         else:
+            # This works generally, but is pretty wasteful for IL or XL reads.
+            # Really should encourage users to stick with either:
+            #  - blockshape[2] == 4
+            #  - blockshape[0] == blockshape[1] == 4
             z_blocks = (max_z+self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
             xl_blocks = (max_xl+self.blockshape[1]) // self.blockshape[1] - min_xl // self.blockshape[1]
             il_blocks = (max_il+self.blockshape[0]) // self.blockshape[0] - min_il // self.blockshape[0]

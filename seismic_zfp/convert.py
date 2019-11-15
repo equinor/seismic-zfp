@@ -201,7 +201,7 @@ async def produce(queue, in_filename, blockshape):
                         await queue.put(slice)
 
 async def consume(header, queue, out_filename, bits_per_voxel):
-    """Fetches compressed sets of inlines and writes them to disk"""
+    """Fetches compressed sets of inlines (or just blocks) and writes them to disk"""
     with open(out_filename, 'wb') as f:
         f.write(header)
         while True:
