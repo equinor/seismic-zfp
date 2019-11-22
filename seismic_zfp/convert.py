@@ -6,7 +6,7 @@ import time
 from psutil import virtual_memory
 
 from .utils import pad, np_float_to_bytes, define_blockshape
-from .headers import getHeaderwordInfoList
+from .headers import get_headerword_infolist
 
 DISK_BLOCK_BYTES = 4096
 
@@ -92,7 +92,7 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
         buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
         buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
 
-        hw_info_list = getHeaderwordInfoList(segyfile)
+        hw_info_list = get_headerword_infolist(segyfile)
 
     buffer[40:44] = bits_per_voxel.to_bytes(4, byteorder='little')
 
