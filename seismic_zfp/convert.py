@@ -6,7 +6,7 @@ import time
 from psutil import virtual_memory
 
 from .utils import pad, np_float_to_bytes, define_blockshape
-from .headers import get_headerword_infolist
+from .headers import get_headerword_infolist, get_unique_headerwords
 
 DISK_BLOCK_BYTES = 4096
 SEGY_FILE_HEADER_BYTES = 3600
@@ -179,9 +179,14 @@ def convert_segy_inmem_default(in_filename, out_filename, bits_per_voxel):
     compressed = compress(data_padded, rate=bits_per_voxel)
     t2 = time.time()
 
+    numpy_headers_arrays = get_header_arrays(in_filename, data.shape)
+
     with open(out_filename, 'wb') as f:
         f.write(header)
         f.write(compressed)
+        for header_array in numpy_headers_arrays:
+            f.write(header_array.tobytes())
+
     t3 = time.time()
 
     print("Total conversion time: {}, of which read={}, compress={}, write={}".format(t3-t0, t1-t0, t2-t1, t3-t2))
@@ -204,6 +209,8 @@ def convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, block
 
     data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
 
+    numpy_headers_arrays = get_header_arrays(in_filename, data.shape)
+
     with open(out_filename, 'wb') as f:
         f.write(header)
         for i in range(data_padded.shape[0] // blockshape[0]):
@@ -214,6 +221,8 @@ def convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, block
                                         z*blockshape[2] : (z+1)*blockshape[2]].copy()
                     compressed_block = compress(slice, rate=bits_per_voxel)
                     f.write(compressed_block)
+        for header_array in numpy_headers_arrays:
+            f.write(header_array.tobytes())
     t3 = time.time()
 
     print("Total conversion time: {}".format(t3-t0))
