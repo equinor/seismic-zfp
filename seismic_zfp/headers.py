@@ -1,9 +1,9 @@
 import segyio
 import sys
 
-#print(segyio.tracefield.TraceField(1))
-#print(segyio.tracefield.keys["INLINE_3D"])
 
+def getHeaderWordCode(hw):
+    return segyio.tracefield.keys[str(segyio.tracefield.TraceField(hw))]
 
 def getFirstLastHeaders(segyfile):
     return segyfile.header[0].items(), segyfile.header[-1].items()
@@ -65,13 +65,13 @@ def getHeaderwordInfoList(segyfile):
             default = 0
 
         if hw in unique_variant_nonzero_header_words:
-            mapping = hw
+            mapping = getHeaderWordCode(hw)
         elif hw in duplicate_header_words.keys():
-            mapping = duplicate_header_words[hw]
+            mapping = getHeaderWordCode(duplicate_header_words[hw])
         else:
-            mapping = None
+            mapping = 0
 
-        hw_info_list.append((hw, default, mapping))
+        hw_info_list.append((getHeaderWordCode(hw), default, mapping))
     return hw_info_list
 
 
