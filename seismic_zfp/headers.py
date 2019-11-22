@@ -50,7 +50,10 @@ def get_unique_headerwords(segyfile):
         if hw in duplicate_header_words.keys():
             variant_header_words[i] = duplicate_header_words[hw]
 
-    return set(variant_header_words)
+    variant_header_words = list(set(variant_header_words))
+    variant_header_word_codes = [get_headerword_code(header_words) for header_words in variant_header_words]
+
+    return [x for _, x in sorted(zip(variant_header_word_codes, variant_header_words))]
 
 
 def get_headerword_infolist(segyfile):
