@@ -109,7 +109,9 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
 
     # Length of the seismic amplitudes cube after compression
     compressed_data_length_bytes = (bits_per_voxel *
-                                    len(segyfile.samples) * len(segyfile.xlines) * len(segyfile.ilines)) // 8
+                                    pad(len(segyfile.samples), blockshape[2]) *
+                                    pad(len(segyfile.xlines), blockshape[1]) *
+                                    pad(len(segyfile.ilines), blockshape[0])) // 8
     buffer[56:60] = compressed_data_length_bytes.to_bytes(4, byteorder='little')
 
     # Length of array storing one header value from every trace after compression
@@ -124,9 +126,9 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     hw_start_byte = 980    # Start here to end at 2048
     for i, hw_info in enumerate(hw_info_list):
         start = hw_start_byte + i*12
-        buffer[start + 0:start + 4] = hw_info[0].to_bytes(4, byteorder='little')
-        buffer[start + 4:start + 8] = hw_info[1].to_bytes(4, byteorder='little')
-        buffer[start + 8:start + 12] = hw_info[2].to_bytes(4, byteorder='little')
+        buffer[start + 0:start + 4] = hw_info[0].to_bytes(4, byteorder='little', signed=True)
+        buffer[start + 4:start + 8] = hw_info[1].to_bytes(4, byteorder='little', signed=True)
+        buffer[start + 8:start + 12] = hw_info[2].to_bytes(4, byteorder='little', signed=True)
 
     # Just copy the bytes from the SEG-Y file header
     with open(in_filename, "rb") as f:
@@ -150,10 +152,22 @@ def convert_segy_inmem(in_filename, out_filename, bits_per_voxel, blockshape):
         convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, blockshape)
 
 
+def get_header_arrays(in_filename, shape):
+    with segyio.open(in_filename) as segyfile:
+        headers_to_store = get_unique_headerwords(segyfile)
+        n_traces = shape[0] * shape[1]
+        header_generator = segyfile.header[0:n_traces]
+        numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
+        for i, header in enumerate(header_generator):
+            for j, h in enumerate(headers_to_store):
+                numpy_headers_arrays[j][i] = header[h]
+    return numpy_headers_arrays
+
+
 def convert_segy_inmem_default(in_filename, out_filename, bits_per_voxel):
     """Reads all data from input file to memory, compresses it and writes as .sz file to disk,
     using ZFP's default compression unit order"""
-    header = make_header(in_filename, bits_per_voxel)
+    header = make_header(in_filename, bits_per_voxel, blockshape=(4, 4, 2048//bits_per_voxel))
 
     t0 = time.time()
     data = segyio.tools.cube(in_filename)
