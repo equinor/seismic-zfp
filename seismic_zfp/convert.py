@@ -9,6 +9,7 @@ from .utils import pad, np_float_to_bytes, define_blockshape
 from .headers import get_headerword_infolist
 
 DISK_BLOCK_BYTES = 4096
+SEGY_FILE_HEADER_BYTES = 3600
 
 
 def convert_segy(in_filename, out_filename, bits_per_voxel=4, blockshape=(4,4,-1), method="Stream"):
@@ -69,12 +70,18 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     -------
 
     buffer: bytearray
-        A 4kB byte buffer containing data required to read SZ file, including:
-        - Samples per trace
-        - Number of crosslines
-        - Number of inlines
+        An 8kB byte buffer containing data required to read SZ file, including:
+
+        First 4kB
+        - Seismic cube dimensions
+        - Compression settings (bitrate, disk block packing scheme)
+        - Invariant SEG-Y trace header values
+        - File location of varying SEG-Y trace header values
+
+        Second 4kB
+        - SEG-Y File header
     """
-    header_blocks = 1
+    header_blocks = 2
     buffer = bytearray(DISK_BLOCK_BYTES * header_blocks)
     buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
 
@@ -105,16 +112,26 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
                                     len(segyfile.samples) * len(segyfile.xlines) * len(segyfile.ilines)) // 8
     buffer[56:60] = compressed_data_length_bytes.to_bytes(4, byteorder='little')
 
-    # Length of one header value from every trace cube after compression
+    # Length of array storing one header value from every trace after compression
     header_entry_length_bytes = (len(segyfile.xlines) * len(segyfile.ilines) * 32) // 8
     buffer[60:64] = header_entry_length_bytes.to_bytes(4, byteorder='little')
 
-    hw_start_byte = 1024
+    # Number of trace header arrays stored after compressed seismic amplitudes
+    n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
+    buffer[64:68] = n_header_arrays.to_bytes(4, byteorder='little')
+
+    # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
+    hw_start_byte = 980    # Start here to end at 2048
     for i, hw_info in enumerate(hw_info_list):
         start = hw_start_byte + i*12
         buffer[start + 0:start + 4] = hw_info[0].to_bytes(4, byteorder='little')
         buffer[start + 4:start + 8] = hw_info[1].to_bytes(4, byteorder='little')
         buffer[start + 8:start + 12] = hw_info[2].to_bytes(4, byteorder='little')
+
+    # Just copy the bytes from the SEG-Y file header
+    with open(in_filename, "rb") as f:
+        segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
+        buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
 
     return buffer
 
