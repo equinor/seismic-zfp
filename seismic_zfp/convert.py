@@ -155,9 +155,8 @@ def convert_segy_inmem(in_filename, out_filename, bits_per_voxel, blockshape):
 def get_header_arrays(in_filename, shape):
     with segyio.open(in_filename) as segyfile:
         headers_to_store = get_unique_headerwords(segyfile)
-        n_traces = shape[0] * shape[1]
-        header_generator = segyfile.header[0:n_traces]
-        numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
+        header_generator = segyfile.header[0:segyfile.tracecount]
+        numpy_headers_arrays = [np.zeros(segyfile.tracecount, dtype=np.int32) for _ in range(len(headers_to_store))]
         for i, header in enumerate(header_generator):
             for j, h in enumerate(headers_to_store):
                 numpy_headers_arrays[j][i] = header[h]
@@ -228,7 +227,7 @@ def convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, block
     print("Total conversion time: {}".format(t3-t0))
 
 
-async def produce(queue, in_filename, blockshape):
+async def produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename) as segyfile:
 
@@ -252,6 +251,12 @@ async def produce(queue, in_filename, blockshape):
                 data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + i]])
                 segy_buffer[i, 0:n_xlines, 0:trace_length] = data
 
+                start_trace = (plane_set_id*blockshape[0] + i) * len(segyfile.xlines)
+                header_generator = segyfile.header[start_trace: start_trace+len(segyfile.xlines)]
+                for t, header in enumerate(header_generator, start_trace):
+                    for j, h in enumerate(headers_to_store):
+                        numpy_headers_arrays[j][t] = header[h]
+
             if blockshape[0] == 4:
                 await queue.put(segy_buffer)
             else:
@@ -273,7 +278,7 @@ async def consume(header, queue, out_filename, bits_per_voxel):
             queue.task_done()
 
 
-async def run(in_filename, out_filename, bits_per_voxel, blockshape):
+async def run(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store, numpy_headers_arrays):
     header = make_header(in_filename, bits_per_voxel, blockshape)
 
     # Maxsize can be reduced for machines with little memory
@@ -282,7 +287,7 @@ async def run(in_filename, out_filename, bits_per_voxel, blockshape):
     # schedule the consumer
     consumer = asyncio.ensure_future(consume(header, queue, out_filename, bits_per_voxel))
     # run the producer and wait for completion
-    await produce(queue, in_filename, blockshape)
+    await produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays)
     # wait until the consumer has processed all items
     await queue.join()
     # the consumer is still awaiting for an item, cancel it
@@ -294,9 +299,18 @@ def convert_segy_stream(in_filename, out_filename, bits_per_voxel, blockshape):
 
     bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
 
+    with segyio.open(in_filename) as segyfile:
+        headers_to_store = get_unique_headerwords(segyfile)
+        numpy_headers_arrays = [np.zeros(segyfile.tracecount, dtype=np.int32) for _ in range(len(headers_to_store))]
+
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(in_filename, out_filename, bits_per_voxel, blockshape))
+    loop.run_until_complete(run(in_filename, out_filename, bits_per_voxel, blockshape,
+                                headers_to_store, numpy_headers_arrays))
     loop.close()
+
+    with open(out_filename, 'ab') as f:
+        for header_array in numpy_headers_arrays:
+            f.write(header_array.tobytes())
 
     t3 = time.time()
     print("Total conversion time: {}".format(t3-t0))
