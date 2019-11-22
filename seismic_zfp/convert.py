@@ -108,11 +108,11 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     buffer[52:56] = blockshape[2].to_bytes(4, byteorder='little')
 
     # Length of the seismic amplitudes cube after compression
-    compressed_data_length_bytes = (bits_per_voxel *
+    compressed_data_length_diskblocks = ((bits_per_voxel *
                                     pad(len(segyfile.samples), blockshape[2]) *
                                     pad(len(segyfile.xlines), blockshape[1]) *
-                                    pad(len(segyfile.ilines), blockshape[0])) // 8
-    buffer[56:60] = compressed_data_length_bytes.to_bytes(4, byteorder='little')
+                                    pad(len(segyfile.ilines), blockshape[0])) // 8) // DISK_BLOCK_BYTES
+    buffer[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
 
     # Length of array storing one header value from every trace after compression
     header_entry_length_bytes = (len(segyfile.xlines) * len(segyfile.ilines) * 32) // 8
