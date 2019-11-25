@@ -1,10 +1,17 @@
 import os
 import numpy as np
 from pyzfp import decompress
+import segyio
 
-from .utils import pad, bytes_to_int
+from .utils import pad, bytes_to_int, bytes_to_signed_int
 
 DISK_BLOCK_BYTES = 4096
+
+
+class FileOffset(int):
+    """Convenience class to enable distinction between default header values and file offsets"""
+    def __new__(cls, value):
+        return int.__new__(cls, value)
 
 
 class SzReader:
@@ -38,20 +45,19 @@ class SzReader:
             raise FileNotFoundError("Rather than a beep Or a rude error message, These words: 'File not found.'")
 
         with open(self.filename, 'rb') as f:
-            buffer = f.read(DISK_BLOCK_BYTES)
-            self.header_blocks = bytes_to_int(buffer[0:4])
-            if self.header_blocks != 1:
+            self.headerbytes = f.read(DISK_BLOCK_BYTES)
+            self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
+            if self.n_header_blocks != 1:
                 f.seek(0)
-                buffer = f.read(DISK_BLOCK_BYTES*self.header_blocks)
+                self.headerbytes = f.read(DISK_BLOCK_BYTES*self.n_header_blocks)
 
-        self.tracelength = bytes_to_int(buffer[4:8])
-        self.xlines = bytes_to_int(buffer[8:12])
-        self.ilines = bytes_to_int(buffer[12:16])
-        self.rate = bytes_to_int(buffer[40:44])
+        # Read useful info out of the SZ header
+        self.tracelength, self.xlines, self.ilines, self.rate, self.blockshape = self.parse_dimensions()
+        self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self.parse_data_sizes()
+        self.segy_traceheader_template = self.decode_traceheader_template()
+        self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
-        self.blockshape = (bytes_to_int(buffer[44:48]), bytes_to_int(buffer[48:52]), bytes_to_int(buffer[52:56]))
-
-        # ytilibitapmoc
+        #
         if self.blockshape[0] == 0 or self.blockshape[1] == 0 or self.blockshape[2] == 0:
             self.blockshape = (4, 4, 2048//self.rate)
 
@@ -59,14 +65,71 @@ class SzReader:
                           pad(self.xlines, self.blockshape[1]),
                           pad(self.tracelength, self.blockshape[2]))
 
-        self.unit_bytes = ((4*4*4) * self.rate) // 8
-        self.block_bytes = (self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
-        self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
-        assert self.block_bytes == DISK_BLOCK_BYTES
+        # These are useful units of measurement for SZ files:
 
-        self.data_start_bytes = self.header_blocks * DISK_BLOCK_BYTES
+        # A 'compression unit' is the smallest decompressable piece of the SZ file.
+        # It is always 4-samples x 4-xlines x 4-ilines in physical dimensions, but its size
+        # on disk will vary according to compression ratio.
+        self.unit_bytes = ((4*4*4) * self.rate) // 8
+
+        # A 'block' is a group of 'compression units' equal in size to a hardware disk block.
+        # The 'compression units' may be arranged in any cuboid which matches the size of a disk block.
+        # At the time of coding, standard commodity hardware uses 4kB disk blocks so check that
+        # file has been written in using this convention.
+        self.block_bytes = (self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+        assert self.block_bytes == DISK_BLOCK_BYTES
+        assert self.block_bytes % self.unit_bytes == 0
+
+        # A 'chunk' is a group of one or more 'blocks' which span a complete set of traces.
+        # This will follow the xline and iline shape of a 'block'
+        self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
+        assert self.chunk_bytes % self.block_bytes == 0
 
         print("n_samples={}, n_xlines={}, n_ilines={}".format(self.tracelength, self.xlines, self.ilines))
+
+    def parse_dimensions(self):
+        tracelength = bytes_to_int(self.headerbytes[4:8])
+        xlines = bytes_to_int(self.headerbytes[8:12])
+        ilines = bytes_to_int(self.headerbytes[12:16])
+        rate = bytes_to_int(self.headerbytes[40:44])
+        blockshape = (bytes_to_int(self.headerbytes[44:48]),
+                      bytes_to_int(self.headerbytes[48:52]),
+                      bytes_to_int(self.headerbytes[52:56]))
+
+        return tracelength, xlines, ilines, rate, blockshape
+
+    def parse_data_sizes(self):
+        compressed_data_diskblocks = bytes_to_int(self.headerbytes[56:60])
+        header_entry_length_bytes = bytes_to_int(self.headerbytes[60:64])
+        n_header_arrays = bytes_to_int(self.headerbytes[64:68])
+
+        return compressed_data_diskblocks, header_entry_length_bytes, n_header_arrays
+
+    def decode_traceheader_template(self):
+        raw_template = self.headerbytes[980:2048]
+        template = [tuple((bytes_to_signed_int(raw_template[i*12 + j:i*12 + j + 4])
+                           for j in range(0, 12, 4))) for i in range(89)]
+        header_dict = {}
+        header_count = 0
+        for hv in template:
+            tf = segyio.tracefield.TraceField(hv[0])
+            if hv[1] != 0 or hv[2] == 0:
+                # In these cases we have an invariant value
+                header_dict[tf] = hv[1]
+
+            elif segyio.tracefield.TraceField(hv[2]) in header_dict.keys():
+                # We have a previously discovered header value
+                header_dict[tf] = header_dict[segyio.tracefield.TraceField(hv[2])]
+            else:
+                # This is a new header value
+                header_dict[tf] = FileOffset(DISK_BLOCK_BYTES*self.n_header_blocks +
+                                             DISK_BLOCK_BYTES*self.compressed_data_diskblocks +
+                                             header_count*self.header_entry_length_bytes)
+                header_count += 1
+
+        # We should find the same number of headers arrays as have been written!
+        assert(header_count == self.n_header_arrays)
+        return header_dict
 
     def read_inline(self, il_id):
         """Reads one inline from SZ file
@@ -132,7 +195,6 @@ class SzReader:
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.ilines, xl_id, xl_id+1, 0, self.tracelength))
-
 
     def read_zslice(self, zslice_id):
         """Reads one zslice from SZ file (time or depth, depending on file contents)

@@ -15,6 +15,10 @@ def bytes_to_int(bytes):
     return int.from_bytes(bytes, byteorder='little')
 
 
+def bytes_to_signed_int(bytes):
+    return int.from_bytes(bytes, byteorder='little', signed=True)
+
+
 def define_blockshape(bits_per_voxel, blockshape):
     if bits_per_voxel == -1:
         bits_per_voxel = 4096 * 8 // (blockshape[0] * blockshape[1] * blockshape[2])
