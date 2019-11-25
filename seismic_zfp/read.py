@@ -1,17 +1,13 @@
 import os
+import warnings
 import numpy as np
 from pyzfp import decompress
 import segyio
 
-from .utils import pad, bytes_to_int, bytes_to_signed_int
+from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset
 
 DISK_BLOCK_BYTES = 4096
-
-
-class FileOffset(int):
-    """Convenience class to enable distinction between default header values and file offsets"""
-    def __new__(cls, value):
-        return int.__new__(cls, value)
+SEGY_FILE_HEADER_BYTES = 3600
 
 
 class SzReader:
@@ -42,7 +38,7 @@ class SzReader:
         self.filename = file
 
         if not os.path.exists(self.filename):
-            raise FileNotFoundError("Rather than a beep Or a rude error message, These words: 'File not found.'")
+            raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
 
         with open(self.filename, 'rb') as f:
             self.headerbytes = f.read(DISK_BLOCK_BYTES)
@@ -53,11 +49,13 @@ class SzReader:
 
         # Read useful info out of the SZ header
         self.tracelength, self.xlines, self.ilines, self.rate, self.blockshape = self.parse_dimensions()
+        self.samples_list, self.xlines_list, self.ilines_list = self.parse_coordinates()
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self.parse_data_sizes()
-        self.segy_traceheader_template = self.decode_traceheader_template()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
-        #
+        self.segy_traceheader_template = self.decode_traceheader_template()
+
+        # Blockshape for original files
         if self.blockshape[0] == 0 or self.blockshape[1] == 0 or self.blockshape[2] == 0:
             self.blockshape = (4, 4, 2048//self.rate)
 
@@ -85,6 +83,10 @@ class SzReader:
         self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
         assert self.chunk_bytes % self.block_bytes == 0
 
+        # Placeholder. Don't read these if you're not going to use them
+        self.variant_headers = None
+
+
         print("n_samples={}, n_xlines={}, n_ilines={}".format(self.tracelength, self.xlines, self.ilines))
 
     def parse_dimensions(self):
@@ -97,6 +99,18 @@ class SzReader:
                       bytes_to_int(self.headerbytes[52:56]))
 
         return tracelength, xlines, ilines, rate, blockshape
+
+    def parse_coordinates(self):
+        samples_list = gen_coord_list(bytes_to_int(self.headerbytes[16:20]),
+                                      bytes_to_int(self.headerbytes[28:32]),
+                                      bytes_to_int(self.headerbytes[4:8]))
+        xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
+                                      bytes_to_int(self.headerbytes[32:36]),
+                                      bytes_to_int(self.headerbytes[8:12]))
+        ilines_list = gen_coord_list(bytes_to_int(self.headerbytes[24:28]),
+                                      bytes_to_int(self.headerbytes[36:40]),
+                                      bytes_to_int(self.headerbytes[12:16]))
+        return samples_list, xlines_list, ilines_list
 
     def parse_data_sizes(self):
         compressed_data_diskblocks = bytes_to_int(self.headerbytes[56:60])
@@ -130,6 +144,20 @@ class SzReader:
         # We should find the same number of headers arrays as have been written!
         assert(header_count == self.n_header_arrays)
         return header_dict
+
+    def read_variant_headers(self):
+        if self.variant_headers is None:
+            variant_headers = {}
+            with open(self.filename, 'rb') as f:
+                for k, v in self.segy_traceheader_template.items():
+                    if isinstance(v, FileOffset):
+                        f.seek(v)
+                        buffer = f.read(self.header_entry_length_bytes)
+                        values = np.frombuffer(buffer, dtype=np.int32)
+                        variant_headers[k] = values
+            self.variant_headers = variant_headers
+        else:
+            pass
 
     def read_inline(self, il_id):
         """Reads one inline from SZ file
@@ -341,3 +369,36 @@ class SzReader:
             return data_padded[min_il%self.blockshape[0]:(min_il%self.blockshape[0])+max_il-min_il,
                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
+
+    def write_segy_file(self, filename):
+        spec = segyio.spec()
+        spec.samples = self.samples_list
+        spec.offsets = [0]
+        spec.xlines = self.xlines_list
+        spec.ilines = self.ilines_list
+        spec.sorting = 2
+
+        # seimcic-sfp stores the binary header from the source SEG-Y file.
+        # In case someone forgot to do this, give them IEEE
+        data_sample_format_code = bytes_to_int(self.headerbytes[DISK_BLOCK_BYTES+3225: DISK_BLOCK_BYTES+3227])
+        if data_sample_format_code in [1, 5]:
+            spec.format = data_sample_format_code
+        else:
+            spec.format = 5
+
+        with warnings.catch_warnings():
+            # segyio will warn us that out padded cube is not contiguous. This is expected, and safe.
+            warnings.filterwarnings("ignore", message="Implicit conversion to contiguous array")
+            with segyio.create(filename, spec) as segyfile:
+                self.read_variant_headers()
+                # Naive. Don't do this.
+                for i, iline in enumerate(spec.ilines):
+                    for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
+                        header = self.segy_traceheader_template.copy()
+                        for k, v in header.items():
+                            if isinstance(v, FileOffset):
+                                header[k] = self.variant_headers[k][h]
+                        segyfile.header[h] = header
+                    segyfile.iline[iline] = self.read_inline(i)
+        with open(filename, "r+b") as f:
+            f.write(self.headerbytes[DISK_BLOCK_BYTES : DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
