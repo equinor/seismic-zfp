@@ -1,15 +1,14 @@
-import os
-from read import SzReader
-import segyio
+import sys
+from seismic_zfp.read import SzReader
 
-base_path = '/data-share/s/seismic-zfp'
 
-reader = SzReader(os.path.join(base_path, '0_headers.sz'))
+def main():
+    if len(sys.argv) != 3:
+        raise RuntimeError("This example accepts exactly 2 arguments: input_file & output_file")
 
-print(reader.segy_traceheader_template)
+    reader = SzReader(sys.argv[1])
+    reader.write_segy_file(sys.argv[2])
 
-with segyio.open('/data-share/s/seismic-zfp/0.segy') as segyfile:
-    print(segyfile.ilines)
-    print(segyfile.xlines)
-    print(segyfile.samples)
-    print(segyfile.format)
+
+if __name__ == '__main__':
+    main()

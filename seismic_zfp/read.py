@@ -159,6 +159,16 @@ class SzReader:
         else:
             pass
 
+    def read_and_decompress_il_set(self, i, f):
+        il_block_offset = ((self.chunk_bytes * self.shape_pad[1]) // 4) * (i // 4)
+
+        f.seek(self.data_start_bytes + il_block_offset, 0)
+        buffer = f.read(self.chunk_bytes * self.shape_pad[1])
+
+        # Specify dtype otherwise pyzfp gets upset.
+        return decompress(buffer, (self.blockshape[0], self.shape_pad[1], self.shape_pad[2]),
+                                  np.dtype('float32'), rate=self.rate)
+
     def read_inline(self, il_id):
         """Reads one inline from SZ file
 
@@ -173,17 +183,8 @@ class SzReader:
             The specified inline, decompressed
         """
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            il_block_offset = ((self.chunk_bytes * self.shape_pad[1])//4) * (il_id//4)
-
             with open(self.filename, 'rb') as f:
-                f.seek(self.data_start_bytes + il_block_offset, 0)
-                # Allocate and read in one go
-                buffer = f.read(self.chunk_bytes * self.shape_pad[1])
-
-            # Specify dtype otherwise pyzfp gets upset.
-            decompressed = decompress(buffer, (self.blockshape[0], self.shape_pad[1], self.shape_pad[2]),
-                                      np.dtype('float32'), rate=self.rate)
-
+                decompressed = self.read_and_decompress_il_set(il_id, f)
             return decompressed[il_id % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
         else:
             # Default to unoptimized general method
@@ -370,7 +371,7 @@ class SzReader:
                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
 
-    def write_segy_file(self, filename):
+    def write_segy_file(self, out_file):
         spec = segyio.spec()
         spec.samples = self.samples_list
         spec.offsets = [0]
@@ -389,16 +390,19 @@ class SzReader:
         with warnings.catch_warnings():
             # segyio will warn us that out padded cube is not contiguous. This is expected, and safe.
             warnings.filterwarnings("ignore", message="Implicit conversion to contiguous array")
-            with segyio.create(filename, spec) as segyfile:
+            with segyio.create(out_file, spec) as segyfile:
                 self.read_variant_headers()
-                # Naive. Don't do this.
-                for i, iline in enumerate(spec.ilines):
-                    for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
-                        header = self.segy_traceheader_template.copy()
-                        for k, v in header.items():
-                            if isinstance(v, FileOffset):
-                                header[k] = self.variant_headers[k][h]
-                        segyfile.header[h] = header
-                    segyfile.iline[iline] = self.read_inline(i)
-        with open(filename, "r+b") as f:
+                with open(self.filename, 'rb') as f:
+                    for i, iline in enumerate(spec.ilines):
+                        if i % self.blockshape[0] == 0:
+                            decompressed = self.read_and_decompress_il_set(i, f)
+                        for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
+                            header = self.segy_traceheader_template.copy()
+                            for k, v in header.items():
+                                if isinstance(v, FileOffset):
+                                    header[k] = self.variant_headers[k][h]
+                            segyfile.header[h] = header
+                        segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
+
+        with open(out_file, "r+b") as f:
             f.write(self.headerbytes[DISK_BLOCK_BYTES : DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
