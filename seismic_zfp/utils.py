@@ -1,9 +1,18 @@
+class FileOffset(int):
+    """Convenience class to enable distinction between default header values and file offsets"""
+    def __new__(cls, value):
+        return int.__new__(cls, value)
+
 
 def pad(orig, multiple):
     if orig%multiple == 0:
         return orig
     else:
         return multiple * (orig//multiple + 1)
+
+
+def gen_coord_list(start, step, count):
+    return list(range(start, start + step*count, step))
 
 
 def np_float_to_bytes(numpy_float):
@@ -13,6 +22,10 @@ def np_float_to_bytes(numpy_float):
 
 def bytes_to_int(bytes):
     return int.from_bytes(bytes, byteorder='little')
+
+
+def bytes_to_signed_int(bytes):
+    return int.from_bytes(bytes, byteorder='little', signed=True)
 
 
 def define_blockshape(bits_per_voxel, blockshape):
