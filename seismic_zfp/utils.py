@@ -1,3 +1,6 @@
+import time
+import datetime
+
 class FileOffset(int):
     """Convenience class to enable distinction between default header values and file offsets"""
     def __new__(cls, value):
@@ -41,3 +44,10 @@ def define_blockshape(bits_per_voxel, blockshape):
         else:
             assert(bits_per_voxel * blockshape[0] * blockshape[1] * blockshape[2] == 4096 * 8)
     return bits_per_voxel, blockshape
+
+
+def progress_printer(start_time, progress_frac):
+    current_time = time.time()
+    eta = current_time + ((1. - progress_frac) * (current_time - start_time)) / (progress_frac + 0.0000001)
+    st = datetime.datetime.fromtimestamp(eta).strftime('%Y-%m-%d %H:%M:%S')
+    print("   - {:5.1f}% complete. ETA: {}".format(progress_frac * 100, st), end="\r")

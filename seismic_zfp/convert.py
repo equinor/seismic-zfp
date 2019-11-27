@@ -5,7 +5,7 @@ import asyncio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, np_float_to_bytes, define_blockshape
+from .utils import pad, np_float_to_bytes, define_blockshape, progress_printer
 from .headers import get_headerword_infolist, get_unique_headerwords
 
 DISK_BLOCK_BYTES = 4096
@@ -229,7 +229,7 @@ def convert_segy_inmem_advanced(in_filename, out_filename, bits_per_voxel, block
     print("Total conversion time: {}".format(t3-t0))
 
 
-async def produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays):
+async def produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename) as segyfile:
 
@@ -241,7 +241,11 @@ async def produce(queue, in_filename, blockshape, headers_to_store, numpy_header
         padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
         # Loop over groups of 4 inlines
-        for plane_set_id in range(padded_shape[0] // blockshape[0]):
+        n_plane_sets = padded_shape[0] // blockshape[0]
+        start_time = time.time()
+        for plane_set_id in range(n_plane_sets):
+            if verbose:
+                progress_printer(start_time, plane_set_id / n_plane_sets)
             # Need to allocate at every step as this is being sent to another function
             if (plane_set_id+1)*blockshape[0] > n_ilines:
                 planes_to_read = n_ilines % blockshape[0]
@@ -315,4 +319,4 @@ def convert_segy_stream(in_filename, out_filename, bits_per_voxel, blockshape):
             f.write(header_array.tobytes())
 
     t3 = time.time()
-    print("Total conversion time: {}".format(t3-t0))
+    print("Total conversion time: {}                     ".format(t3-t0))
