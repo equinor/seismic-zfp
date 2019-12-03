@@ -150,6 +150,7 @@ async def consume(header, queue, out_filename, bits_per_voxel):
 
 
 async def run(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store, numpy_headers_arrays):
+    asyncio.set_event_loop(asyncio.new_event_loop())
     header = make_header(in_filename, bits_per_voxel, blockshape)
 
     # Maxsize can be reduced for machines with little memory
