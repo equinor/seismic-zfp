@@ -40,12 +40,13 @@ class SzReader:
         if not os.path.exists(self.filename):
             raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
 
-        with open(self.filename, 'rb') as f:
-            self.headerbytes = f.read(DISK_BLOCK_BYTES)
-            self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
-            if self.n_header_blocks != 1:
-                f.seek(0)
-                self.headerbytes = f.read(DISK_BLOCK_BYTES*self.n_header_blocks)
+        self.file = self.open_sz_file()
+
+        self.headerbytes = self.file.read(DISK_BLOCK_BYTES)
+        self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
+        if self.n_header_blocks != 1:
+            self.file.seek(0)
+            self.headerbytes = self.file.read(DISK_BLOCK_BYTES*self.n_header_blocks)
 
         # Read useful info out of the SZ header
         self.tracelength, self.xlines, self.ilines, self.rate, self.blockshape = self.parse_dimensions()
@@ -86,8 +87,19 @@ class SzReader:
         # Placeholder. Don't read these if you're not going to use them
         self.variant_headers = None
 
-
         print("n_samples={}, n_xlines={}, n_ilines={}".format(self.tracelength, self.xlines, self.ilines))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close_sz_file()
+
+    def open_sz_file(self):
+        return open(self.filename, 'rb')
+
+    def close_sz_file(self):
+        self.file.close()
 
     def parse_dimensions(self):
         tracelength = bytes_to_int(self.headerbytes[4:8])
@@ -148,22 +160,21 @@ class SzReader:
     def read_variant_headers(self):
         if self.variant_headers is None:
             variant_headers = {}
-            with open(self.filename, 'rb') as f:
-                for k, v in self.segy_traceheader_template.items():
-                    if isinstance(v, FileOffset):
-                        f.seek(v)
-                        buffer = f.read(self.header_entry_length_bytes)
-                        values = np.frombuffer(buffer, dtype=np.int32)
-                        variant_headers[k] = values
+            for k, v in self.segy_traceheader_template.items():
+                if isinstance(v, FileOffset):
+                    self.file.seek(v)
+                    buffer = self.file.read(self.header_entry_length_bytes)
+                    values = np.frombuffer(buffer, dtype=np.int32)
+                    variant_headers[k] = values
             self.variant_headers = variant_headers
         else:
             pass
 
-    def read_and_decompress_il_set(self, i, f):
+    def read_and_decompress_il_set(self, i):
         il_block_offset = ((self.chunk_bytes * self.shape_pad[1]) // 4) * (i // 4)
 
-        f.seek(self.data_start_bytes + il_block_offset, 0)
-        buffer = f.read(self.chunk_bytes * self.shape_pad[1])
+        self.file.seek(self.data_start_bytes + il_block_offset, 0)
+        buffer = self.file.read(self.chunk_bytes * self.shape_pad[1])
 
         # Specify dtype otherwise pyzfp gets upset.
         return decompress(buffer, (self.blockshape[0], self.shape_pad[1], self.shape_pad[2]),
@@ -183,8 +194,7 @@ class SzReader:
             The specified inline, decompressed
         """
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            with open(self.filename, 'rb') as f:
-                decompressed = self.read_and_decompress_il_set(il_id, f)
+            decompressed = self.read_and_decompress_il_set(il_id)
             return decompressed[il_id % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
         else:
             # Default to unoptimized general method
@@ -210,11 +220,10 @@ class SzReader:
             # Allocate memory for compressed data
             buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
 
-            with open(self.filename, 'rb') as f:
-                for chunk_num in range(self.shape_pad[0] // 4):
-                    f.seek(self.data_start_bytes + xl_first_chunk_offset
-                                                 + chunk_num*xl_chunk_increment, 0)
-                    buffer[chunk_num*self.chunk_bytes:(chunk_num+1)*self.chunk_bytes] = f.read(self.chunk_bytes)
+            for chunk_num in range(self.shape_pad[0] // 4):
+                self.file.seek(self.data_start_bytes + xl_first_chunk_offset
+                                             + chunk_num*xl_chunk_increment, 0)
+                buffer[chunk_num*self.chunk_bytes:(chunk_num+1)*self.chunk_bytes] = self.file.read(self.chunk_bytes)
 
             # Specify dtype otherwise pyzfp gets upset.
             decompressed = decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
@@ -247,12 +256,11 @@ class SzReader:
             # Allocate memory for compressed data
             buffer = bytearray(self.unit_bytes * (blocks_per_dim[0]) * (blocks_per_dim[1]))
 
-            with open(self.filename, 'rb') as f:
-                for block_num in range((blocks_per_dim[0]) * (blocks_per_dim[1])):
-                    f.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes
-                                                 + zslice_unit_in_block*self.unit_bytes
-                                                 + block_num*self.chunk_bytes, 0)
-                    buffer[block_num*self.unit_bytes:(block_num+1)*self.unit_bytes] = f.read(self.unit_bytes)
+            for block_num in range((blocks_per_dim[0]) * (blocks_per_dim[1])):
+                self.file.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes
+                                             + zslice_unit_in_block*self.unit_bytes
+                                             + block_num*self.chunk_bytes, 0)
+                buffer[block_num*self.unit_bytes:(block_num+1)*self.unit_bytes] = self.file.read(self.unit_bytes)
 
             # Specify dtype otherwise pyzfp gets upset.
             decompressed = decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4),
@@ -264,16 +272,15 @@ class SzReader:
             sub_block_size_bytes = ((4 * 4 * self.blockshape[1]) * self.rate) // 8
             buffer = bytearray(self.block_bytes * (self.shape_pad[0] // self.blockshape[0]) * (self.shape_pad[1] // self.blockshape[1]))
 
-            with open(self.filename, 'rb') as f:
-                for block_i in range(self.shape_pad[0] // self.blockshape[0]):
-                    for block_x in range(blocks_per_dim[1]):
-                        block_num = block_i * (blocks_per_dim[1]) + block_x
-                        f.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes + block_num*(self.block_bytes*(blocks_per_dim[2])), 0)
-                        temp_buf = f.read(self.block_bytes)
-                        for sub_block_num in range(self.blockshape[0] // 4):
-                            buf_start = block_i*self.block_bytes*(blocks_per_dim[1]) + block_x*sub_block_size_bytes + sub_block_num * ((self.shape_pad[1]*4*4*self.rate) // 8)
-                            buffer[buf_start:buf_start+sub_block_size_bytes] = \
-                                temp_buf[sub_block_num*sub_block_size_bytes:(sub_block_num + 1)*sub_block_size_bytes]
+            for block_i in range(self.shape_pad[0] // self.blockshape[0]):
+                for block_x in range(blocks_per_dim[1]):
+                    block_num = block_i * (blocks_per_dim[1]) + block_x
+                    self.file.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes + block_num*(self.block_bytes*(blocks_per_dim[2])), 0)
+                    temp_buf = self.file.read(self.block_bytes)
+                    for sub_block_num in range(self.blockshape[0] // 4):
+                        buf_start = block_i*self.block_bytes*(blocks_per_dim[1]) + block_x*sub_block_size_bytes + sub_block_num * ((self.shape_pad[1]*4*4*self.rate) // 8)
+                        buffer[buf_start:buf_start+sub_block_size_bytes] = \
+                            temp_buf[sub_block_num*sub_block_size_bytes:(sub_block_num + 1)*sub_block_size_bytes]
 
             # Specify dtype otherwise pyzfp gets upset.
             decompressed = decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4),
@@ -319,17 +326,16 @@ class SzReader:
             buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
             read_length = self.unit_bytes*z_units
 
-            with open(self.filename, 'rb') as f:
-                for i in range(il_units):
-                    for x in range(xl_units):
-                        # No need to loop over z... it's contiguous, so do it in one file read
-                        f.seek(self.data_start_bytes + self.unit_bytes * (
-                              (i + (min_il // 4))*(self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
-                              (x + (min_xl // 4))*(self.shape_pad[2] // 4) +
-                              (min_z // 4)), 0)
-                        buf_start = (i*xl_units*z_units + x*z_units) * self.unit_bytes
-                        buf_end = buf_start + read_length
-                        buffer[buf_start:buf_end] = f.read(read_length)
+            for i in range(il_units):
+                for x in range(xl_units):
+                    # No need to loop over z... it's contiguous, so do it in one file read
+                    self.file.seek(self.data_start_bytes + self.unit_bytes * (
+                          (i + (min_il // 4))*(self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
+                          (x + (min_xl // 4))*(self.shape_pad[2] // 4) +
+                          (min_z // 4)), 0)
+                    buf_start = (i*xl_units*z_units + x*z_units) * self.unit_bytes
+                    buf_end = buf_start + read_length
+                    buffer[buf_start:buf_end] = self.file.read(read_length)
 
             # Specify dtype otherwise pyzfp gets upset.
             decompressed = decompress(buffer, (il_units*4, xl_units*4, z_units*4),
@@ -351,21 +357,20 @@ class SzReader:
                                     xl_blocks*self.blockshape[1],
                                     z_blocks*self.blockshape[2]), dtype=np.float32)
 
-            with open(self.filename, 'rb') as f:
-                for i in range(il_blocks):
-                    for x in range(xl_blocks):
-                        for z in range(z_blocks):
-                            f.seek(self.data_start_bytes + self.block_bytes * (
-                                    (i + (min_il // self.blockshape[0])) * (self.shape_pad[1] // self.blockshape[1]) * (self.shape_pad[2] // self.blockshape[2]) +
-                                    (x + (min_xl // self.blockshape[1])) * (self.shape_pad[2] // self.blockshape[2]) +
-                                    (z + (min_z // self.blockshape[2]))), 0)
-                            buffer = f.read(self.block_bytes)
-                            decompressed = decompress(buffer,
-                                                      (self.blockshape[0], self.blockshape[1], self.blockshape[2]),
-                                                      np.dtype('float32'), rate=self.rate)
-                            data_padded[i*self.blockshape[0]:(i+1)*self.blockshape[0],
-                                        x*self.blockshape[1]:(x+1)*self.blockshape[1],
-                                        z*self.blockshape[2]:(z+1)*self.blockshape[2]] = decompressed
+            for i in range(il_blocks):
+                for x in range(xl_blocks):
+                    for z in range(z_blocks):
+                        self.file.seek(self.data_start_bytes + self.block_bytes * (
+                                (i + (min_il // self.blockshape[0])) * (self.shape_pad[1] // self.blockshape[1]) * (self.shape_pad[2] // self.blockshape[2]) +
+                                (x + (min_xl // self.blockshape[1])) * (self.shape_pad[2] // self.blockshape[2]) +
+                                (z + (min_z // self.blockshape[2]))), 0)
+                        buffer = self.file.read(self.block_bytes)
+                        decompressed = decompress(buffer,
+                                                  (self.blockshape[0], self.blockshape[1], self.blockshape[2]),
+                                                  np.dtype('float32'), rate=self.rate)
+                        data_padded[i*self.blockshape[0]:(i+1)*self.blockshape[0],
+                                    x*self.blockshape[1]:(x+1)*self.blockshape[1],
+                                    z*self.blockshape[2]:(z+1)*self.blockshape[2]] = decompressed
 
             return data_padded[min_il%self.blockshape[0]:(min_il%self.blockshape[0])+max_il-min_il,
                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
@@ -392,17 +397,16 @@ class SzReader:
             warnings.filterwarnings("ignore", message="Implicit conversion to contiguous array")
             with segyio.create(out_file, spec) as segyfile:
                 self.read_variant_headers()
-                with open(self.filename, 'rb') as f:
-                    for i, iline in enumerate(spec.ilines):
-                        if i % self.blockshape[0] == 0:
-                            decompressed = self.read_and_decompress_il_set(i, f)
-                        for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
-                            header = self.segy_traceheader_template.copy()
-                            for k, v in header.items():
-                                if isinstance(v, FileOffset):
-                                    header[k] = self.variant_headers[k][h]
-                            segyfile.header[h] = header
-                        segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
+                for i, iline in enumerate(spec.ilines):
+                    if i % self.blockshape[0] == 0:
+                        decompressed = self.read_and_decompress_il_set(i)
+                    for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
+                        header = self.segy_traceheader_template.copy()
+                        for k, v in header.items():
+                            if isinstance(v, FileOffset):
+                                header[k] = self.variant_headers[k][h]
+                        segyfile.header[h] = header
+                    segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
 
         with open(out_file, "r+b") as f:
             f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
@@ -424,31 +428,30 @@ class SzReader:
                                              padded_shape[1] * padded_shape[0]) // (8 * DISK_BLOCK_BYTES)
         new_header[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
 
-        with open(self.filename, 'rb') as f:
-            with open(out_file, "wb") as outfile:
-                outfile.write(new_header)
-                inline_bytes = (self.shape_pad[2] * self.shape_pad[1] * self.rate) // 8
-                for i in range(padded_shape[0] // new_blockshape[0]):
-                    if (i + 1) * new_blockshape[0] > self.ilines:
-                        icount = (self.ilines % new_blockshape[0] + 4) // 4
+        with open(out_file, "wb") as outfile:
+            outfile.write(new_header)
+            inline_bytes = (self.shape_pad[2] * self.shape_pad[1] * self.rate) // 8
+            for i in range(padded_shape[0] // new_blockshape[0]):
+                if (i + 1) * new_blockshape[0] > self.ilines:
+                    icount = (self.ilines % new_blockshape[0] + 4) // 4
+                else:
+                    icount = 16
+                for x in range(padded_shape[1] // new_blockshape[1]):
+                    if (x + 1) * new_blockshape[1] > self.xlines:
+                        xcount = (self.xlines % new_blockshape[1] + 4) // 4
                     else:
-                        icount = 16
-                    for x in range(padded_shape[1] // new_blockshape[1]):
-                        if (x + 1) * new_blockshape[1] > self.xlines:
-                            xcount = (self.xlines % new_blockshape[1] + 4) // 4
-                        else:
-                            xcount = 16
-                        buffer = bytearray(self.chunk_bytes*16*16)
-                        for n in range(icount):
-                            f.seek(self.data_start_bytes + x*self.chunk_bytes*16 + 4*(n+i*16)*inline_bytes)
-                            buffer[n*self.chunk_bytes*16:n*self.chunk_bytes*16 + xcount*self.chunk_bytes] = f.read(self.chunk_bytes*xcount)
-                        for z in range(padded_shape[2] // new_blockshape[2]):
-                            new_block = bytearray(DISK_BLOCK_BYTES)
-                            for u in range(64*64):
-                                new_block[u*self.unit_bytes:(u+1)*self.unit_bytes] = \
-                                    buffer[u*self.chunk_bytes + z*self.unit_bytes :
-                                           u*self.chunk_bytes + (z+1)*self.unit_bytes]
-                            outfile.write(new_block)
-                self.read_variant_headers()
-                for k, header_array in self.variant_headers.items():
-                    outfile.write(header_array.tobytes())
+                        xcount = 16
+                    buffer = bytearray(self.chunk_bytes*16*16)
+                    for n in range(icount):
+                        self.file.seek(self.data_start_bytes + x*self.chunk_bytes*16 + 4*(n+i*16)*inline_bytes)
+                        buffer[n*self.chunk_bytes*16:n*self.chunk_bytes*16 + xcount*self.chunk_bytes] = self.file.read(self.chunk_bytes*xcount)
+                    for z in range(padded_shape[2] // new_blockshape[2]):
+                        new_block = bytearray(DISK_BLOCK_BYTES)
+                        for u in range(64*64):
+                            new_block[u*self.unit_bytes:(u+1)*self.unit_bytes] = \
+                                buffer[u*self.chunk_bytes + z*self.unit_bytes :
+                                       u*self.chunk_bytes + (z+1)*self.unit_bytes]
+                        outfile.write(new_block)
+            self.read_variant_headers()
+            for k, header_array in self.variant_headers.items():
+                outfile.write(header_array.tobytes())
