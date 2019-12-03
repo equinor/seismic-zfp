@@ -26,7 +26,7 @@ with segyio.open(filepath) as segyfile:
         lines_to_compress[i, :, :] = segyfile.xline[segyfile.xlines[LINE_NO]]
 
 
-bitrates = [16, 8, 4, 2, 1]
+bitrates = [4, 2, 1]
 decompressed_slices = {}
 
 for bits_per_voxel in bitrates:
@@ -114,7 +114,19 @@ def get_spectra_average(data, dt):
 
 spectra_averages = {}
 
+
+def make_int8(slice, stdevs):
+    clip = np.std(slice)*stdevs
+    return np.rint((255.0 * (slice + clip)/(2.0*clip)) / 255.0) * 2.0 * clip - clip
+
+
 freq_vector, spectra_averages['segy'] = get_spectra_average(slice_segy, dt=sampling_interval)
+freq_vector, spectra_averages['int8'] = get_spectra_average(make_int8(slice_segy, 0.25), dt=sampling_interval)
+
+
+im = Image.fromarray(np.uint8(cm.seismic((make_int8(slice_segy, 0.25).clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
+im.save(os.path.join(outpath, 'test_inline-int8.png'))
+
 for bitrate in bitrates:
     _, spectra_averages[str(bitrate)] = get_spectra_average(decompressed_slices[bitrate], dt=sampling_interval)
 
@@ -133,4 +145,4 @@ plt.xlabel('Frequency (1/s)', fontsize=18)
 fig = plt.gcf()
 fig.set_size_inches(18, 12)
 plt.tick_params(labelsize=16)
-plt.savefig(os.path.join(outpath, 'test_spectrum.png'))
+plt.savefig(os.path.join(outpath, 'test_spectrum-int8.png'))
