@@ -8,7 +8,7 @@ from psutil import virtual_memory
 
 from .utils import pad, define_blockshape, FileOffset, bytes_to_int
 from .headers import get_unique_headerwords
-from .conversion_utils import make_header, get_header_arrays, run
+from .conversion_utils import make_header, get_header_arrays, run_conversion_loop
 from .read import SzReader
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
@@ -16,25 +16,31 @@ from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 class SegyConverter:
     """Writes SEGY files from SZ files"""
 
-    def __init__(self, in_filename, out_filename):
+    def __init__(self, in_filename):
         """
         Parameters
         ----------
 
         in_filename: str
             The SEGY file to be converted to SZ
-
-        out_filename: str
-            The SZ output file
         """
         self.in_filename = in_filename
-        self.out_filename = out_filename
+        self.out_filename = None
 
-    def convert(self, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream"):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream"):
         """General entrypoint for converting SEGY files to SZ
 
         Parameters
         ----------
+
+        out_filename: str
+            The SZ output file
 
         bits_per_voxel: int
             The number of bits to use for storing each seismic voxel.
@@ -64,6 +70,8 @@ class SegyConverter:
             If method is not one of "InMemory" or Stream"
 
         """
+        self.out_filename = out_filename
+
         if method == "InMemory":
             print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename, blockshape))
             self.convert_segy_inmem(bits_per_voxel, blockshape)
@@ -157,9 +165,9 @@ class SegyConverter:
             headers_to_store = get_unique_headerwords(segyfile)
             numpy_headers_arrays = [np.zeros(segyfile.tracecount, dtype=np.int32) for _ in range(len(headers_to_store))]
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(run(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                                    headers_to_store, numpy_headers_arrays))
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
+                                                    headers_to_store, numpy_headers_arrays))
         loop.close()
 
         with open(self.out_filename, 'ab') as f:

@@ -44,38 +44,35 @@ and varying trace header values and storing these appropriately.
 
 Full example code is provided, but the following reference is useful:
 
-#### Create a "standard" SZ file from SEGY ####
+#### Create SZ files from SEGY ####
 
 ```python
-from seismic_zfp.convert import convert_segy
-convert_segy("in.segy", "out.sz", bits_per_voxel=4)
+from seismic_zfp.conversion import SegyConverter
+with SegyConverter("in.segy") as converter:
+    # Create a "standard" SZ file with 8:1 compression, using in-memory method
+    converter.run("out-standard.sz", bits_per_voxel=4,
+                  method="InMemory")
+    # Create a "z-slice optimized" SZ file
+    converter.run("out-advanced.sz", bits_per_voxel=2, 
+                  blockshape=(64, 64, 4))
 ```
-
-#### Create a "z-slice optimized" SZ file from SEGY ####
-
-```python
-from seismic_zfp.convert import convert_segy
-convert_segy("in.segy", "out.sz", bits_per_voxel=2, 
-             blockshape=(64, 64, 4), method="Stream")
-```
-
 
 #### Read an SZ file ####
 ```python
 from seismic_zfp.read import SzReader
-reader = SzReader("in.sz")
-inline_slice = reader.read_inline(LINE_NO)
-crossline_slice = reader.read_crossline(LINE_NO)
-z_slice = reader.read_zslice(LINE_NO)
-sub_vol = reader.read_subvolume(min_il=min_il, max_il=max_il, 
-                                min_xl=min_xl, max_xl=max_xl, 
-                                min_z=min_z, max_z=max_z)
+with SzReader("in.sz") as reader:
+    inline_slice = reader.read_inline(LINE_NO)
+    crossline_slice = reader.read_crossline(LINE_NO)
+    z_slice = reader.read_zslice(LINE_NO)
+    sub_vol = reader.read_subvolume(min_il=min_il, max_il=max_il, 
+                                    min_xl=min_xl, max_xl=max_xl, 
+                                    min_z=min_z, max_z=max_z)
 ```
 
 #### Convert an SZ file to SEGY ####
 ```python
-from seismic_zfp.read import SzReader
-reader = SzReader("in.sz")
-reader.write_segy_file("out.segy")
+from seismic_zfp.conversion import SzConverter
+with SzConverter("in.sz") as converter:
+    converter.convert_to_segy("out.segy")
 ```
 
