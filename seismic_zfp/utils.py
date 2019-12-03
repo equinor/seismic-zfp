@@ -1,6 +1,9 @@
 import time
 import datetime
 
+from .szconstants import DISK_BLOCK_BYTES
+
+
 class FileOffset(int):
     """Convenience class to enable distinction between default header values and file offsets"""
     def __new__(cls, value):
@@ -33,16 +36,19 @@ def bytes_to_signed_int(bytes):
 
 def define_blockshape(bits_per_voxel, blockshape):
     if bits_per_voxel == -1:
-        bits_per_voxel = 4096 * 8 // (blockshape[0] * blockshape[1] * blockshape[2])
+        bits_per_voxel = DISK_BLOCK_BYTES * 8 // (blockshape[0] * blockshape[1] * blockshape[2])
     else:
         if blockshape[0] == -1:
-            blockshape = (4096 * 8 // (blockshape[1] * blockshape[2] * bits_per_voxel), blockshape[1], blockshape[2])
+            blockshape = (DISK_BLOCK_BYTES * 8 //
+                          (blockshape[1] * blockshape[2] * bits_per_voxel), blockshape[1], blockshape[2])
         elif blockshape[1] == -1:
-            blockshape = (blockshape[0], 4096 * 8 // (blockshape[2] * blockshape[0] * bits_per_voxel), blockshape[2])
+            blockshape = (blockshape[0], DISK_BLOCK_BYTES * 8 //
+                          (blockshape[2] * blockshape[0] * bits_per_voxel), blockshape[2])
         elif blockshape[2] == -1:
-            blockshape = (blockshape[0], blockshape[1], 4096 * 8 // (blockshape[0] * blockshape[1] * bits_per_voxel))
+            blockshape = (blockshape[0], blockshape[1], DISK_BLOCK_BYTES * 8 //
+                          (blockshape[0] * blockshape[1] * bits_per_voxel))
         else:
-            assert(bits_per_voxel * blockshape[0] * blockshape[1] * blockshape[2] == 4096 * 8)
+            assert(bits_per_voxel * blockshape[0] * blockshape[1] * blockshape[2] == DISK_BLOCK_BYTES * 8)
     return bits_per_voxel, blockshape
 
 

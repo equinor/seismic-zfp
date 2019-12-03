@@ -1,13 +1,12 @@
 import sys
-from seismic_zfp.read import SzReader
+from seismic_zfp.conversion import SzConverter
 
 
 def main():
     if len(sys.argv) != 3:
         raise RuntimeError("This example accepts exactly 2 arguments: input_file & output_file")
 
-    reader = SzReader(sys.argv[1])
-    reader.write_segy_file(sys.argv[2])
+    SzConverter(sys.argv[1]).convert_to_segy(sys.argv[2])
 
 
 if __name__ == '__main__':
