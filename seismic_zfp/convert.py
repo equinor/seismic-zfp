@@ -122,8 +122,6 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
     buffer[64:68] = n_header_arrays.to_bytes(4, byteorder='little')
 
-
-
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
     hw_start_byte = 980    # Start here to end at 2048
     for i, hw_info in enumerate(hw_info_list):

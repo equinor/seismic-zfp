@@ -405,4 +405,50 @@ class SzReader:
                         segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.xlines, 0:self.tracelength]
 
         with open(out_file, "r+b") as f:
-            f.write(self.headerbytes[DISK_BLOCK_BYTES : DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
+            f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
+
+    def write_adv_sz(self, out_file):
+        assert(self.rate == 2)
+        assert(self.blockshape == (4, 4, 1024))
+        new_header = bytearray(self.headerbytes)
+        new_blockshape = (64, 64, 4)
+        new_header[44:48] = new_blockshape[0].to_bytes(4, byteorder='little')
+        new_header[48:52] = new_blockshape[1].to_bytes(4, byteorder='little')
+        new_header[52:56] = new_blockshape[2].to_bytes(4, byteorder='little')
+
+        padded_shape = (pad(self.ilines, new_blockshape[0]),
+                        pad(self.xlines, new_blockshape[1]),
+                        pad(self.tracelength, new_blockshape[2]))
+
+        compressed_data_length_diskblocks = (self.rate * padded_shape[2] *
+                                             padded_shape[1] * padded_shape[0]) // (8 * DISK_BLOCK_BYTES)
+        new_header[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
+
+        with open(self.filename, 'rb') as f:
+            with open(out_file, "wb") as outfile:
+                outfile.write(new_header)
+                inline_bytes = (self.shape_pad[2] * self.shape_pad[1] * self.rate) // 8
+                for i in range(padded_shape[0] // new_blockshape[0]):
+                    if (i + 1) * new_blockshape[0] > self.ilines:
+                        icount = (self.ilines % new_blockshape[0] + 4) // 4
+                    else:
+                        icount = 16
+                    for x in range(padded_shape[1] // new_blockshape[1]):
+                        if (x + 1) * new_blockshape[1] > self.xlines:
+                            xcount = (self.xlines % new_blockshape[1] + 4) // 4
+                        else:
+                            xcount = 16
+                        buffer = bytearray(self.chunk_bytes*16*16)
+                        for n in range(icount):
+                            f.seek(self.data_start_bytes + x*self.chunk_bytes*16 + 4*(n+i*16)*inline_bytes)
+                            buffer[n*self.chunk_bytes*16:n*self.chunk_bytes*16 + xcount*self.chunk_bytes] = f.read(self.chunk_bytes*xcount)
+                        for z in range(padded_shape[2] // new_blockshape[2]):
+                            new_block = bytearray(DISK_BLOCK_BYTES)
+                            for u in range(64*64):
+                                new_block[u*self.unit_bytes:(u+1)*self.unit_bytes] = \
+                                    buffer[u*self.chunk_bytes + z*self.unit_bytes :
+                                           u*self.chunk_bytes + (z+1)*self.unit_bytes]
+                            outfile.write(new_block)
+                self.read_variant_headers()
+                for k, header_array in self.variant_headers.items():
+                    outfile.write(header_array.tobytes())
