@@ -51,3 +51,12 @@ class ZsliceAccessor(Accessor, Mapping):
         self.len_object = self.n_samples
         self.keys_object = self.zslices
         self.values_function = self.read_zslice
+
+
+class HeaderAccessor(Accessor, Mapping):
+    def __init__(self, file):
+        super().__init__(file)
+        self.read_variant_headers()
+        self.len_object = self.tracecount
+        self.keys_object = list(range(self.tracecount))
+        self.values_function = self.gen_header

@@ -83,7 +83,7 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     return buffer
 
 
-def get_header_arrays(in_filename, shape):
+def get_header_arrays(in_filename):
     with segyio.open(in_filename) as segyfile:
         headers_to_store = get_unique_headerwords(segyfile)
         header_generator = segyfile.header[0:segyfile.tracecount]

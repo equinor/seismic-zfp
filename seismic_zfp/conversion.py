@@ -109,7 +109,7 @@ class SegyConverter:
         compressed = compress(data_padded, rate=bits_per_voxel)
         t2 = time.time()
 
-        numpy_headers_arrays = get_header_arrays(self.in_filename, data.shape)
+        numpy_headers_arrays = get_header_arrays(self.in_filename)
 
         with open(self.out_filename, 'wb') as f:
             f.write(header)
@@ -138,7 +138,7 @@ class SegyConverter:
 
         data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
 
-        numpy_headers_arrays = get_header_arrays(self.in_filename, data.shape)
+        numpy_headers_arrays = get_header_arrays(self.in_filename)
 
         with open(self.out_filename, 'wb') as f:
             f.write(header)
@@ -214,11 +214,7 @@ class SzConverter(SzReader):
                     if i % self.blockshape[0] == 0:
                         decompressed = self.read_and_decompress_il_set(i)
                     for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
-                        header = self.segy_traceheader_template.copy()
-                        for k, v in header.items():
-                            if isinstance(v, FileOffset):
-                                header[k] = self.variant_headers[k][h]
-                        segyfile.header[h] = header
+                        segyfile.header[h] = self.gen_header(h)
                     segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
 
         with open(out_file, "r+b") as f:

@@ -55,6 +55,7 @@ class SzReader:
         # Read useful info out of the SZ header
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self.parse_dimensions()
         self.zslices, self.xlines, self.ilines = self.parse_coordinates()
+        self.tracecount = len(self.ilines) * len(self.xlines)
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self.parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
@@ -379,3 +380,10 @@ class SzReader:
             return data_padded[min_il%self.blockshape[0]:(min_il%self.blockshape[0])+max_il-min_il,
                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
+
+    def gen_header(self, index):
+        header = self.segy_traceheader_template.copy()
+        for k, v in header.items():
+            if isinstance(v, FileOffset):
+                header[k] = self.variant_headers[k][index]
+        return header
