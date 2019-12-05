@@ -91,8 +91,6 @@ class SzReader:
         # Placeholder. Don't read these if you're not going to use them
         self.variant_headers = None
 
-        print("n_samples={}, n_xlines={}, n_ilines={}".format(self.n_samples, self.n_xlines, self.n_ilines))
-
     def __enter__(self):
         return self
 
