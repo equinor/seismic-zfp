@@ -190,7 +190,7 @@ class SzConverter(SzReader):
         assert (self.blockshape[1] == 4)
 
         spec = segyio.spec()
-        spec.samples = self.samples_list
+        spec.samples = self.zslices
         spec.offsets = [0]
         spec.xlines = self.xlines
         spec.ilines = self.ilines

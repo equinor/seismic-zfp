@@ -29,15 +29,22 @@ class SzReader:
         Parameters
         ----------
         file : str
-            The SZ file to be read
+            The SZ filepath to be read
+
+             : file handle in 'rb' mode
+             Reuse an open file handle
 
         """
-        self.filename = file
 
-        if not os.path.exists(self.filename):
-            raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
-
-        self.file = self.open_sz_file()
+        # Class may be instantiated with either a file path or filehandle
+        if not hasattr(file, 'read'):
+            self.filename = file
+            self.file = self.open_sz_file()
+        else:
+            self.filename = file.name
+            self.file = file
+            # You have a file handle, go to the start!
+            self.file.seek(0)
 
         self.headerbytes = self.file.read(DISK_BLOCK_BYTES)
         self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
@@ -47,7 +54,7 @@ class SzReader:
 
         # Read useful info out of the SZ header
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self.parse_dimensions()
-        self.samples_list, self.xlines, self.ilines = self.parse_coordinates()
+        self.zslices, self.xlines, self.ilines = self.parse_coordinates()
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self.parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
@@ -93,6 +100,8 @@ class SzReader:
         self.close_sz_file()
 
     def open_sz_file(self):
+        if not os.path.exists(self.filename):
+            raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
         return open(self.filename, 'rb')
 
     def close_sz_file(self):
@@ -110,7 +119,7 @@ class SzReader:
         return n_samples, n_xlines, n_ilines, rate, blockshape
 
     def parse_coordinates(self):
-        samples_list = gen_coord_list(bytes_to_int(self.headerbytes[16:20]),
+        zslices_list = gen_coord_list(bytes_to_int(self.headerbytes[16:20]),
                                       bytes_to_int(self.headerbytes[28:32]),
                                       bytes_to_int(self.headerbytes[4:8]))
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
@@ -119,7 +128,7 @@ class SzReader:
         ilines_list = gen_coord_list(bytes_to_int(self.headerbytes[24:28]),
                                       bytes_to_int(self.headerbytes[36:40]),
                                       bytes_to_int(self.headerbytes[12:16]))
-        return samples_list, xlines_list, ilines_list
+        return zslices_list, xlines_list, ilines_list
 
     def parse_data_sizes(self):
         compressed_data_diskblocks = bytes_to_int(self.headerbytes[56:60])
