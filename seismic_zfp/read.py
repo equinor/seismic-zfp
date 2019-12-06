@@ -387,3 +387,11 @@ class SzReader:
             if isinstance(v, FileOffset):
                 header[k] = self.variant_headers[k][index]
         return header
+
+    def get_trace(self, index):
+        min_il = index // self.n_ilines
+        min_xl = index % self.n_ilines
+        trace = self.read_subvolume(min_il, min_il+1,
+                                    min_xl, min_xl+1,
+                                    0, len(self.zslices))
+        return np.squeeze(trace)
