@@ -17,10 +17,10 @@ min_il, max_il = 33, 193
 min_xl, max_xl = 63, 123
 min_z, max_z = 256, 345
 
-t0 = time.time()
-reader = SzReader(os.path.join(base_path, '0.sz'))
-vol_sz = reader.read_subvolume(min_il=min_il, max_il=max_il, min_xl=min_xl, max_xl=max_xl, min_z=min_z, max_z=max_z)
-print("SzReader took", time.time() - t0)
+with SzReader(os.path.join(base_path, '0.sz')) as reader:
+    t0 = time.time()
+    vol_sz = reader.read_subvolume(min_il=min_il, max_il=max_il, min_xl=min_xl, max_xl=max_xl, min_z=min_z, max_z=max_z)
+    print("SzReader took", time.time() - t0)
 
 
 im = Image.fromarray(np.uint8(cm.seismic((vol_sz[0,:,:].T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))

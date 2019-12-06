@@ -7,7 +7,7 @@ def main():
         raise RuntimeError("This example accepts exactly 2 arguments: input_file & output_file")
 
     with SzConverter(sys.argv[1]) as converter:
-        converter.convert_to_segy(sys.argv[2])
+        converter.convert_to_adv_sz(sys.argv[2])
 
 
 if __name__ == '__main__':
