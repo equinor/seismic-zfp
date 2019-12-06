@@ -2,6 +2,7 @@ import os
 import numpy as np
 from pyzfp import decompress
 import segyio
+from segyio import _segyio
 
 from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
