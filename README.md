@@ -89,3 +89,6 @@ with SzConverter("in.sz") as converter:
     converter.convert_to_segy("out.segy")
 ```
 
+## Installation Troubleshooting ##
+- Check your machine has these packages available: python3-devel, git, gcc, gcc-c++
+

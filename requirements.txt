@@ -3,3 +3,4 @@ pyzfp
 psutil
 pillow
 matplotlib
+Cython
