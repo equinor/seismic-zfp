@@ -403,3 +403,6 @@ class SzReader:
 
     def get_file_binary_header(self):
         return segyio.segy.Field(self.file_binary_header, kind='binary')
+
+    def get_file_text_header(self):
+        return [self.file_text_header.decode("cp037")]
