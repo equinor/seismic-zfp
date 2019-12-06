@@ -1,3 +1,5 @@
 segyio
 pyzfp
 psutil
+pillow
+matplotlib

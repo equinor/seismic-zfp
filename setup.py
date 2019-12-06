@@ -11,10 +11,12 @@ long_description = read('README.md')
 setuptools.setup(name='seismic-zfp',
                  author='equinor',
                  description='compress and decompress seismic data',
-                 long_description=long_description,
                  url='https://github.com/equinor/seismic-zfp',
+                 license='LGPL-3.0',
 
                  use_scm_version=True,
+                 install_requires=['segyio', 'pyzfp', 'psutil', 'pillow', 'matplotlib'],
+                 setup_requires=['setuptools', 'setuptools_scm'],
 
                  packages=['seismic_zfp']
                  )
