@@ -24,7 +24,7 @@ class SzReader:
     read_subvolume(min_il, max_il, min_xl, max_xl, min_z, max_z)
         Decompresses and returns an arbitrary sub-volume from SZ file as 3D numpy array
     """
-    def __init__(self, file):
+    def __init__(self, file, filetype_checking=True):
         """
         Parameters
         ----------
@@ -47,6 +47,10 @@ class SzReader:
             self.file.seek(0)
 
         self.headerbytes = self.file.read(DISK_BLOCK_BYTES)
+        if filetype_checking and self.headerbytes[0:2] == b'\xc3\x40':
+            msg = "This appears to be a SEGY file rather than an SZ file, override with filetype_checking=False"
+            raise RuntimeError(msg)
+
         self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
         if self.n_header_blocks != 1:
             self.file.seek(0)
