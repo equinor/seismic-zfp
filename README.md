@@ -69,6 +69,19 @@ with SzReader("in.sz") as reader:
                                     min_z=min_z, max_z=max_z)
 ```
 
+#### Use segyio-like interface to read SZ files ####
+```python
+import seismic_zfp
+with seismic_zfp.open("in.sz")) as szfile:
+    inline_slice = szfile.iline[szfile.ilines[LINE_ID]]
+    xslice_sz = szfile.xline[szfile.xlines[LINE_ID]]
+    zslice_sz = szfile.depth_slice[szfile.zslices[SLICE_ID]]
+    trace = szfile.trace[TRACE_ID]
+    trace_header = szfile.header[TRACE_ID]
+    binary_file_header = szfile.bin
+    text_file_header = szfile.text[0]
+```
+
 #### Convert an SZ file to SEGY ####
 ```python
 from seismic_zfp.conversion import SzConverter
