@@ -4,7 +4,7 @@ from pyzfp import decompress
 import segyio
 
 from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset
-from .szconstants import DISK_BLOCK_BYTES
+from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
 class SzReader:
@@ -60,6 +60,11 @@ class SzReader:
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
         self.segy_traceheader_template = self.decode_traceheader_template()
+        self.file_text_header = self.headerbytes[DISK_BLOCK_BYTES:
+                                                 DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES]
+
+        self.file_binary_header = self.headerbytes[DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES:
+                                                   DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES]
 
         # Blockshape for original files
         if self.blockshape[0] == 0 or self.blockshape[1] == 0 or self.blockshape[2] == 0:
@@ -381,7 +386,7 @@ class SzReader:
                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
 
-    def gen_header(self, index):
+    def gen_trace_header(self, index):
         header = self.segy_traceheader_template.copy()
         for k, v in header.items():
             if isinstance(v, FileOffset):
@@ -395,3 +400,6 @@ class SzReader:
                                     min_xl, min_xl+1,
                                     0, len(self.zslices))
         return np.squeeze(trace)
+
+    def get_file_binary_header(self):
+        return segyio.segy.Field(self.file_binary_header, kind='binary')

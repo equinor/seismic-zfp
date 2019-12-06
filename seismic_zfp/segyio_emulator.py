@@ -11,3 +11,4 @@ class SegyioEmulator(SzReader):
         self.xline = CrosslineAccessor(self.file)
         self.depth_slice = ZsliceAccessor(self.file)
         self.samples = self.zslices
+        self.bin = self.get_file_binary_header()

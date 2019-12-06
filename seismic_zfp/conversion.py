@@ -214,7 +214,7 @@ class SzConverter(SzReader):
                     if i % self.blockshape[0] == 0:
                         decompressed = self.read_and_decompress_il_set(i)
                     for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
-                        segyfile.header[h] = self.gen_header(h)
+                        segyfile.header[h] = self.gen_trace_header(h)
                     segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
 
         with open(out_file, "r+b") as f:

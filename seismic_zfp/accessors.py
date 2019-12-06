@@ -59,7 +59,7 @@ class HeaderAccessor(Accessor, Mapping):
         self.read_variant_headers()
         self.len_object = self.tracecount
         self.keys_object = list(range(self.tracecount))
-        self.values_function = self.gen_header
+        self.values_function = self.gen_trace_header
 
 
 class TraceAccessor(Accessor, Mapping):
