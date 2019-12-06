@@ -386,6 +386,11 @@ class SzReader:
                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
 
+    def read_volume(self):
+        return self.read_subvolume(0, self.n_ilines,
+                                   0, self.n_xlines,
+                                   0, self.n_samples)
+
     def gen_trace_header(self, index):
         header = self.segy_traceheader_template.copy()
         for k, v in header.items():
