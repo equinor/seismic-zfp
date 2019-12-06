@@ -10,7 +10,9 @@ long_description = read('README.md')
 
 setuptools.setup(name='seismic-zfp',
                  author='equinor',
-                 description='compress and decompress seismic data',
+                 description='Compress and decompress seismic data',
+                 long_description=long_description,
+                 long_description_content_type='text/markdown',
                  url='https://github.com/equinor/seismic-zfp',
                  license='LGPL-3.0',
 
