@@ -404,11 +404,11 @@ class SzReader:
         return header
 
     def get_trace(self, index):
-        min_il = index // self.n_ilines
-        min_xl = index % self.n_ilines
+        min_il = index // self.n_xlines
+        min_xl = index % self.n_xlines
         trace = self.read_subvolume(min_il, min_il+1,
                                     min_xl, min_xl+1,
-                                    0, len(self.zslices))
+                                    0, self.n_samples)
         return np.squeeze(trace)
 
     def get_file_binary_header(self):
