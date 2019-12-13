@@ -1,4 +1,5 @@
 import os
+from  functools import lru_cache
 import numpy as np
 from pyzfp import decompress
 import segyio
@@ -185,6 +186,7 @@ class SzReader:
         else:
             pass
 
+    @lru_cache(maxsize=1)
     def read_and_decompress_il_set(self, i):
         il_block_offset = ((self.chunk_bytes * self.shape_pad[1]) // 4) * (i // 4)
 
@@ -209,11 +211,28 @@ class SzReader:
             The specified inline, decompressed
         """
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            decompressed = self.read_and_decompress_il_set(il_id)
+            decompressed = self.read_and_decompress_il_set(4 * (il_id // 4))
             return decompressed[il_id % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(il_id, il_id + 1, 0, self.n_xlines, 0, self.n_samples))
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_xl_set(self, x):
+        xl_first_chunk_offset = x // 4 * self.chunk_bytes
+        xl_chunk_increment = self.chunk_bytes * self.shape_pad[1] // 4
+
+        # Allocate memory for compressed data
+        buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
+
+        for chunk_num in range(self.shape_pad[0] // 4):
+            self.file.seek(self.data_start_bytes + xl_first_chunk_offset
+                           + chunk_num * xl_chunk_increment, 0)
+            buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = self.file.read(self.chunk_bytes)
+
+        # Specify dtype otherwise pyzfp gets upset.
+        return decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
+                                  np.dtype('float32'), rate=self.rate)
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SZ file
@@ -229,21 +248,7 @@ class SzReader:
             The specified crossline, decompressed
         """
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            xl_first_chunk_offset = xl_id//4 * self.chunk_bytes
-            xl_chunk_increment = self.chunk_bytes * self.shape_pad[1] // 4
-
-            # Allocate memory for compressed data
-            buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
-
-            for chunk_num in range(self.shape_pad[0] // 4):
-                self.file.seek(self.data_start_bytes + xl_first_chunk_offset
-                               + chunk_num*xl_chunk_increment, 0)
-                buffer[chunk_num*self.chunk_bytes:(chunk_num+1)*self.chunk_bytes] = self.file.read(self.chunk_bytes)
-
-            # Specify dtype otherwise pyzfp gets upset.
-            decompressed = decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
-                                      np.dtype('float32'), rate=self.rate)
-
+            decompressed = self.read_and_decompress_xl_set(4 * (xl_id // 4))
             return decompressed[0:self.n_ilines, xl_id % self.blockshape[1], 0:self.n_samples]
         else:
             # Default to unoptimized general method
@@ -396,6 +401,18 @@ class SzReader:
                                    0, self.n_xlines,
                                    0, self.n_samples)
 
+    # Using a cache of 2048 chunks implies:
+    #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
+    #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits
+    # (assuming 4x4 chunks... traces shouldn't be accessed intensively from other layouts!)
+    @lru_cache(maxsize=2048)
+    def read_containing_chunk(self, ref_il, ref_xl):
+        assert ref_il % self.blockshape[0] == 0
+        assert ref_xl % self.blockshape[1] == 0
+        return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
+                                   ref_xl, ref_xl + self.blockshape[1],
+                                   0, self.n_samples)
+
     def gen_trace_header(self, index):
         header = self.segy_traceheader_template.copy()
         for k, v in header.items():
@@ -404,11 +421,11 @@ class SzReader:
         return header
 
     def get_trace(self, index):
-        min_il = index // self.n_xlines
-        min_xl = index % self.n_xlines
-        trace = self.read_subvolume(min_il, min_il+1,
-                                    min_xl, min_xl+1,
-                                    0, self.n_samples)
+        il, xl = index // self.n_xlines, index % self.n_xlines
+        min_il = self.blockshape[0] * (il // self.blockshape[0])
+        min_xl = self.blockshape[1] * (xl // self.blockshape[1])
+        chunk = self.read_containing_chunk(min_il, min_xl)
+        trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
         return np.squeeze(trace)
 
     def get_file_binary_header(self):

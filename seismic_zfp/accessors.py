@@ -19,6 +19,9 @@ class Accessor(SzReader):
     def __contains__(self, key):
         return key in self.keys_object
 
+    def __hash__(self):
+        return hash(self.filename)
+
     def keys(self):
         return self.keys_object
 
