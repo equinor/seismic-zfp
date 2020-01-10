@@ -285,9 +285,9 @@ class SzReader:
 
         elif self.blockshape[2] == 4:
             sub_block_size_bytes = ((4 * 4 * self.blockshape[1]) * self.rate) // 8
-            buffer = bytearray(self.block_bytes * (self.shape_pad[0] // self.blockshape[0]) * (self.shape_pad[1] // self.blockshape[1]))
+            buffer = bytearray(self.block_bytes * blocks_per_dim[0] * blocks_per_dim[1])
 
-            for block_i in range(self.shape_pad[0] // self.blockshape[0]):
+            for block_i in range(blocks_per_dim[0]):
                 for block_x in range(blocks_per_dim[1]):
                     block_num = block_i * (blocks_per_dim[1]) + block_x
                     self.file.seek(self.data_start_bytes + zslice_first_block_offset*self.block_bytes + block_num*(self.block_bytes*(blocks_per_dim[2])), 0)
