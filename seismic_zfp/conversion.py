@@ -89,7 +89,7 @@ class SegyConverter:
             print("SEGY is {} bytes, machine memory is {} bytes".format(cube_bytes, virtual_memory().total))
             raise RuntimeError("Out of memory. We wish to hold the whole sky, But we never will.")
 
-        if blockshape[0] == 4:
+        if (blockshape[0] == 4) and (blockshape[1] == 4):
             self.convert_segy_inmem_default(bits_per_voxel)
         else:
             self.convert_segy_inmem_advanced(bits_per_voxel, blockshape)
