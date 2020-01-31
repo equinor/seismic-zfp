@@ -118,9 +118,17 @@ async def produce(queue, in_filename, blockshape, headers_to_store, numpy_header
                 planes_to_read = blockshape[0]
 
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
-            for i in range(planes_to_read):
-                data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + i]])
+            for i in range(blockshape[0]):
+                if i < planes_to_read:
+                    data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + i]])
+                else:
+                    # Repeat last plane across padding to give better compression accuracy
+                    data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + planes_to_read - 1]])
                 segy_buffer[i, 0:n_xlines, 0:trace_length] = data
+
+                # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
+                segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
+                segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
 
                 start_trace = (plane_set_id*blockshape[0] + i) * len(segyfile.xlines)
                 header_generator = segyfile.header[start_trace: start_trace+len(segyfile.xlines)]
