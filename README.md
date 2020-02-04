@@ -92,3 +92,6 @@ with SzConverter("in.sz") as converter:
 ## Installation Troubleshooting ##
 - Check your machine has these packages available: python3-devel, git, gcc, gcc-c++
 
+## Contributing ##
+Contributions welcomed, whether you are reporting or fixing a bug, implementing or requesting a feature. Either make a github issue or fork the project and make a pull request. Please extend the unit tests with relevant passing/failing tests, run these as: `python -m pytest`
+
