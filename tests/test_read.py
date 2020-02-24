@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 from seismic_zfp.read import *
 
+SZ_FILE_025 = 'test_data/small_025bit.sz'
+SZ_FILE_05 = 'test_data/small_05bit.sz'
 SZ_FILE_1 = 'test_data/small_1bit.sz'
 SZ_FILE_2 = 'test_data/small_2bit.sz'
 SZ_FILE_4 = 'test_data/small_4bit.sz'
@@ -18,6 +20,8 @@ def compare_inline(sz_filename, tolerance):
 
 
 def test_read_inline():
+    compare_inline(SZ_FILE_025, tolerance=1e+1)
+    compare_inline(SZ_FILE_05, tolerance=1e-1)
     compare_inline(SZ_FILE_1, tolerance=1e-2)
     compare_inline(SZ_FILE_2, tolerance=1e-4)
     compare_inline(SZ_FILE_4, tolerance=1e-6)
@@ -33,6 +37,8 @@ def compare_crossline(sz_filename, tolerance):
 
 
 def test_read_crossline():
+    compare_crossline(SZ_FILE_025, tolerance=1e+1)
+    compare_crossline(SZ_FILE_05, tolerance=1e-1)
     compare_crossline(SZ_FILE_1, tolerance=1e-2)
     compare_crossline(SZ_FILE_2, tolerance=1e-4)
     compare_crossline(SZ_FILE_4, tolerance=1e-6)
@@ -48,6 +54,8 @@ def compare_zslice(sz_filename, tolerance):
 
 
 def test_read_zslice():
+    compare_zslice(SZ_FILE_025, tolerance=1e+1)
+    compare_zslice(SZ_FILE_05, tolerance=1e-1)
     compare_zslice(SZ_FILE_1, tolerance=1e-2)
     compare_zslice(SZ_FILE_2, tolerance=1e-4)
     compare_zslice(SZ_FILE_4, tolerance=1e-6)
@@ -66,6 +74,8 @@ def compare_subvolume(sz_filename, tolerance):
 
 
 def test_read_subvolume():
+    compare_subvolume(SZ_FILE_025, tolerance=1e+1)
+    compare_subvolume(SZ_FILE_05, tolerance=1e-1)
     compare_subvolume(SZ_FILE_1, tolerance=1e-2)
     compare_subvolume(SZ_FILE_2, tolerance=1e-4)
     compare_subvolume(SZ_FILE_4, tolerance=1e-6)
