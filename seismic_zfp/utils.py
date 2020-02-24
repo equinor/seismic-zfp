@@ -42,14 +42,14 @@ def define_blockshape(bits_per_voxel, blockshape):
         bits_per_voxel = DISK_BLOCK_BYTES * 8 // (blockshape[0] * blockshape[1] * blockshape[2])
     else:
         if blockshape[0] == -1:
-            blockshape = (DISK_BLOCK_BYTES * 8 //
-                          (blockshape[1] * blockshape[2] * bits_per_voxel), blockshape[1], blockshape[2])
+            blockshape = (int(DISK_BLOCK_BYTES * 8 //
+                              (blockshape[1] * blockshape[2] * bits_per_voxel)), blockshape[1], blockshape[2])
         elif blockshape[1] == -1:
-            blockshape = (blockshape[0], DISK_BLOCK_BYTES * 8 //
-                          (blockshape[2] * blockshape[0] * bits_per_voxel), blockshape[2])
+            blockshape = (blockshape[0], int(DISK_BLOCK_BYTES * 8 //
+                          (blockshape[2] * blockshape[0] * bits_per_voxel)), blockshape[2])
         elif blockshape[2] == -1:
-            blockshape = (blockshape[0], blockshape[1], DISK_BLOCK_BYTES * 8 //
-                          (blockshape[0] * blockshape[1] * bits_per_voxel))
+            blockshape = (blockshape[0], blockshape[1], int(DISK_BLOCK_BYTES * 8 //
+                                                            (blockshape[0] * blockshape[1] * bits_per_voxel)))
         else:
             assert(bits_per_voxel * blockshape[0] * blockshape[1] * blockshape[2] == DISK_BLOCK_BYTES * 8)
     return bits_per_voxel, blockshape

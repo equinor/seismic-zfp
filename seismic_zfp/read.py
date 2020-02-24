@@ -85,13 +85,14 @@ class SzReader:
         # A 'compression unit' is the smallest decompressable piece of the SZ file.
         # It is always 4-samples x 4-xlines x 4-ilines in physical dimensions, but its size
         # on disk will vary according to compression ratio.
-        self.unit_bytes = ((4*4*4) * self.rate) // 8
+        self.unit_bytes = int((4*4*4) * self.rate) // 8
 
         # A 'block' is a group of 'compression units' equal in size to a hardware disk block.
         # The 'compression units' may be arranged in any cuboid which matches the size of a disk block.
         # At the time of coding, standard commodity hardware uses 4kB disk blocks so check that
         # file has been written in using this convention.
-        self.block_bytes = (self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+        self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+
         assert self.block_bytes == DISK_BLOCK_BYTES
         assert self.block_bytes % self.unit_bytes == 0
 
@@ -121,7 +122,12 @@ class SzReader:
         n_samples = bytes_to_int(self.headerbytes[4:8])
         n_xlines = bytes_to_int(self.headerbytes[8:12])
         n_ilines = bytes_to_int(self.headerbytes[12:16])
-        rate = bytes_to_int(self.headerbytes[40:44])
+        rate = bytes_to_signed_int(self.headerbytes[40:44])
+
+
+        if rate < 0:
+            rate = 1 / -rate
+
         blockshape = (bytes_to_int(self.headerbytes[44:48]),
                       bytes_to_int(self.headerbytes[48:52]),
                       bytes_to_int(self.headerbytes[52:56]))
