@@ -5,6 +5,7 @@ from pyzfp import decompress
 import segyio
 from segyio import _segyio
 
+from .version import SeismicZfpVersion
 from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
@@ -59,6 +60,7 @@ class SzReader:
             self.headerbytes = self.file.read(DISK_BLOCK_BYTES*self.n_header_blocks)
 
         # Read useful info out of the SZ header
+        self.file_version = self.get_file_version()
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self.parse_dimensions()
         self.zslices, self.xlines, self.ilines = self.parse_coordinates()
         self.tracecount = len(self.ilines) * len(self.xlines)
@@ -118,12 +120,14 @@ class SzReader:
     def close_sz_file(self):
         self.file.close()
 
+    def get_file_version(self):
+        return SeismicZfpVersion(bytes_to_int(self.headerbytes[72:76]))
+
     def parse_dimensions(self):
         n_samples = bytes_to_int(self.headerbytes[4:8])
         n_xlines = bytes_to_int(self.headerbytes[8:12])
         n_ilines = bytes_to_int(self.headerbytes[12:16])
         rate = bytes_to_signed_int(self.headerbytes[40:44])
-
 
         if rate < 0:
             rate = 1 / -rate

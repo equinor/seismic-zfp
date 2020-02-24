@@ -3,7 +3,9 @@ import asyncio
 import time
 import numpy as np
 import segyio
+import pkg_resources
 
+from .version import SeismicZfpVersion
 from .utils import pad, np_float_to_bytes, progress_printer
 from .headers import get_headerword_infolist, get_unique_headerwords
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
@@ -30,6 +32,9 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     header_blocks = 2
     buffer = bytearray(DISK_BLOCK_BYTES * header_blocks)
     buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
+    version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
+    print(pkg_resources.get_distribution('seismic_zfp').version)
+    print(version)
 
     with segyio.open(in_filename) as segyfile:
         buffer[4:8] = len(segyfile.samples).to_bytes(4, byteorder='little')
@@ -72,6 +77,8 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     # Number of trace header arrays stored after compressed seismic amplitudes
     n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
     buffer[64:68] = n_header_arrays.to_bytes(4, byteorder='little')
+
+    buffer[72:76] = version.encoding.to_bytes(4, byteorder='little')
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
     hw_start_byte = 980    # Start here to end at 2048
