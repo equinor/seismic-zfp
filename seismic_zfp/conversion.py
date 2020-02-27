@@ -16,16 +16,23 @@ from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 class SegyConverter:
     """Writes SEGY files from SZ files"""
 
-    def __init__(self, in_filename):
+    def __init__(self, in_filename, min_il=0, max_il=None, min_xl=0, max_xl=None):
         """
         Parameters
         ----------
 
         in_filename: str
             The SEGY file to be converted to SZ
+
+        min_il, max_il, min_xl, max_xl: int
+            Cropping parameters to apply to input seismic cube
         """
         self.in_filename = in_filename
         self.out_filename = None
+        self.min_il = min_il
+        self.max_il = max_il
+        self.min_xl = min_xl
+        self.max_xl = max_xl
 
     def __enter__(self):
         return self
@@ -162,12 +169,22 @@ class SegyConverter:
         bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
 
         with segyio.open(self.in_filename) as segyfile:
+            if self.max_xl is None and self.max_il is None:
+                n_traces = segyfile.tracecount
+            elif self.max_xl is None:
+                n_traces = (self.max_il - self.min_il) * len(segyfile.xlines)
+            elif self.max_il is None:
+                n_traces = (self.max_xl - self.min_xl) * len(segyfile.ilines)
+            else:
+                n_traces = (self.max_xl - self.min_xl) * (self.max_il - self.min_il)
+
             headers_to_store = get_unique_headerwords(segyfile)
-            numpy_headers_arrays = [np.zeros(segyfile.tracecount, dtype=np.int32) for _ in range(len(headers_to_store))]
+            numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
 
         loop = asyncio.new_event_loop()
         loop.run_until_complete(run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                                                    headers_to_store, numpy_headers_arrays))
+                                                    headers_to_store, numpy_headers_arrays,
+                                                    self.min_il, self.max_il, self.min_xl, self.max_xl))
         loop.close()
 
         with open(self.out_filename, 'ab') as f:
