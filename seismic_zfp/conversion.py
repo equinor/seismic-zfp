@@ -94,6 +94,7 @@ class SegyConverter:
 
         if cube_bytes > virtual_memory().total:
             print("SEGY is {} bytes, machine memory is {} bytes".format(cube_bytes, virtual_memory().total))
+            print("Try using method = 'Stream' instead")
             raise RuntimeError("Out of memory. We wish to hold the whole sky, But we never will.")
 
         if (blockshape[0] == 4) and (blockshape[1] == 4):
@@ -164,6 +165,8 @@ class SegyConverter:
         print("Total conversion time: {}".format(t3-t0))
 
     def convert_segy_stream(self, bits_per_voxel, blockshape):
+        """Memory-efficient method of compressing SEG-Y file larger than machine memory.
+        Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
 
         bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
@@ -180,6 +183,11 @@ class SegyConverter:
 
             headers_to_store = get_unique_headerwords(segyfile)
             numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
+
+            assert 0 <= self.min_il < self.max_il, "min_il out of valid range"
+            assert 0 <= self.min_xl < self.max_xl, "min_xl out of valid range"
+            assert 0 < self.max_il <= len(segyfile.ilines), "max_il out of valid range"
+            assert 0 < self.max_xl <= len(segyfile.xlines), "max_xl out of valid range"
 
         loop = asyncio.new_event_loop()
         loop.run_until_complete(run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
