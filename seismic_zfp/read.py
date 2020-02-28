@@ -9,6 +9,8 @@ from .version import SeismicZfpVersion
 from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
+import time
+
 
 class SzReader:
     """Reads SZ files
@@ -321,9 +323,7 @@ class SzReader:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, 0, self.n_xlines, zslice_id, zslice_id + 1))
 
-
-
-
+#    @lru_cache(maxsize=2)
     def read_and_decompress_cd_set(self, cd):
         """cd = correlated diagonal where IL & XL numbers are positively correlated"""
         if cd < 0:
@@ -347,14 +347,36 @@ class SzReader:
 
     def read_correlated_diagonal(self, cd_id):
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            decompressed = self.read_and_decompress_cd_set(cd_id)
             cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
             cd = np.zeros((cd_length, self.n_samples))
-            for i in range(cd_length):
-                cd[i] = decompressed[i, i % 4, 0:self.n_samples]
+
+            t0 = time.time()
+            if cd_id % 4 != 0:
+                if cd_id > 0:
+                    decompressed = self.read_and_decompress_cd_set(4 * (cd_id // 4))
+                    decompressed_offset = self.read_and_decompress_cd_set(4 * ((abs(cd_id) + 4) // 4))
+                else:
+                    decompressed = self.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
+                    decompressed_offset = self.read_and_decompress_cd_set(4 * (cd_id // 4))
+            else:
+                decompressed = self.read_and_decompress_cd_set(cd_id)
+
+            if cd_id >= 0:
+                for i in range(cd_length):
+                    if i % 4 < 4 - (cd_id % 4):
+                        cd[i] = decompressed[i + cd_id % 4, i % 4, 0:self.n_samples]
+                    else:
+                        cd[i] = decompressed_offset[i + cd_id % 4 - 4, i % 4, 0:self.n_samples]
+            else:
+                for i in range(cd_length):
+                    if i % 4 < 4 - (abs(cd_id) % 4):
+                        cd[i] = decompressed[i, (i - cd_id) % 4, 0:self.n_samples]
+                    else:
+                        cd[i] = decompressed_offset[i, (i + abs(cd_id)) % 4, 0:self.n_samples]
+
             return cd
-
-
+        else:
+            raise NotImplementedError("Diagonals can only be read from default layout SZ files")
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file
