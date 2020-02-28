@@ -323,7 +323,7 @@ class SzReader:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, 0, self.n_xlines, zslice_id, zslice_id + 1))
 
-#    @lru_cache(maxsize=2)
+    @lru_cache(maxsize=2)
     def read_and_decompress_cd_set(self, cd):
         """cd = correlated diagonal where IL & XL numbers are positively correlated"""
         if cd < 0:
@@ -350,14 +350,14 @@ class SzReader:
             cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
             cd = np.zeros((cd_length, self.n_samples))
 
-            t0 = time.time()
             if cd_id % 4 != 0:
                 if cd_id > 0:
                     decompressed = self.read_and_decompress_cd_set(4 * (cd_id // 4))
                     decompressed_offset = self.read_and_decompress_cd_set(4 * ((abs(cd_id) + 4) // 4))
                 else:
-                    decompressed = self.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
+                    # I have no idea why switching the order of these two lines causes a 4x performance difference
                     decompressed_offset = self.read_and_decompress_cd_set(4 * (cd_id // 4))
+                    decompressed = self.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
             else:
                 decompressed = self.read_and_decompress_cd_set(cd_id)
 
