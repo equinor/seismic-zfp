@@ -6,7 +6,7 @@ import segyio
 from segyio import _segyio
 
 from .version import SeismicZfpVersion
-from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset
+from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
@@ -320,6 +320,41 @@ class SzReader:
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, 0, self.n_xlines, zslice_id, zslice_id + 1))
+
+
+
+
+    def read_and_decompress_cd_set(self, cd):
+        """cd = correlated diagonal where IL & XL numbers are positively correlated"""
+        if cd < 0:
+            xl_first_chunk_offset = abs(cd) // 4 * self.chunk_bytes
+        else:
+            xl_first_chunk_offset = (cd // 4) * self.chunk_bytes * self.shape_pad[1] // 4
+
+        xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] + 4) // 4
+
+        # Allocate memory for compressed data
+        buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
+
+        for chunk_num in range(self.shape_pad[0] // 4):
+            self.file.seek(self.data_start_bytes + xl_first_chunk_offset
+                           + chunk_num * xl_chunk_increment, 0)
+            buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = self.file.read(self.chunk_bytes)
+
+        # Specify dtype otherwise pyzfp gets upset.
+        return decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
+                                  np.dtype('float32'), rate=self.rate)
+
+    def read_correlated_diagonal(self, cd_id):
+        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
+            decompressed = self.read_and_decompress_cd_set(cd_id)
+            cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
+            cd = np.zeros((cd_length, self.n_samples))
+            for i in range(cd_length):
+                cd[i] = decompressed[i, i % 4, 0:self.n_samples]
+            return cd
+
+
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file
