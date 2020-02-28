@@ -15,10 +15,9 @@ LINE_NO = int(sys.argv[2])
 CLIP = 0.2
 SCALE = 1.0/(2.0*CLIP)
 
-with SzReader(os.path.join(base_path, '0_2.sz')) as reader:
+with SzReader(os.path.join(base_path, '0.sz')) as reader:
     t0 = time.time()
-    for l in range(LINE_NO, LINE_NO+40):
-        slice_sz = reader.read_correlated_diagonal(l)
+    slice_sz = reader.read_correlated_diagonal(LINE_NO)
     print("SzReader took", time.time() - t0)
 
 
@@ -28,15 +27,14 @@ im.save(os.path.join(base_path, 'out_cd-sz.png'))
 
 with segyio.open(os.path.join(base_path, '0.segy')) as segyfile:
     t0 = time.time()
-    for l in range(LINE_NO, LINE_NO+40):
-        diagonal_length = get_correlated_diagonal_length(l, len(segyfile.ilines), len(segyfile.xlines))
-        slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
-        if l >= 0:
-            for d in range(diagonal_length):
-                slice_segy[d, :] = segyfile.trace[(d+l)*len(segyfile.xlines) + d]
-        else:
-            for d in range(diagonal_length):
-                slice_segy[d, :] = segyfile.trace[d*len(segyfile.xlines) + d - l]
+    diagonal_length = get_correlated_diagonal_length(LINE_NO, len(segyfile.ilines), len(segyfile.xlines))
+    slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
+    if LINE_NO >= 0:
+        for d in range(diagonal_length):
+            slice_segy[d, :] = segyfile.trace[(d+LINE_NO)*len(segyfile.xlines) + d]
+    else:
+        for d in range(diagonal_length):
+            slice_segy[d, :] = segyfile.trace[d*len(segyfile.xlines) + d - LINE_NO]
     print("segyio took", time.time() - t0)
 
 im = Image.fromarray(np.uint8(cm.seismic((slice_segy.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
