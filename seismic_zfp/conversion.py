@@ -184,10 +184,12 @@ class SegyConverter:
             headers_to_store = get_unique_headerwords(segyfile)
             numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
 
-            assert 0 <= self.min_il < self.max_il, "min_il out of valid range"
-            assert 0 <= self.min_xl < self.max_xl, "min_xl out of valid range"
-            assert 0 < self.max_il <= len(segyfile.ilines), "max_il out of valid range"
-            assert 0 < self.max_xl <= len(segyfile.xlines), "max_xl out of valid range"
+            if self.max_il is not None:
+                assert 0 <= self.min_il < self.max_il, "min_il out of valid range"
+                assert 0 < self.max_il <= len(segyfile.ilines), "max_il out of valid range"
+            if self.max_xl is not None:
+                assert 0 <= self.min_xl < self.max_xl, "min_xl out of valid range"
+                assert 0 < self.max_xl <= len(segyfile.xlines), "max_xl out of valid range"
 
         loop = asyncio.new_event_loop()
         loop.run_until_complete(run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
