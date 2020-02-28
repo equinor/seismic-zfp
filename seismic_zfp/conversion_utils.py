@@ -11,7 +11,7 @@ from .headers import get_headerword_infolist, get_unique_headerwords
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
 
-def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
+def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, max_il=None, min_xl=0, max_xl=None):
     """Generate header for SZ file
 
     Returns
@@ -38,13 +38,15 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
 
     with segyio.open(in_filename) as segyfile:
         buffer[4:8] = len(segyfile.samples).to_bytes(4, byteorder='little')
-        buffer[8:12] = len(segyfile.xlines).to_bytes(4, byteorder='little')
-        buffer[12:16] = len(segyfile.ilines).to_bytes(4, byteorder='little')
+        n_xl = len(segyfile.xlines) if max_xl is None else max_xl - min_xl
+        buffer[8:12] = n_xl.to_bytes(4, byteorder='little')
+        n_il = len(segyfile.ilines) if max_il is None else max_il - min_il
+        buffer[12:16] = n_il.to_bytes(4, byteorder='little')
 
         # N.B. this format currently only supports integer number of ms as sampling frequency
         buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
-        buffer[20:24] = np_float_to_bytes(segyfile.xlines[0])
-        buffer[24:28] = np_float_to_bytes(segyfile.ilines[0])
+        buffer[20:24] = np_float_to_bytes(segyfile.xlines[min_xl])
+        buffer[24:28] = np_float_to_bytes(segyfile.ilines[min_il])
 
         buffer[28:32] = np_float_to_bytes(segyfile.samples[1] - segyfile.samples[0])
         buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
@@ -66,8 +68,8 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1)):
     # Length of the seismic amplitudes cube after compression
     compressed_data_length_diskblocks = int(((bits_per_voxel *
                                     pad(len(segyfile.samples), blockshape[2]) *
-                                    pad(len(segyfile.xlines), blockshape[1]) *
-                                    pad(len(segyfile.ilines), blockshape[0])) // 8) // DISK_BLOCK_BYTES)
+                                    pad(n_xl, blockshape[1]) *
+                                    pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
     buffer[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
 
     # Length of array storing one header value from every trace after compression
@@ -106,14 +108,23 @@ def get_header_arrays(in_filename):
     return numpy_headers_arrays
 
 
-async def produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, verbose=True):
+async def produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
+                  min_il, max_il, min_xl, max_xl, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename) as segyfile:
 
         test_slice = segyfile.iline[segyfile.ilines[0]]
         trace_length = test_slice.shape[1]
-        n_xlines = len(segyfile.xlines)
-        n_ilines = len(segyfile.ilines)
+        if max_xl is None:
+            n_xlines = len(segyfile.xlines)
+            max_xl = n_xlines
+        else:
+            n_xlines = max_xl - min_xl
+
+        if max_il is None:
+            n_ilines = len(segyfile.ilines)
+        else:
+            n_ilines = max_il - min_il
 
         padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
@@ -132,21 +143,27 @@ async def produce(queue, in_filename, blockshape, headers_to_store, numpy_header
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
             for i in range(blockshape[0]):
                 if i < planes_to_read:
-                    data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + i]])
+                    data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id*blockshape[0] + i]]
+                                      )[min_xl:max_xl, :]
                 else:
                     # Repeat last plane across padding to give better compression accuracy
-                    data = np.asarray(segyfile.iline[segyfile.ilines[plane_set_id*blockshape[0] + planes_to_read - 1]])
+                    data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id*blockshape[0] + planes_to_read - 1]]
+                                      )[min_xl:max_xl, :]
                 segy_buffer[i, 0:n_xlines, 0:trace_length] = data
 
                 # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
                 segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
                 segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
 
-                start_trace = (plane_set_id*blockshape[0] + i) * len(segyfile.xlines)
-                header_generator = segyfile.header[start_trace: start_trace+len(segyfile.xlines)]
+                start_trace = (plane_set_id*blockshape[0] + i) * len(segyfile.xlines) + min_xl
+                header_generator = segyfile.header[start_trace: start_trace+n_xlines]
+
                 for t, header in enumerate(header_generator, start_trace):
+                    t_xl = t % len(segyfile.xlines)
+                    t_il = t // len(segyfile.xlines)
+                    t_store = (t_xl - min_xl) + (t_il - min_il) * n_xlines
                     for j, h in enumerate(headers_to_store):
-                        numpy_headers_arrays[j][t] = header[h]
+                        numpy_headers_arrays[j][t_store] = header[h]
 
             if blockshape[0] == 4:
                 await queue.put(segy_buffer)
@@ -169,8 +186,9 @@ async def consume(header, queue, out_filename, bits_per_voxel):
             queue.task_done()
 
 
-async def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store, numpy_headers_arrays):
-    header = make_header(in_filename, bits_per_voxel, blockshape)
+async def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
+                              numpy_headers_arrays, min_il, max_il, min_xl, max_xl):
+    header = make_header(in_filename, bits_per_voxel, blockshape, min_il, max_il, min_xl, max_xl)
 
     # Maxsize can be reduced for machines with little memory
     # ... or for files which are so big they might be very useful.
@@ -178,7 +196,8 @@ async def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blocksh
     # schedule the consumer
     consumer = asyncio.ensure_future(consume(header, queue, out_filename, bits_per_voxel))
     # run the producer and wait for completion
-    await produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays)
+    await produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
+                  min_il, max_il, min_xl, max_xl)
     # wait until the consumer has processed all items
     await queue.join()
     # the consumer is still awaiting for an item, cancel it
