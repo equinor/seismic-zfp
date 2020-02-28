@@ -325,7 +325,6 @@ class SzReader:
 
     @lru_cache(maxsize=2)
     def read_and_decompress_cd_set(self, cd):
-        """cd = correlated diagonal where IL & XL numbers are positively correlated"""
         if cd < 0:
             xl_first_chunk_offset = abs(cd) // 4 * self.chunk_bytes
         else:
@@ -346,34 +345,40 @@ class SzReader:
                                   np.dtype('float32'), rate=self.rate)
 
     def read_correlated_diagonal(self, cd_id):
+        """Reads one diagonal in the direction IL ~ XL
+
+        Parameters
+        ----------
+        cd_id : int
+            - The ordinal number of the correlated diagonal in the file,
+            - Range [ -max(XL), +max(IL) ]
+
+        Returns
+        -------
+        cd_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
+            The specified cd_slice, decompressed.
+        """
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
             cd = np.zeros((cd_length, self.n_samples))
 
             if cd_id % 4 != 0:
-                if cd_id > 0:
-                    decompressed = self.read_and_decompress_cd_set(4 * (cd_id // 4))
-                    decompressed_offset = self.read_and_decompress_cd_set(4 * ((abs(cd_id) + 4) // 4))
-                else:
-                    # I have no idea why switching the order of these two lines causes a 4x performance difference
-                    decompressed_offset = self.read_and_decompress_cd_set(4 * (cd_id // 4))
-                    decompressed = self.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
+                decompressed = self.read_and_decompress_cd_set(4 * (cd_id // 4))
+                decompressed_offset = self.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
             else:
-                decompressed = self.read_and_decompress_cd_set(cd_id)
+                decompressed = decompressed_offset = self.read_and_decompress_cd_set(cd_id)
 
-            if cd_id >= 0:
-                for i in range(cd_length):
+            for i in range(cd_length):
+                if cd_id >= 0:
                     if i % 4 < 4 - (cd_id % 4):
                         cd[i] = decompressed[i + cd_id % 4, i % 4, 0:self.n_samples]
                     else:
                         cd[i] = decompressed_offset[i + cd_id % 4 - 4, i % 4, 0:self.n_samples]
-            else:
-                for i in range(cd_length):
+                else:
                     if i % 4 < 4 - (abs(cd_id) % 4):
-                        cd[i] = decompressed[i, (i - cd_id) % 4, 0:self.n_samples]
+                        cd[i] = decompressed_offset[i, (i - cd_id) % 4, 0:self.n_samples]
                     else:
-                        cd[i] = decompressed_offset[i, (i + abs(cd_id)) % 4, 0:self.n_samples]
-
+                        cd[i] = decompressed[i, (i + abs(cd_id)) % 4, 0:self.n_samples]
             return cd
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
