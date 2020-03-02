@@ -6,7 +6,7 @@ import segyio
 from segyio import _segyio
 
 from .version import SeismicZfpVersion
-from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length
+from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length
 from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 import time
@@ -382,6 +382,76 @@ class SzReader:
             return cd
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
+
+
+
+
+    @lru_cache(maxsize=2)
+    def read_and_decompress_ad_set(self, ad):
+        if ad < self.n_xlines:
+            xl_first_chunk_offset = ad // 4 * self.chunk_bytes
+        else:
+            xl_first_chunk_offset = ((ad - self.n_xlines) // 4 + 1) * self.chunk_bytes * self.shape_pad[1] // 4 - self.chunk_bytes
+
+        xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] - 4) // 4
+
+        # Allocate memory for compressed data
+        buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
+
+        for chunk_num in range(self.shape_pad[0] // 4):
+            self.file.seek(self.data_start_bytes + xl_first_chunk_offset
+                           + chunk_num * xl_chunk_increment, 0)
+            buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = self.file.read(self.chunk_bytes)
+
+        # Specify dtype otherwise pyzfp gets upset.
+        return decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
+                                  np.dtype('float32'), rate=self.rate)
+
+
+    def read_anticorrelated_diagonal(self, ad_id):
+        """Reads one diagonal in the direction IL ~ -XL
+
+        Parameters
+        ----------
+        ad_id : int
+            - The ordinal number of the correlated diagonal in the file,
+            - Range [0, max(XL)+max(IL) )
+
+        Returns
+        -------
+        ad_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
+            The specified ad_slice, decompressed.
+        """
+        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
+            ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
+            ad = np.zeros((ad_length, self.n_samples))
+
+            if (ad_id + 1) % 4 != 0:
+                decompressed = self.read_and_decompress_ad_set(4 * ((ad_id + 4) // 4))
+                decompressed_offset = self.read_and_decompress_ad_set(4 * (ad_id // 4))
+            else:
+                decompressed = decompressed_offset = self.read_and_decompress_ad_set(ad_id)
+
+            if ad_id < self.n_xlines:
+                for i in range(ad_length):
+                    if i % 4 < 4 - ((ad_id + 1) % 4):
+                        ad[i] = decompressed[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+                    else:
+                        ad[i] = decompressed_offset[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+            else:
+                for i in range(ad_id % 4, ad_length + ad_id % 4):
+                    if i % 4 < 4 - ((ad_id + 1) % 4):
+                        ad[i - ad_id % 4] = decompressed_offset[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+                    else:
+                        ad[i - ad_id % 4] = decompressed[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+            return ad
+        else:
+            raise NotImplementedError("Diagonals can only be read from default layout SZ files")
+
+
+
+
+
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file

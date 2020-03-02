@@ -79,3 +79,12 @@ def get_correlated_diagonal_length(cd, n_il, n_xl):
             return n_il - cd
     else:  # Equal number of ILs & XLs
         return n_il - abs(cd)
+
+
+def get_anticorrelated_diagonal_length(ad, n_il, n_xl):
+    if ad < min(n_il, n_xl):
+        return ad + 1
+    elif min(n_il, n_xl) <= ad < max(n_il, n_xl):
+        return min(n_il, n_xl)
+    else:
+        return n_il + n_xl - ad - 1
