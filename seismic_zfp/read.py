@@ -427,23 +427,23 @@ class SzReader:
             ad = np.zeros((ad_length, self.n_samples))
 
             if (ad_id + 1) % 4 != 0:
-                decompressed = self.read_and_decompress_ad_set(4 * ((ad_id + 4) // 4))
-                decompressed_offset = self.read_and_decompress_ad_set(4 * (ad_id // 4))
+                decompressed = self.read_and_decompress_ad_set(4 * (ad_id // 4))
+                decompressed_offset = self.read_and_decompress_ad_set(4 * ((ad_id - 4) // 4))
             else:
                 decompressed = decompressed_offset = self.read_and_decompress_ad_set(ad_id)
 
             if ad_id < self.n_xlines:
                 for i in range(ad_length):
-                    if i % 4 < 4 - ((ad_id + 1) % 4):
-                        ad[i] = decompressed[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+                    if 3 - (i % 4) >= 3 - (ad_id % 4):
+                        ad[i] = decompressed[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
                     else:
-                        ad[i] = decompressed_offset[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+                        ad[i] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
             else:
                 for i in range(ad_id % 4, ad_length + ad_id % 4):
-                    if i % 4 < 4 - ((ad_id + 1) % 4):
-                        ad[i - ad_id % 4] = decompressed_offset[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+                    if 3 - (i % 4) > 3 - (ad_id % 4):
+                        ad[i - ad_id % 4] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
                     else:
-                        ad[i - ad_id % 4] = decompressed[i + (ad_id + 1) % 4, 3 - (i % 4), 0:self.n_samples]
+                        ad[i - ad_id % 4] = decompressed[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
             return ad
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
