@@ -383,15 +383,12 @@ class SzReader:
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
 
-
-
-
     @lru_cache(maxsize=2)
     def read_and_decompress_ad_set(self, ad):
-        if ad < self.n_xlines:
+        if ad < self.shape_pad[1]:
             xl_first_chunk_offset = ad // 4 * self.chunk_bytes
         else:
-            xl_first_chunk_offset = ((ad - self.n_xlines) // 4 + 1) * self.chunk_bytes * self.shape_pad[1] // 4 - self.chunk_bytes
+            xl_first_chunk_offset = (((ad - self.shape_pad[1]) // 4 + 2) * (self.shape_pad[1] // 4) - 1) * self.chunk_bytes
 
         xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] - 4) // 4
 
@@ -406,7 +403,6 @@ class SzReader:
         # Specify dtype otherwise pyzfp gets upset.
         return decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
                                   np.dtype('float32'), rate=self.rate)
-
 
     def read_anticorrelated_diagonal(self, ad_id):
         """Reads one diagonal in the direction IL ~ -XL
@@ -438,20 +434,21 @@ class SzReader:
                         ad[i] = decompressed[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
                     else:
                         ad[i] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
+            elif ad_id < self.shape_pad[1]:
+                for i in range(ad_id % 4, ad_length + ad_id % 4):
+                    if 3 - (i % 4) > 3 - ((ad_id + self.n_xlines) % 4) or (ad_id + 1) % 4 == 0:
+                        ad[i - ad_id % 4] = decompressed[i, (3 - i + ad_id%4 + 1) % 4, 0:self.n_samples]
+                    else:
+                        ad[i - ad_id % 4] = decompressed_offset[i, (3 - i + ad_id % 4 + 1) % 4, 0:self.n_samples]
             else:
                 for i in range(ad_id % 4, ad_length + ad_id % 4):
-                    if 3 - (i % 4) > 3 - (ad_id % 4):
-                        ad[i - ad_id % 4] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
+                    if 3 - (i % 4) > 3 - ((ad_id + self.n_xlines) % 4) or (ad_id + 1) % 4 == 0:
+                        ad[i - ad_id % 4] = decompressed[i, (3 - i + ad_id%4 + 1) % 4, 0:self.n_samples]
                     else:
-                        ad[i - ad_id % 4] = decompressed[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
+                        ad[i - ad_id % 4] = decompressed_offset[i + 4, (3 - i + ad_id % 4 + 1) % 4, 0:self.n_samples]
             return ad
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
-
-
-
-
-
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file
