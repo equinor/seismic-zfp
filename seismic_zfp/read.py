@@ -366,7 +366,7 @@ class SzReader:
                 decompressed = self.read_and_decompress_cd_set(4 * (cd_id // 4))
                 decompressed_offset = self.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
             else:
-                decompressed = decompressed_offset = self.read_and_decompress_cd_set(cd_id)
+                decompressed = decompressed_offset = self.read_and_decompress_cd_set(4 * (cd_id // 4))
 
             for i in range(cd_length):
                 if cd_id >= 0:
@@ -390,10 +390,8 @@ class SzReader:
     def read_and_decompress_ad_set(self, ad):
         if ad < self.shape_pad[1]:
             xl_first_chunk_offset = ad // 4 * self.chunk_bytes
-            print(ad)
         else:
             xl_first_chunk_offset = (((ad - self.shape_pad[1]) // 4 + 2) * (self.shape_pad[1] // 4) - 1) * self.chunk_bytes
-            print(ad, xl_first_chunk_offset / self.chunk_bytes)
 
         xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] - 4) // 4
 
@@ -431,7 +429,7 @@ class SzReader:
                 decompressed = self.read_and_decompress_ad_set(4 * (ad_id // 4))
                 decompressed_offset = self.read_and_decompress_ad_set(4 * ((ad_id - 4) // 4))
             else:
-                decompressed = decompressed_offset = self.read_and_decompress_ad_set(ad_id)
+                decompressed = decompressed_offset = self.read_and_decompress_ad_set(4 * (ad_id // 4))
 
             if ad_id < self.n_xlines:
                 for i in range(ad_length):
@@ -441,19 +439,15 @@ class SzReader:
                         ad[i] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
             else:
                 start = (4 - (self.n_xlines % 4)) % 4
-                print(start)
                 for i in range(start, ad_length + start):
                     i2 = i + (ad_id + 1) % 4
                     if i2 % 4 < (ad_id + 1) % 4:
-                        idx1 = i2 - 4
-                        idx2 = (3 - i2 + ad_id + 1) % 4
-                        print("decompressed", idx1, idx2)
-                        ad[i - start] = decompressed[idx1, idx2, 0:self.n_samples]
+                        ad[i - start] = decompressed[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
                     else:
-                        idx1 = i2
-                        idx2 = (3 - i2 + ad_id + 1) % 4
-                        print("offset", idx1, idx2)
-                        ad[i - start] = decompressed_offset[idx1, idx2, 0:self.n_samples]
+                        if self.n_xlines <= ad_id < self.shape_pad[1] and self.n_xlines != self.shape_pad[1] and (ad_id + 1) % 4 != 0:
+                            ad[i - start] = decompressed_offset[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
+                        else:
+                            ad[i - start] = decompressed_offset[i2, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
             return ad
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
