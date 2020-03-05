@@ -383,9 +383,6 @@ class SzReader:
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
 
-
-
-
     @lru_cache(maxsize=2)
     def read_and_decompress_ad_set(self, ad):
         if ad < self.shape_pad[1]:
@@ -425,7 +422,7 @@ class SzReader:
             ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
             ad = np.zeros((ad_length, self.n_samples))
 
-            if (ad_id + 1) % 4 != 0:
+            if (ad_id + 1) % 4 != 0 and ad_length > 3:
                 decompressed = self.read_and_decompress_ad_set(4 * (ad_id // 4))
                 decompressed_offset = self.read_and_decompress_ad_set(4 * ((ad_id - 4) // 4))
             else:
@@ -451,9 +448,6 @@ class SzReader:
             return ad
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SZ files")
-
-
-
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
         """Reads a sub-volume from SZ file

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from seismic_zfp.read import *
-from seismic_zfp.utils import get_correlated_diagonal_length
+from seismic_zfp.utils import get_correlated_diagonal_length, get_anticorrelated_diagonal_length
 
 SZ_FILE_025 = 'test_data/small_025bit.sz'
 SZ_FILE_05 = 'test_data/small_05bit.sz'
@@ -85,6 +85,32 @@ def test_read_correlated_diagonal():
     compare_correlated_diagonal(SZ_FILE_2, tolerance=1e-4)
     compare_correlated_diagonal(SZ_FILE_4, tolerance=1e-6)
     compare_correlated_diagonal(SZ_FILE_8, tolerance=1e-10)
+
+
+def compare_anticorrelated_diagonal(sz_filename, tolerance):
+    for line_number in range(6):
+        print("\n\n\n\n", line_number)
+        slice_sz = SzReader(sz_filename).read_anticorrelated_diagonal(line_number)
+        with segyio.open(SEGY_FILE) as segyfile:
+            diagonal_length = get_anticorrelated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
+            slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
+            if line_number < len(segyfile.xlines):
+                for d in range(diagonal_length):
+                    slice_segy[d, :] = segyfile.trace[line_number + d * (len(segyfile.xlines) - 1)]
+            else:
+                for d in range(diagonal_length):
+                    slice_segy[d, :] = segyfile.trace[(line_number - len(segyfile.xlines) + 1 + d) * len(segyfile.xlines)
+                                                      + (len(segyfile.xlines) - d - 1)]
+        assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
+
+
+def test_read_anticorrelated_diagonal():
+    compare_anticorrelated_diagonal(SZ_FILE_025, tolerance=1e+1)
+    compare_anticorrelated_diagonal(SZ_FILE_05, tolerance=1e-1)
+    compare_anticorrelated_diagonal(SZ_FILE_1, tolerance=1e-2)
+    compare_anticorrelated_diagonal(SZ_FILE_2, tolerance=1e-4)
+    compare_anticorrelated_diagonal(SZ_FILE_4, tolerance=1e-6)
+    compare_anticorrelated_diagonal(SZ_FILE_8, tolerance=1e-10)
 
 
 def compare_subvolume(sz_filename, tolerance):
