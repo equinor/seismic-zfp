@@ -33,8 +33,6 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, ma
     buffer = bytearray(DISK_BLOCK_BYTES * header_blocks)
     buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
     version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
-    print(pkg_resources.get_distribution('seismic_zfp').version)
-    print(version)
 
     with segyio.open(in_filename) as segyfile:
         buffer[4:8] = len(segyfile.samples).to_bytes(4, byteorder='little')

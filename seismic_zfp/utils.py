@@ -60,3 +60,31 @@ def progress_printer(start_time, progress_frac):
     eta = current_time + ((1. - progress_frac) * (current_time - start_time)) / (progress_frac + 0.0000001)
     st = datetime.datetime.fromtimestamp(eta).strftime('%Y-%m-%d %H:%M:%S')
     print("   - {:5.1f}% complete. ETA: {}".format(progress_frac * 100, st), end="\r")
+
+
+def get_correlated_diagonal_length(cd, n_il, n_xl):
+    if n_xl > n_il:
+        if cd >= 0:
+            return n_il - cd
+        elif abs(cd) <= n_xl - n_il:
+            return n_il
+        else:  # cd is negative
+            return n_xl + cd
+    elif n_xl < n_il:
+        if cd <= 0:
+            return n_xl + cd
+        elif abs(cd) <= n_il - n_xl:
+            return n_xl
+        else:
+            return n_il - cd
+    else:  # Equal number of ILs & XLs
+        return n_il - abs(cd)
+
+
+def get_anticorrelated_diagonal_length(ad, n_il, n_xl):
+    if ad < min(n_il, n_xl):
+        return ad + 1
+    elif min(n_il, n_xl) <= ad < max(n_il, n_xl):
+        return min(n_il, n_xl)
+    else:
+        return n_il + n_xl - ad - 1
