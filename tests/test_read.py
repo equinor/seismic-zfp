@@ -64,7 +64,7 @@ def test_read_zslice():
 
 
 def compare_correlated_diagonal(sz_filename, tolerance):
-    for line_number in range(-5, 5):
+    for line_number in range(-4, 4):
         slice_sz = SzReader(sz_filename).read_correlated_diagonal(line_number)
         with segyio.open(SEGY_FILE) as segyfile:
             diagonal_length = get_correlated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
@@ -131,3 +131,37 @@ def test_read_subvolume():
     compare_subvolume(SZ_FILE_2, tolerance=1e-4)
     compare_subvolume(SZ_FILE_4, tolerance=1e-6)
     compare_subvolume(SZ_FILE_8, tolerance=1e-10)
+
+
+def test_index_errors():
+    reader = SzReader(SZ_FILE_4)
+
+    with pytest.raises(IndexError):
+        reader.read_inline(-1)
+
+    with pytest.raises(IndexError):
+        reader.read_inline(5)
+
+    with pytest.raises(IndexError):
+        reader.read_crossline(-1)
+
+    with pytest.raises(IndexError):
+        reader.read_crossline(5)
+
+    with pytest.raises(IndexError):
+        reader.read_zslice(-1)
+
+    with pytest.raises(IndexError):
+        reader.read_zslice(50)
+
+    with pytest.raises(IndexError):
+        reader.read_correlated_diagonal(-5)
+
+    with pytest.raises(IndexError):
+        reader.read_correlated_diagonal(5)
+
+    with pytest.raises(IndexError):
+        reader.read_anticorrelated_diagonal(-1)
+
+    with pytest.raises(IndexError):
+        reader.read_anticorrelated_diagonal(9)

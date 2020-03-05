@@ -222,6 +222,8 @@ class SzReader:
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
+        if il_id < 0 or il_id >= self.n_ilines:
+            raise IndexError("Index {} is out of range ({}, {})".format(il_id, 0, self.n_ilines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.read_and_decompress_il_set(4 * (il_id // 4))
             return decompressed[il_id % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
@@ -259,6 +261,8 @@ class SzReader:
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
+        if xl_id < 0 or xl_id >= self.n_xlines:
+            raise IndexError("Index {} is out of range ({}, {})".format(xl_id, 0, self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.read_and_decompress_xl_set(4 * (xl_id // 4))
             return decompressed[0:self.n_ilines, xl_id % self.blockshape[1], 0:self.n_samples]
@@ -279,6 +283,8 @@ class SzReader:
         zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
             The specified zslice (time or depth, depending on file contents), decompressed
         """
+        if zslice_id < 0 or zslice_id >= self.n_samples:
+            raise IndexError("Index {} is out of range ({}, {})".format(zslice_id, 0, self.n_samples - 1))
         blocks_per_dim = tuple(dim // size for dim, size in zip(self.shape_pad, self.blockshape))
         zslice_first_block_offset = zslice_id // self.blockshape[2]
 
@@ -358,6 +364,8 @@ class SzReader:
         cd_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
             The specified cd_slice, decompressed.
         """
+        if cd_id <= -self.n_xlines or cd_id >= self.n_ilines:
+            raise IndexError("Index {} is out of range ({}, {})".format(cd_id, -self.n_xlines, self.n_ilines))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
             cd = np.zeros((cd_length, self.n_samples))
@@ -418,6 +426,8 @@ class SzReader:
         ad_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
             The specified ad_slice, decompressed.
         """
+        if ad_id < 0 or ad_id >= self.n_ilines + self.n_xlines - 1:
+            raise IndexError("Index {} is out of range ({}, {})".format(ad_id, 0, self.n_ilines + self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
             ad = np.zeros((ad_length, self.n_samples))
