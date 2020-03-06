@@ -27,7 +27,7 @@ class SzReader:
     read_subvolume(min_il, max_il, min_xl, max_xl, min_z, max_z)
         Decompresses and returns an arbitrary sub-volume from SZ file as 3D numpy array
     """
-    def __init__(self, file, filetype_checking=True):
+    def __init__(self, file, filetype_checking=True, preload=False):
         """
         Parameters
         ----------
@@ -107,8 +107,8 @@ class SzReader:
         self.variant_headers = None
 
         # Split out responsibility for I/O and decompression
-        self.loader = SzLoader(self.file, self.data_start_bytes, self.shape_pad,
-                               self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate)
+        self.loader = SzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
+                               self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
 
     def __enter__(self):
         return self
