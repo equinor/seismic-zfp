@@ -1,4 +1,4 @@
-from pyzfp import compress
+import zfpy
 import asyncio
 import time
 import numpy as np
@@ -179,7 +179,7 @@ async def consume(header, queue, out_filename, bits_per_voxel):
         f.write(header)
         while True:
             segy_buffer = await queue.get()
-            compressed = compress(segy_buffer, rate=bits_per_voxel)
+            compressed = zfpy.compress_numpy(segy_buffer, rate=bits_per_voxel, write_header=False)
             f.write(compressed)
             queue.task_done()
 

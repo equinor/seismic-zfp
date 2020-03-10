@@ -1,6 +1,10 @@
 from functools import lru_cache
 import numpy as np
-from pyzfp import decompress
+import zfpy
+
+
+def decompress(buffer, shape, dytype, rate):
+    return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(dytype), shape, rate=rate)
 
 
 class SzLoader:

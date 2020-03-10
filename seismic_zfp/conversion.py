@@ -1,4 +1,4 @@
-from pyzfp import compress
+import zfpy
 import warnings
 import numpy as np
 import segyio
@@ -114,7 +114,7 @@ class SegyConverter:
         padded_shape = (pad(data.shape[0], 4), pad(data.shape[1], 4), pad(data.shape[2], 2048//bits_per_voxel))
         data_padded = np.zeros(padded_shape, dtype=np.float32)
         data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
-        compressed = compress(data_padded, rate=bits_per_voxel)
+        compressed = zfpy.compress_numpy(data_padded, rate=bits_per_voxel, write_header=False)
         t2 = time.time()
 
         numpy_headers_arrays = get_header_arrays(self.in_filename)
@@ -156,7 +156,7 @@ class SegyConverter:
                         slice = data_padded[i*blockshape[0] : (i+1)*blockshape[0],
                                             x*blockshape[1] : (x+1)*blockshape[1],
                                             z*blockshape[2] : (z+1)*blockshape[2]].copy()
-                        compressed_block = compress(slice, rate=bits_per_voxel)
+                        compressed_block = zfpy.compress_numpy(slice, rate=bits_per_voxel, write_header=False)
                         f.write(compressed_block)
             for header_array in numpy_headers_arrays:
                 f.write(header_array.tobytes())
