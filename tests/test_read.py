@@ -13,11 +13,13 @@ SEGY_FILE = 'test_data/small.sgy'
 
 
 def compare_inline(sz_filename, tolerance):
-    for line_number in range(5):
-        slice_sz = SzReader(sz_filename).read_inline(line_number)
-        with segyio.open(SEGY_FILE) as segyfile:
-            slice_segy = segyfile.iline[segyfile.ilines[line_number]]
-        assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
+    for preload in [True, False]:
+        reader = SzReader(sz_filename, preload=preload)
+        for line_number in range(5):
+            slice_sz = reader.read_inline(line_number)
+            with segyio.open(SEGY_FILE) as segyfile:
+                slice_segy = segyfile.iline[segyfile.ilines[line_number]]
+            assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
 
 
 def test_read_inline():
@@ -30,11 +32,13 @@ def test_read_inline():
 
 
 def compare_crossline(sz_filename, tolerance):
-    for line_number in range(5):
-        slice_sz = SzReader(sz_filename).read_crossline(line_number)
-        with segyio.open(SEGY_FILE) as segyfile:
-            slice_segy = segyfile.xline[segyfile.xlines[line_number]]
-        assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
+    for preload in [True, False]:
+        reader = SzReader(sz_filename, preload=preload)
+        for line_number in range(5):
+            slice_sz = reader.read_crossline(line_number)
+            with segyio.open(SEGY_FILE) as segyfile:
+                slice_segy = segyfile.xline[segyfile.xlines[line_number]]
+            assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
 
 
 def test_read_crossline():
@@ -47,11 +51,13 @@ def test_read_crossline():
 
 
 def compare_zslice(sz_filename, tolerance):
-    for line_number in range(50):
-        slice_sz = SzReader(sz_filename).read_zslice(line_number)
-        with segyio.open(SEGY_FILE) as segyfile:
-            slice_segy = segyfile.depth_slice[line_number]
-        assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
+    for preload in [True, False]:
+        reader = SzReader(sz_filename, preload=preload)
+        for line_number in range(50):
+            slice_sz = reader.read_zslice(line_number)
+            with segyio.open(SEGY_FILE) as segyfile:
+                slice_segy = segyfile.depth_slice[line_number]
+            assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
 
 
 def test_read_zslice():
@@ -64,18 +70,20 @@ def test_read_zslice():
 
 
 def compare_correlated_diagonal(sz_filename, tolerance):
-    for line_number in range(-4, 4):
-        slice_sz = SzReader(sz_filename).read_correlated_diagonal(line_number)
-        with segyio.open(SEGY_FILE) as segyfile:
-            diagonal_length = get_correlated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
-            slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
-            if line_number >= 0:
-                for d in range(diagonal_length):
-                    slice_segy[d, :] = segyfile.trace[(d+line_number)*len(segyfile.xlines) + d]
-            else:
-                for d in range(diagonal_length):
-                    slice_segy[d, :] = segyfile.trace[d*len(segyfile.xlines) + d - line_number]
-        assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
+    for preload in [True, False]:
+        reader = SzReader(sz_filename, preload=preload)
+        for line_number in range(-4, 4):
+            slice_sz = reader.read_correlated_diagonal(line_number)
+            with segyio.open(SEGY_FILE) as segyfile:
+                diagonal_length = get_correlated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
+                slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
+                if line_number >= 0:
+                    for d in range(diagonal_length):
+                        slice_segy[d, :] = segyfile.trace[(d+line_number)*len(segyfile.xlines) + d]
+                else:
+                    for d in range(diagonal_length):
+                        slice_segy[d, :] = segyfile.trace[d*len(segyfile.xlines) + d - line_number]
+            assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
 
 
 def test_read_correlated_diagonal():
@@ -88,20 +96,22 @@ def test_read_correlated_diagonal():
 
 
 def compare_anticorrelated_diagonal(sz_filename, tolerance):
-    for line_number in range(6):
-        print("\n\n\n\n", line_number)
-        slice_sz = SzReader(sz_filename).read_anticorrelated_diagonal(line_number)
-        with segyio.open(SEGY_FILE) as segyfile:
-            diagonal_length = get_anticorrelated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
-            slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
-            if line_number < len(segyfile.xlines):
-                for d in range(diagonal_length):
-                    slice_segy[d, :] = segyfile.trace[line_number + d * (len(segyfile.xlines) - 1)]
-            else:
-                for d in range(diagonal_length):
-                    slice_segy[d, :] = segyfile.trace[(line_number - len(segyfile.xlines) + 1 + d) * len(segyfile.xlines)
-                                                      + (len(segyfile.xlines) - d - 1)]
-        assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
+    for preload in [True, False]:
+        reader = SzReader(sz_filename, preload=preload)
+        for line_number in range(6):
+            print("\n\n\n\n", line_number)
+            slice_sz = reader.read_anticorrelated_diagonal(line_number)
+            with segyio.open(SEGY_FILE) as segyfile:
+                diagonal_length = get_anticorrelated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
+                slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
+                if line_number < len(segyfile.xlines):
+                    for d in range(diagonal_length):
+                        slice_segy[d, :] = segyfile.trace[line_number + d * (len(segyfile.xlines) - 1)]
+                else:
+                    for d in range(diagonal_length):
+                        slice_segy[d, :] = segyfile.trace[(line_number - len(segyfile.xlines) + 1 + d) * len(segyfile.xlines)
+                                                          + (len(segyfile.xlines) - d - 1)]
+            assert np.allclose(slice_sz, slice_segy, rtol=tolerance)
 
 
 def test_read_anticorrelated_diagonal():
@@ -114,14 +124,15 @@ def test_read_anticorrelated_diagonal():
 
 
 def compare_subvolume(sz_filename, tolerance):
-    min_il, max_il = 2,  3
-    min_xl, max_xl = 1,  2
-    min_z,  max_z = 10, 20
-    vol_sz = SzReader(sz_filename).read_subvolume(min_il=min_il, max_il=max_il,
-                                                  min_xl=min_xl, max_xl=max_xl,
-                                                  min_z=min_z, max_z=max_z)
-    vol_segy = segyio.tools.cube(SEGY_FILE)[min_il:max_il, min_xl:max_xl, min_z:max_z]
-    assert np.allclose(vol_sz, vol_segy, rtol=tolerance)
+    for preload in [True, False]:
+        min_il, max_il = 2,  3
+        min_xl, max_xl = 1,  2
+        min_z,  max_z = 10, 20
+        vol_sz = SzReader(sz_filename, preload=preload).read_subvolume(min_il=min_il, max_il=max_il,
+                                                      min_xl=min_xl, max_xl=max_xl,
+                                                      min_z=min_z, max_z=max_z)
+        vol_segy = segyio.tools.cube(SEGY_FILE)[min_il:max_il, min_xl:max_xl, min_z:max_z]
+        assert np.allclose(vol_sz, vol_segy, rtol=tolerance)
 
 
 def test_read_subvolume():
