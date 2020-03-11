@@ -7,7 +7,7 @@ Reading whole SEG-Y volumes to retrieve, for example, a single time-slice is was
 
 Copying whole SEG-Y files uncompressed over networks is also wasteful.
 
-This library addresses both issues by implementing the seismic-zfp (.SZ) format.
+This library addresses both issues by implementing the [seismic-zfp (.SZ) format](docs/file-specification.md).
 This format is based on [ZFP compression](https://computing.llnl.gov/projects/floating-point-compression)
 from [Peter Lindstrom's paper](https://www.researchgate.net/publication/264417607_Fixed-Rate_Compressed_Floating-Point_Arrays),
 using [the Python wrapper](https://github.com/navjotk/pyzfp) developed by Navjot Kukreja.
@@ -36,15 +36,15 @@ compared to n_traces disk blocks for SEG-Y
 - A z-slice can be read by accessing **just** n_traces/4096 disk blocks, 
 compared to n_traces disk blocks for SEG-Y
 
-The seismic-zfp format also allows for preservation of information in 
+The [seismic-zfp (.SZ) format](docs/file-specification.md) also allows for preservation of information in 
 SEG-Y file and trace headers, with compression code identifying constant 
 and varying trace header values and storing these appropriately.
 
 ## Examples ##
 
-Full example code is provided, but the following reference is useful:
+Full example code is provided [here](examples), but the following reference is useful:
 
-#### Create SZ files from SEGY ####
+#### Create SZ files from SEG-Y, and convert back to SEG-Y ####
 
 ```python
 from seismic_zfp.conversion import SegyConverter
@@ -55,6 +55,9 @@ with SegyConverter("in.segy") as converter:
     # Create a "z-slice optimized" SZ file
     converter.run("out-advanced.sz", bits_per_voxel=2, 
                   blockshape=(64, 64, 4))
+# Convert back to SEG-Y
+with SzConverter("out-standard.sz") as converter:
+    converter.convert_to_segy("recovered.segy")
 ```
 
 #### Read an SZ file ####
@@ -80,13 +83,6 @@ with seismic_zfp.open("in.sz")) as szfile:
     trace_header = szfile.header[TRACE_ID]
     binary_file_header = szfile.bin
     text_file_header = szfile.text[0]
-```
-
-#### Convert an SZ file to SEGY ####
-```python
-from seismic_zfp.conversion import SzConverter
-with SzConverter("in.sz") as converter:
-    converter.convert_to_segy("out.segy")
 ```
 
 ## Installation Troubleshooting ##
