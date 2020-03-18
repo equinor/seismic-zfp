@@ -1,4 +1,4 @@
-from seismic_zfp.read import SzReader
+from seismic_zfp.read import SgzReader
 import segyio
 import time
 import os
@@ -14,22 +14,22 @@ LINE_NO = int(sys.argv[2])
 CLIP = 0.2
 SCALE = 1.0/(2.0*CLIP)
 
-with SzReader(os.path.join(base_path, '0.sz')) as reader:
+with SgzReader(os.path.join(base_path, '0.sgz')) as reader:
     t0 = time.time()
-    slice_sz = reader.read_crossline(LINE_NO)
-    print("SzReader took", time.time() - t0)
+    slice_sgz = reader.read_crossline(LINE_NO)
+    print("SgzReader took", time.time() - t0)
 
 
-im = Image.fromarray(np.uint8(cm.seismic((slice_sz.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
-im.save(os.path.join(base_path, 'out_crossline-sz.png'))
+im = Image.fromarray(np.uint8(cm.seismic((slice_sgz.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
+im.save(os.path.join(base_path, 'out_crossline-sgz.png'))
 
-with segyio.open(os.path.join(base_path, '0.segy')) as segyfile:
+with segyio.open(os.path.join(base_path, '0.sgy')) as segyfile:
     t0 = time.time()
     slice_segy = segyfile.xline[segyfile.xlines[LINE_NO]]
     print("segyio took", time.time() - t0)
 
 im = Image.fromarray(np.uint8(cm.seismic((slice_segy.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
-im.save(os.path.join(base_path, 'out_crossline-segy.png'))
+im.save(os.path.join(base_path, 'out_crossline-sgy.png'))
 
-im = Image.fromarray(np.uint8(cm.seismic(((slice_segy-slice_sz).T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
-im.save(os.path.join(base_path, 'out_crossline-diff.png'))
+im = Image.fromarray(np.uint8(cm.seismic(((slice_segy-slice_sgz).T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
+im.save(os.path.join(base_path, 'out_crossline-dif.png'))

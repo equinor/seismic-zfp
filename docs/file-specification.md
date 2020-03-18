@@ -1,6 +1,6 @@
 ## SeismicZFP File Specification
 
-A SeismicZFP (.sz) file consists of 3 parts:
+A SeismicZFP (.sgz) file consists of 3 parts:
 1. A header, containing:
    * Information needed to read the file
    * Values of _invariant_ SEG-Y trace header fields
@@ -58,4 +58,4 @@ Byte encoding is little-endian.
 2. Constant value
 3. Duplicated trace header start-byte
 
-Storing whether trace header fields are duplicates of previous ones reduces the space needed to store the SZ footer.
+Storing whether trace header fields are duplicates of previous ones reduces the space needed to store the SGZ footer.

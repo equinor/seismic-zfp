@@ -1,8 +1,8 @@
-from .read import SzReader
+from .read import SgzReader
 from .accessors import InlineAccessor, CrosslineAccessor, ZsliceAccessor, HeaderAccessor, TraceAccessor
 
 
-class SegyioEmulator(SzReader):
+class SegyioEmulator(SgzReader):
     def __init__(self, file):
         super().__init__(file)
         self.trace = TraceAccessor(self.file)

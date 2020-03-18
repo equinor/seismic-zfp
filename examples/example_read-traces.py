@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 
 base_path = sys.argv[1]
 
-with segyio.open(os.path.join(base_path, '0.segy')) as segyfile:
+with segyio.open(os.path.join(base_path, '0.sgy')) as segyfile:
     segy_trace = segyfile.trace[100]
 
-with seismic_zfp.open(os.path.join(base_path, '0.sz')) as szfile:
-    sz_trace = szfile.trace[100]
+with seismic_zfp.open(os.path.join(base_path, '0.sgz')) as sgzfile:
+    sgz_trace = sgzfile.trace[100]
 
 plt.plot(segy_trace)
-plt.plot(sz_trace)
-plt.savefig(os.path.join(base_path, 'out_sz-trace-accessor.png'))
+plt.plot(sgz_trace)
+plt.savefig(os.path.join(base_path, 'out_sgz-trace-accessor.png'))

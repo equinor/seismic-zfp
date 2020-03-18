@@ -3,7 +3,7 @@ import numpy as np
 from pyzfp import decompress
 
 
-class SzLoader:
+class SgzLoader:
     def __init__(self, file, data_start_bytes, compressed_data_diskblocks, shape_pad, blockshape,
                  chunk_bytes, block_bytes, unit_bytes, rate, preload=False):
         self.file = file
