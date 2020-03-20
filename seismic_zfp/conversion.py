@@ -253,9 +253,9 @@ class SgzConverter(SgzReader):
         assert(self.blockshape == (4, 4, 1024))
         new_header = bytearray(self.headerbytes)
         new_blockshape = (64, 64, 4)
-        new_header[44:48] = new_blockshape[0].to_bytes(4, byteorder='little')
-        new_header[48:52] = new_blockshape[1].to_bytes(4, byteorder='little')
-        new_header[52:56] = new_blockshape[2].to_bytes(4, byteorder='little')
+        new_header[44:48] = int_to_bytes(new_blockshape[0])
+        new_header[48:52] = int_to_bytes(new_blockshape[1])
+        new_header[52:56] = int_to_bytes(new_blockshape[2])
 
         padded_shape = (pad(self.n_ilines, new_blockshape[0]),
                         pad(self.n_xlines, new_blockshape[1]),
@@ -263,7 +263,7 @@ class SgzConverter(SgzReader):
 
         compressed_data_length_diskblocks = (self.rate * padded_shape[2] *
                                              padded_shape[1] * padded_shape[0]) // (8 * DISK_BLOCK_BYTES)
-        new_header[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
+        new_header[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
         with open(out_file, "wb") as outfile:
             outfile.write(new_header)

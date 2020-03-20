@@ -6,7 +6,7 @@ import segyio
 import pkg_resources
 
 from .version import SeismicZfpVersion
-from .utils import pad, np_float_to_bytes, progress_printer
+from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer
 from .headers import get_headerword_infolist, get_unique_headerwords
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
@@ -31,15 +31,15 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, ma
     """
     header_blocks = 2
     buffer = bytearray(DISK_BLOCK_BYTES * header_blocks)
-    buffer[0:4] = header_blocks.to_bytes(4, byteorder='little')
+    buffer[0:4] = int_to_bytes(header_blocks)
     version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
 
     with segyio.open(in_filename) as segyfile:
-        buffer[4:8] = len(segyfile.samples).to_bytes(4, byteorder='little')
+        buffer[4:8] = int_to_bytes(len(segyfile.samples))
         n_xl = len(segyfile.xlines) if max_xl is None else max_xl - min_xl
-        buffer[8:12] = n_xl.to_bytes(4, byteorder='little')
+        buffer[8:12] = int_to_bytes(n_xl)
         n_il = len(segyfile.ilines) if max_il is None else max_il - min_il
-        buffer[12:16] = n_il.to_bytes(4, byteorder='little')
+        buffer[12:16] = int_to_bytes(n_il)
 
         # N.B. this format currently only supports integer number of ms as sampling frequency
         buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
@@ -57,36 +57,36 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, ma
     else:
         bpv = bits_per_voxel
         
-    buffer[40:44] = bpv.to_bytes(4, byteorder='little', signed=True)
+    buffer[40:44] = signed_int_to_bytes(bpv)
     
-    buffer[44:48] = blockshape[0].to_bytes(4, byteorder='little')
-    buffer[48:52] = blockshape[1].to_bytes(4, byteorder='little')
-    buffer[52:56] = blockshape[2].to_bytes(4, byteorder='little')
+    buffer[44:48] = int_to_bytes(blockshape[0])
+    buffer[48:52] = int_to_bytes(blockshape[1])
+    buffer[52:56] = int_to_bytes(blockshape[2])
 
     # Length of the seismic amplitudes cube after compression
     compressed_data_length_diskblocks = int(((bits_per_voxel *
                                     pad(len(segyfile.samples), blockshape[2]) *
                                     pad(n_xl, blockshape[1]) *
                                     pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
-    buffer[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
+    buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
     header_entry_length_bytes = (len(segyfile.xlines) * len(segyfile.ilines) * 32) // 8
-    buffer[60:64] = header_entry_length_bytes.to_bytes(4, byteorder='little')
+    buffer[60:64] = int_to_bytes(header_entry_length_bytes)
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
-    buffer[64:68] = n_header_arrays.to_bytes(4, byteorder='little')
+    buffer[64:68] = int_to_bytes(n_header_arrays)
 
-    buffer[72:76] = version.encoding.to_bytes(4, byteorder='little')
+    buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
     hw_start_byte = 980    # Start here to end at 2048
     for i, hw_info in enumerate(hw_info_list):
         start = hw_start_byte + i*12
-        buffer[start + 0:start + 4] = hw_info[0].to_bytes(4, byteorder='little', signed=True)
-        buffer[start + 4:start + 8] = hw_info[1].to_bytes(4, byteorder='little', signed=True)
-        buffer[start + 8:start + 12] = hw_info[2].to_bytes(4, byteorder='little', signed=True)
+        buffer[start + 0:start + 4] = signed_int_to_bytes(hw_info[0])
+        buffer[start + 4:start + 8] = signed_int_to_bytes(hw_info[1])
+        buffer[start + 8:start + 12] = signed_int_to_bytes(hw_info[2])
 
     # Just copy the bytes from the SEG-Y file header
     with open(in_filename, "rb") as f:

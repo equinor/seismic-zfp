@@ -36,6 +36,14 @@ def bytes_to_signed_int(bytes):
     return struct.unpack('<i', bytes)[0]
 
 
+def int_to_bytes(bytes):
+    return struct.pack('<I', bytes)
+
+
+def signed_int_to_bytes(bytes):
+    return struct.pack('<i', bytes)
+
+
 def define_blockshape(bits_per_voxel, blockshape):
     n_undefined = sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1])
     if n_undefined > 1:
