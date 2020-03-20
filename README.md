@@ -62,9 +62,9 @@ with SgzConverter("out-standard.sgz") as converter:
     converter.convert_to_segy("recovered.sgy")
 ```
 
-#### Read an SZ file ####
+#### Read an SGZ file ####
 ```python
-from seismic_zfp.read import SzReader
+from seismic_zfp.read import SgzReader
 with SgzReader("in.sgz") as reader:
     inline_slice = reader.read_inline(LINE_NO)
     crossline_slice = reader.read_crossline(LINE_NO)
@@ -74,7 +74,7 @@ with SgzReader("in.sgz") as reader:
                                     min_z=min_z, max_z=max_z)
 ```
 
-#### Use segyio-like interface to read SZ files ####
+#### Use segyio-like interface to read SGZ files ####
 ```python
 import seismic_zfp
 with seismic_zfp.open("in.sgz")) as sgzfile:
