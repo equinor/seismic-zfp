@@ -1,8 +1,8 @@
 from collections.abc import Mapping
-from .read import SzReader
+from .read import SgzReader
 
 
-class Accessor(SzReader):
+class Accessor(SgzReader):
 
     def __init__(self, file):
         super().__init__(file)

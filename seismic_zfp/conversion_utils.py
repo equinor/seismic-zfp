@@ -8,17 +8,17 @@ import pkg_resources
 from .version import SeismicZfpVersion
 from .utils import pad, np_float_to_bytes, progress_printer
 from .headers import get_headerword_infolist, get_unique_headerwords
-from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
+from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
 
 def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, max_il=None, min_xl=0, max_xl=None):
-    """Generate header for SZ file
+    """Generate header for SGZ file
 
     Returns
     -------
 
     buffer: bytearray
-        An 8kB byte buffer containing data required to read SZ file, including:
+        An 8kB byte buffer containing data required to read SGZ file, including:
 
         First 4kB
         - Seismic cube dimensions

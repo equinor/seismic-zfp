@@ -2,6 +2,7 @@ venv/*
 .idea
 .eggs/*
 seismic_zfp/__pycache__/*
+seismic_zfp/*.pyc
 examples/__pycache__/*
 tests/__pycache__/*
 build/*

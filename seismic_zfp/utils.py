@@ -1,7 +1,7 @@
 import time
 import datetime
 
-from .szconstants import DISK_BLOCK_BYTES
+from .sgzconstants import DISK_BLOCK_BYTES
 
 
 class FileOffset(int):
