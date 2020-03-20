@@ -1,3 +1,4 @@
+from __future__ import division
 import os
 try:
     from functools import lru_cache
