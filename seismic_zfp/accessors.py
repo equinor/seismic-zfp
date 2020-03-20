@@ -8,7 +8,7 @@ from .read import SgzReader
 class Accessor(SgzReader):
 
     def __init__(self, file):
-        super().__init__(file)
+        super(Accessor, self).__init__()
 
     def __iter__(self):
         return self[:]
@@ -37,7 +37,7 @@ class Accessor(SgzReader):
 
 class InlineAccessor(Accessor, Mapping):
     def __init__(self, file):
-        super().__init__(file)
+        super(Accessor, self).__init__(file)
         self.len_object = self.n_ilines
         self.keys_object = self.ilines
         self.values_function = self.read_inline
@@ -45,7 +45,7 @@ class InlineAccessor(Accessor, Mapping):
 
 class CrosslineAccessor(Accessor, Mapping):
     def __init__(self, file):
-        super().__init__(file)
+        super(Accessor, self).__init__(file)
         self.len_object = self.n_xlines
         self.keys_object = self.xlines
         self.values_function = self.read_crossline
@@ -53,7 +53,7 @@ class CrosslineAccessor(Accessor, Mapping):
 
 class ZsliceAccessor(Accessor, Mapping):
     def __init__(self, file):
-        super().__init__(file)
+        super(Accessor, self).__init__(file)
         self.len_object = self.n_samples
         self.keys_object = self.zslices
         self.values_function = self.read_zslice
@@ -61,7 +61,7 @@ class ZsliceAccessor(Accessor, Mapping):
 
 class HeaderAccessor(Accessor, Mapping):
     def __init__(self, file):
-        super().__init__(file)
+        super(Accessor, self).__init__(file)
         self.read_variant_headers()
         self.len_object = self.tracecount
         self.keys_object = list(range(self.tracecount))
@@ -70,7 +70,7 @@ class HeaderAccessor(Accessor, Mapping):
 
 class TraceAccessor(Accessor, Mapping):
     def __init__(self, file):
-        super().__init__(file)
+        super(Accessor, self).__init__(file)
         self.len_object = self.tracecount
         self.keys_object = list(range(self.tracecount))
         self.values_function = self.get_trace

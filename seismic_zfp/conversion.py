@@ -210,7 +210,7 @@ class SgzConverter(SgzReader):
     """Writes 'advanced-layout' SGZ files from 'default-layout' SGZ files"""
 
     def __init__(self, file):
-        super().__init__(file)
+        super(SgzConverter, self).__init__()
 
     def convert_to_segy(self, out_file):
         # Currently only works for default SGZ layout (?)

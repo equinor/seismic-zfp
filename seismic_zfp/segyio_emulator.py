@@ -4,7 +4,7 @@ from .accessors import InlineAccessor, CrosslineAccessor, ZsliceAccessor, Header
 
 class SegyioEmulator(SgzReader):
     def __init__(self, file):
-        super().__init__(file)
+        super(SegyioEmulator, self).__init__(file)
         self.trace = TraceAccessor(self.file)
         self.header = HeaderAccessor(self.file)
         self.iline = InlineAccessor(self.file)
