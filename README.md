@@ -1,4 +1,9 @@
 # seismic-zfp #
+
+[![LGPLv3 License](https://img.shields.io/badge/License-LGPL%20v3-green.svg)](https://opensource.org/licenses/)
+[![Travis](https://img.shields.io/travis/equinor/seismic-zfp/master.svg?label=travis)](https://travis-ci.org/equinor/seismic-zfp)
+[![PyPi Version](https://img.shields.io/pypi/v/seismic-zfp.svg)](https://pypi.org/project/seismic-zfp/)
+
 Python library to convert SEG-Y files to compressed cubes and retrieve arbitrary sub-volumes from these, fast.
 
 ## Motivation ##
