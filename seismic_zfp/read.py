@@ -13,7 +13,7 @@ from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileO
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
-class SgzReader:
+class SgzReader(object):
     """Reads SGZ files
 
     Methods
@@ -98,8 +98,9 @@ class SgzReader:
         # file has been written in using this convention.
         self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
 
-        assert self.block_bytes == DISK_BLOCK_BYTES
         assert self.block_bytes % self.unit_bytes == 0
+        assert self.block_bytes == DISK_BLOCK_BYTES, "self.block_bytes={}, should be {}".format(self.block_bytes,
+                                                                                                DISK_BLOCK_BYTES)
 
         # A 'chunk' is a group of one or more 'blocks' which span a complete set of traces.
         # This will follow the xline and iline shape of a 'block'

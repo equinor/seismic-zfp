@@ -28,6 +28,8 @@ def test_bytes_to_int():
 def test_bytes_to_signed_int():
     assert -1 == bytes_to_signed_int(b'\xff\xff\xff\xff')
     assert -2 == bytes_to_signed_int(b'\xfe\xff\xff\xff')
+    assert 256 == bytes_to_signed_int(b'\x00\x01\00\00')
+    assert 512 == bytes_to_signed_int(b'\x00\x02\00\00')
     assert 65536 == bytes_to_signed_int(b'\x00\x00\01\00')
 
 

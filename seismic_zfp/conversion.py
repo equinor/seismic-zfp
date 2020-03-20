@@ -14,7 +14,7 @@ from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
 
-class SegyConverter:
+class SegyConverter(object):
     """Writes SEG-Y files from SGZ files"""
 
     def __init__(self, in_filename, min_il=0, max_il=None, min_xl=0, max_xl=None):
