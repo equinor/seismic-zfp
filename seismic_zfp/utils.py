@@ -1,3 +1,5 @@
+from __future__ import print_function
+import struct
 import time
 import datetime
 
@@ -23,15 +25,23 @@ def gen_coord_list(start, step, count):
 
 def np_float_to_bytes(numpy_float):
     # How is this so hard?
-    return int((numpy_float).astype(int)).to_bytes(4, byteorder='little')
+    return struct.pack("<I", int((numpy_float).astype(int)))
 
 
 def bytes_to_int(bytes):
-    return int.from_bytes(bytes, byteorder='little')
+    return struct.unpack('<I', bytes)[0]
 
 
 def bytes_to_signed_int(bytes):
-    return int.from_bytes(bytes, byteorder='little', signed=True)
+    return struct.unpack('<i', bytes)[0]
+
+
+def int_to_bytes(bytes):
+    return struct.pack('<I', bytes)
+
+
+def signed_int_to_bytes(bytes):
+    return struct.pack('<i', bytes)
 
 
 def define_blockshape(bits_per_voxel, blockshape):

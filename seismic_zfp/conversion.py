@@ -1,3 +1,4 @@
+from __future__ import print_function
 from pyzfp import compress
 import warnings
 import numpy as np
@@ -13,7 +14,7 @@ from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
 
-class SegyConverter:
+class SegyConverter(object):
     """Writes SEG-Y files from SGZ files"""
 
     def __init__(self, in_filename, min_il=0, max_il=None, min_xl=0, max_xl=None):
@@ -209,7 +210,7 @@ class SgzConverter(SgzReader):
     """Writes 'advanced-layout' SGZ files from 'default-layout' SGZ files"""
 
     def __init__(self, file):
-        super().__init__(file)
+        super(SgzConverter, self).__init__()
 
     def convert_to_segy(self, out_file):
         # Currently only works for default SGZ layout (?)
@@ -252,9 +253,9 @@ class SgzConverter(SgzReader):
         assert(self.blockshape == (4, 4, 1024))
         new_header = bytearray(self.headerbytes)
         new_blockshape = (64, 64, 4)
-        new_header[44:48] = new_blockshape[0].to_bytes(4, byteorder='little')
-        new_header[48:52] = new_blockshape[1].to_bytes(4, byteorder='little')
-        new_header[52:56] = new_blockshape[2].to_bytes(4, byteorder='little')
+        new_header[44:48] = int_to_bytes(new_blockshape[0])
+        new_header[48:52] = int_to_bytes(new_blockshape[1])
+        new_header[52:56] = int_to_bytes(new_blockshape[2])
 
         padded_shape = (pad(self.n_ilines, new_blockshape[0]),
                         pad(self.n_xlines, new_blockshape[1]),
@@ -262,7 +263,7 @@ class SgzConverter(SgzReader):
 
         compressed_data_length_diskblocks = (self.rate * padded_shape[2] *
                                              padded_shape[1] * padded_shape[0]) // (8 * DISK_BLOCK_BYTES)
-        new_header[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
+        new_header[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
         with open(out_file, "wb") as outfile:
             outfile.write(new_header)
