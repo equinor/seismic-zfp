@@ -1,5 +1,8 @@
 import os
-from functools import lru_cache
+try:
+    from functools import lru_cache
+except ImportError:
+    from functools32 import lru_cache
 import numpy as np
 import segyio
 from segyio import _segyio
