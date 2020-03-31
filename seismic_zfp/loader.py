@@ -1,4 +1,7 @@
-from functools import lru_cache
+try:
+    from functools import lru_cache
+except ImportError:
+    from functools32 import lru_cache
 import numpy as np
 import zfpy
 
@@ -7,7 +10,7 @@ def decompress(buffer, shape, dytype, rate):
     return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(dytype), shape, rate=rate)
 
 
-class SzLoader:
+class SgzLoader(object):
     def __init__(self, file, data_start_bytes, compressed_data_diskblocks, shape_pad, blockshape,
                  chunk_bytes, block_bytes, unit_bytes, rate, preload=False):
         self.file = file

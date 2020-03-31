@@ -1,38 +1,42 @@
+from __future__ import division
 import os
-from functools import lru_cache
+try:
+    from functools import lru_cache
+except ImportError:
+    from functools32 import lru_cache
 import numpy as np
 import segyio
 from segyio import _segyio
 
-from .loader import SzLoader
+from .loader import SgzLoader
 from .version import SeismicZfpVersion
 from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length
-from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
+from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
-class SzReader:
-    """Reads SZ files
+class SgzReader(object):
+    """Reads SGZ files
 
     Methods
     -------
     read_inline(il_id)
-        Decompresses and returns one inline from SZ file as 2D numpy array
+        Decompresses and returns one inline from SGZ file as 2D numpy array
 
     read_crossline(xl_id)
-        Decompresses and returns one crossline from SZ file as 2D numpy array
+        Decompresses and returns one crossline from SGZ file as 2D numpy array
 
     read_zslice(zslice_id)
-        Decompresses and returns one zslice from SZ file as 2D numpy array
+        Decompresses and returns one zslice from SGZ file as 2D numpy array
 
     read_subvolume(min_il, max_il, min_xl, max_xl, min_z, max_z)
-        Decompresses and returns an arbitrary sub-volume from SZ file as 3D numpy array
+        Decompresses and returns an arbitrary sub-volume from SGZ file as 3D numpy array
     """
     def __init__(self, file, filetype_checking=True, preload=False):
         """
         Parameters
         ----------
         file : str
-            The SZ filepath to be read
+            The SGZ filepath to be read
 
              : file handle in 'rb' mode
              Reuse an open file handle
@@ -42,7 +46,7 @@ class SzReader:
         # Class may be instantiated with either a file path or filehandle
         if not hasattr(file, 'read'):
             self.filename = file
-            self.file = self.open_sz_file()
+            self.file = self.open_sgz_file()
         else:
             self.filename = file.name
             self.file = file
@@ -51,7 +55,7 @@ class SzReader:
 
         self.headerbytes = self.file.read(DISK_BLOCK_BYTES)
         if filetype_checking and self.headerbytes[0:2] == b'\xc3\x40':
-            msg = "This appears to be a SEGY file rather than an SZ file, override with filetype_checking=False"
+            msg = "This appears to be a SEGY file rather than an SGZ file, override with filetype_checking=False"
             raise RuntimeError(msg)
 
         self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
@@ -59,7 +63,7 @@ class SzReader:
             self.file.seek(0)
             self.headerbytes = self.file.read(DISK_BLOCK_BYTES*self.n_header_blocks)
 
-        # Read useful info out of the SZ header
+        # Read useful info out of the SGZ header
         self.file_version = self.get_file_version()
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self.parse_dimensions()
         self.zslices, self.xlines, self.ilines = self.parse_coordinates()
@@ -82,9 +86,9 @@ class SzReader:
                           pad(self.n_xlines, self.blockshape[1]),
                           pad(self.n_samples, self.blockshape[2]))
 
-        # These are useful units of measurement for SZ files:
+        # These are useful units of measurement for SGZ files:
 
-        # A 'compression unit' is the smallest decompressable piece of the SZ file.
+        # A 'compression unit' is the smallest decompressable piece of the SGZ file.
         # It is always 4-samples x 4-xlines x 4-ilines in physical dimensions, but its size
         # on disk will vary according to compression ratio.
         self.unit_bytes = int((4*4*4) * self.rate) // 8
@@ -95,8 +99,9 @@ class SzReader:
         # file has been written in using this convention.
         self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
 
-        assert self.block_bytes == DISK_BLOCK_BYTES
         assert self.block_bytes % self.unit_bytes == 0
+        assert self.block_bytes == DISK_BLOCK_BYTES, "self.block_bytes={}, should be {}".format(self.block_bytes,
+                                                                                                DISK_BLOCK_BYTES)
 
         # A 'chunk' is a group of one or more 'blocks' which span a complete set of traces.
         # This will follow the xline and iline shape of a 'block'
@@ -107,21 +112,21 @@ class SzReader:
         self.variant_headers = None
 
         # Split out responsibility for I/O and decompression
-        self.loader = SzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
+        self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
                                self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
 
     def __enter__(self):
         return self
 
     def __exit__(self, type, value, traceback):
-        self.close_sz_file()
+        self.close_sgz_file()
 
-    def open_sz_file(self):
+    def open_sgz_file(self):
         if not os.path.exists(self.filename):
             raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
         return open(self.filename, 'rb')
 
-    def close_sz_file(self):
+    def close_sgz_file(self):
         self.file.close()
 
     def get_file_version(self):
@@ -201,7 +206,7 @@ class SzReader:
             pass
 
     def read_inline(self, il_id):
-        """Reads one inline from SZ file
+        """Reads one inline from SGZ file
 
         Parameters
         ----------
@@ -223,7 +228,7 @@ class SzReader:
             return np.squeeze(self.read_subvolume(il_id, il_id + 1, 0, self.n_xlines, 0, self.n_samples))
 
     def read_crossline(self, xl_id):
-        """Reads one crossline from SZ file
+        """Reads one crossline from SGZ file
 
         Parameters
         ----------
@@ -245,7 +250,7 @@ class SzReader:
             return np.squeeze(self.read_subvolume(0, self.n_ilines, xl_id, xl_id + 1, 0, self.n_samples))
 
     def read_zslice(self, zslice_id):
-        """Reads one zslice from SZ file (time or depth, depending on file contents)
+        """Reads one zslice from SGZ file (time or depth, depending on file contents)
 
         Parameters
         ----------
@@ -314,7 +319,7 @@ class SzReader:
                         cd[i] = decompressed[i, (i + abs(cd_id)) % 4, 0:self.n_samples]
             return cd
         else:
-            raise NotImplementedError("Diagonals can only be read from default layout SZ files")
+            raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
 
     def read_anticorrelated_diagonal(self, ad_id):
         """Reads one diagonal in the direction IL ~ -XL
@@ -361,10 +366,10 @@ class SzReader:
                             ad[i - start] = decompressed_offset[i2, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
             return ad
         else:
-            raise NotImplementedError("Diagonals can only be read from default layout SZ files")
+            raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
-        """Reads a sub-volume from SZ file
+        """Reads a sub-volume from SGZ file
 
         Parameters
         ----------
@@ -407,7 +412,7 @@ class SzReader:
                                 min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
 
     def read_volume(self):
-        """Reads the whole volume from SZ file
+        """Reads the whole volume from SGZ file
 
         Returns
         -------
@@ -419,7 +424,7 @@ class SzReader:
                                    0, self.n_samples)
 
     def get_trace(self, index):
-        """Reads the whole volume from SZ file
+        """Reads the whole volume from SGZ file
 
         Parameters
         ----------

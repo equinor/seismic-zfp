@@ -1,3 +1,4 @@
+from __future__ import print_function
 import zfpy
 import warnings
 import numpy as np
@@ -9,12 +10,12 @@ from psutil import virtual_memory
 from .utils import pad, define_blockshape, FileOffset, bytes_to_int
 from .headers import get_unique_headerwords
 from .conversion_utils import make_header, get_header_arrays, run_conversion_loop
-from .read import SzReader
-from .szconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
+from .read import SgzReader
+from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
 
-class SegyConverter:
-    """Writes SEGY files from SZ files"""
+class SegyConverter(object):
+    """Writes SEG-Y files from SGZ files"""
 
     def __init__(self, in_filename, min_il=0, max_il=None, min_xl=0, max_xl=None):
         """
@@ -22,7 +23,7 @@ class SegyConverter:
         ----------
 
         in_filename: str
-            The SEGY file to be converted to SZ
+            The SEGY file to be converted to SGZ
 
         min_il, max_il, min_xl, max_xl: int
             Cropping parameters to apply to input seismic cube
@@ -41,13 +42,13 @@ class SegyConverter:
         pass
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream"):
-        """General entrypoint for converting SEGY files to SZ
+        """General entrypoint for converting SEG-Y files to SGZ
 
         Parameters
         ----------
 
         out_filename: str
-            The SZ output file
+            The SGZ output file
 
         bits_per_voxel: int
             The number of bits to use for storing each seismic voxel.
@@ -66,8 +67,8 @@ class SegyConverter:
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
 
         method: str
-            Flag to indicate method for reading SEGY
-            - "InMemory" : Read whole SEGY cube into memory before compressing
+            Flag to indicate method for reading SEG-Y
+            - "InMemory" : Read whole SEG-Y cube into memory before compressing
             - "Stream" : Read 4 inlines at a time... compress, rinse, repeat
 
         Raises
@@ -93,7 +94,7 @@ class SegyConverter:
             cube_bytes = len(segyfile.samples) * len(segyfile.xlines) * len(segyfile.ilines) * 4
 
         if cube_bytes > virtual_memory().total:
-            print("SEGY is {} bytes, machine memory is {} bytes".format(cube_bytes, virtual_memory().total))
+            print("SEG-Y is {} bytes, machine memory is {} bytes".format(cube_bytes, virtual_memory().total))
             print("Try using method = 'Stream' instead")
             raise RuntimeError("Out of memory. We wish to hold the whole sky, But we never will.")
 
@@ -103,7 +104,7 @@ class SegyConverter:
             self.convert_segy_inmem_advanced(bits_per_voxel, blockshape)
 
     def convert_segy_inmem_default(self, bits_per_voxel):
-        """Reads all data from input file to memory, compresses it and writes as .sz file to disk,
+        """Reads all data from input file to memory, compresses it and writes as .sgz file to disk,
         using ZFP's default compression unit order"""
         header = make_header(self.in_filename, bits_per_voxel, blockshape=(4, 4, 2048//bits_per_voxel))
 
@@ -130,7 +131,7 @@ class SegyConverter:
         print("Total conversion time: {}, of which read={}, compress={}, write={}".format(t3-t0, t1-t0, t2-t1, t3-t2))
 
     def convert_segy_inmem_advanced(self, bits_per_voxel, blockshape):
-        """Reads all data from input file to memory, compresses it and writes as .sz file to disk,
+        """Reads all data from input file to memory, compresses it and writes as .sgz file to disk,
         using custom compression unit order"""
         header = make_header(self.in_filename, bits_per_voxel, blockshape)
 
@@ -205,14 +206,14 @@ class SegyConverter:
         print("Total conversion time: {}                     ".format(t3-t0))
 
 
-class SzConverter(SzReader):
-    """Writes 'advanced-layout' SZ files from 'default-layout' SZ files"""
+class SgzConverter(SgzReader):
+    """Writes 'advanced-layout' SGZ files from 'default-layout' SGZ files"""
 
     def __init__(self, file):
-        super().__init__(file)
+        super(SgzConverter, self).__init__()
 
     def convert_to_segy(self, out_file):
-        # Currently only works for default SZ layout (?)
+        # Currently only works for default SGZ layout (?)
         assert (self.blockshape[0] == 4)
         assert (self.blockshape[1] == 4)
 
@@ -245,17 +246,16 @@ class SzConverter(SzReader):
                     segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
 
         with open(out_file, "r+b") as f:
-            f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES +
-                                                                   SEGY_FILE_HEADER_BYTES])
+            f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
 
-    def convert_to_adv_sz(self, out_file):
+    def convert_to_adv_sgz(self, out_file):
         assert(self.rate == 2)
         assert(self.blockshape == (4, 4, 1024))
         new_header = bytearray(self.headerbytes)
         new_blockshape = (64, 64, 4)
-        new_header[44:48] = new_blockshape[0].to_bytes(4, byteorder='little')
-        new_header[48:52] = new_blockshape[1].to_bytes(4, byteorder='little')
-        new_header[52:56] = new_blockshape[2].to_bytes(4, byteorder='little')
+        new_header[44:48] = int_to_bytes(new_blockshape[0])
+        new_header[48:52] = int_to_bytes(new_blockshape[1])
+        new_header[52:56] = int_to_bytes(new_blockshape[2])
 
         padded_shape = (pad(self.n_ilines, new_blockshape[0]),
                         pad(self.n_xlines, new_blockshape[1]),
@@ -263,7 +263,7 @@ class SzConverter(SzReader):
 
         compressed_data_length_diskblocks = (self.rate * padded_shape[2] *
                                              padded_shape[1] * padded_shape[0]) // (8 * DISK_BLOCK_BYTES)
-        new_header[56:60] = compressed_data_length_diskblocks.to_bytes(4, byteorder='little')
+        new_header[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
         with open(out_file, "wb") as outfile:
             outfile.write(new_header)

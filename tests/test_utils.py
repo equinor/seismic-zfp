@@ -20,15 +20,31 @@ def test_np_float_to_bytes():
 
 
 def test_bytes_to_int():
-    assert 1337 == bytes_to_int(b'\x39\x05\00\00')
-    assert 65536 == bytes_to_int(b'\x00\x00\01\00')
+    assert 1337 == bytes_to_int(b'\x39\x05\x00\x00')
+    assert 65536 == bytes_to_int(b'\x00\x00\x01\x00')
     assert 4294967295 == bytes_to_int(b'\xff\xff\xff\xff')
 
 
 def test_bytes_to_signed_int():
     assert -1 == bytes_to_signed_int(b'\xff\xff\xff\xff')
     assert -2 == bytes_to_signed_int(b'\xfe\xff\xff\xff')
-    assert 65536 == bytes_to_signed_int(b'\x00\x00\01\00')
+    assert 256 == bytes_to_signed_int(b'\x00\x01\x00\x00')
+    assert 512 == bytes_to_signed_int(b'\x00\x02\x00\x00')
+    assert 65536 == bytes_to_signed_int(b'\x00\x00\x01\x00')
+
+
+def test_bytes_to_int():
+    assert b'\x39\x05\x00\x00' == int_to_bytes(1337)
+    assert b'\x00\x00\x01\x00' == int_to_bytes(65536)
+    assert b'\xff\xff\xff\xff' == int_to_bytes(4294967295)
+
+
+def test_bytes_to_signed_int():
+    assert b'\xff\xff\xff\xff' == signed_int_to_bytes(-1)
+    assert b'\xfe\xff\xff\xff' == signed_int_to_bytes(-2)
+    assert b'\x00\x01\x00\x00' == signed_int_to_bytes(256)
+    assert b'\x00\x02\x00\x00' == signed_int_to_bytes(512)
+    assert b'\x00\x00\x01\x00' == signed_int_to_bytes(65536)
 
 
 def test_define_blockshape():
