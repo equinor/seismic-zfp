@@ -51,11 +51,16 @@ def signed_int_to_bytes(bytes):
 
 
 def define_blockshape(bits_per_voxel, blockshape):
-    n_undefined = sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1])
-    if n_undefined > 1:
+    if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
         raise ValueError("Blockshape is underdefined")
+
+    if isinstance(bits_per_voxel, str):
+        bits_per_voxel = float(bits_per_voxel)
+
+    bits_per_voxel = 1 / -bits_per_voxel if bits_per_voxel < -1 else bits_per_voxel
+
     if bits_per_voxel == -1:
-        bits_per_voxel = DISK_BLOCK_BYTES * 8 // (blockshape[0] * blockshape[1] * blockshape[2])
+        bits_per_voxel = DISK_BLOCK_BYTES * 8 / (blockshape[0] * blockshape[1] * blockshape[2])
     else:
         if blockshape[0] == -1:
             blockshape = (int(DISK_BLOCK_BYTES * 8 //
