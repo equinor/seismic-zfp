@@ -29,11 +29,17 @@ def np_float_to_bytes(numpy_float):
 
 
 def bytes_to_int(bytes):
-    return struct.unpack('<I', bytes)[0]
+    if len(bytes) == 4:
+        return struct.unpack('<I', bytes)[0]
+    elif len(bytes) == 2:
+        return struct.unpack('<H', bytes)[0]
 
 
 def bytes_to_signed_int(bytes):
-    return struct.unpack('<i', bytes)[0]
+    if len(bytes) == 4:
+        return struct.unpack('<i', bytes)[0]
+    elif len(bytes) == 2:
+        return struct.unpack('<h', bytes)[0]
 
 
 def int_to_bytes(bytes):

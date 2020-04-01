@@ -209,9 +209,6 @@ class SegyConverter(object):
 class SgzConverter(SgzReader):
     """Writes 'advanced-layout' SGZ files from 'default-layout' SGZ files"""
 
-    def __init__(self, file):
-        super(SgzConverter, self).__init__()
-
     def convert_to_segy(self, out_file):
         # Currently only works for default SGZ layout (?)
         assert (self.blockshape[0] == 4)
@@ -240,7 +237,7 @@ class SgzConverter(SgzReader):
                 self.read_variant_headers()
                 for i, iline in enumerate(spec.ilines):
                     if i % self.blockshape[0] == 0:
-                        decompressed = self.read_and_decompress_il_set(i)
+                        decompressed = self.loader.read_and_decompress_il_set(i)
                     for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
                         segyfile.header[h] = self.gen_trace_header(h)
                     segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
