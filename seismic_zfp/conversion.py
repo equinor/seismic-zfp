@@ -50,12 +50,13 @@ class SegyConverter(object):
         out_filename: str
             The SGZ output file
 
-        bits_per_voxel: int
+        bits_per_voxel: int, float, str
             The number of bits to use for storing each seismic voxel.
             - Uncompressed seismic has 32-bits per voxel
             - Using 16-bits gives almost perfect reproduction
-            - Tested using 8-bit, 4-bit, 2-bit & 1-bit
+            - Tested using 8, 4, 2, 1, 0.5 & 0.25 bit
             - Recommended using 4-bit, giving 8:1 compression
+            - Negative value implies reciprocal: i.e. -2 ==> 1/2 bits per voxel
 
         blockshape: (int, int, int)
             The physical shape of voxels compressed to one disk block.
@@ -79,6 +80,7 @@ class SegyConverter(object):
 
         """
         self.out_filename = out_filename
+        bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
 
         if method == "InMemory":
             print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename, blockshape))
@@ -99,14 +101,14 @@ class SegyConverter(object):
             raise RuntimeError("Out of memory. We wish to hold the whole sky, But we never will.")
 
         if (blockshape[0] == 4) and (blockshape[1] == 4):
-            self.convert_segy_inmem_default(bits_per_voxel)
+            self.convert_segy_inmem_default(bits_per_voxel, blockshape)
         else:
             self.convert_segy_inmem_advanced(bits_per_voxel, blockshape)
 
-    def convert_segy_inmem_default(self, bits_per_voxel):
+    def convert_segy_inmem_default(self, bits_per_voxel, blockshape):
         """Reads all data from input file to memory, compresses it and writes as .sgz file to disk,
         using ZFP's default compression unit order"""
-        header = make_header(self.in_filename, bits_per_voxel, blockshape=(4, 4, 2048//bits_per_voxel))
+        header = make_header(self.in_filename, bits_per_voxel, blockshape)
 
         t0 = time.time()
         data = segyio.tools.cube(self.in_filename)
@@ -169,8 +171,6 @@ class SegyConverter(object):
         """Memory-efficient method of compressing SEG-Y file larger than machine memory.
         Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
-
-        bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
 
         with segyio.open(self.in_filename) as segyfile:
             if self.max_xl is None and self.max_il is None:

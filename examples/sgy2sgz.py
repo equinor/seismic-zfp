@@ -7,7 +7,7 @@ def main():
         raise RuntimeError("This example accepts exactly 3 arguments: input_file, output_file & bitrate")
 
     with SegyConverter(sys.argv[1]) as converter:
-        converter.run(sys.argv[2], bits_per_voxel=int(sys.argv[3]), method="Stream")
+        converter.run(sys.argv[2], bits_per_voxel=sys.argv[3], method="Stream")
 
 
 if __name__ == '__main__':
