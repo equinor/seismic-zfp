@@ -55,7 +55,7 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, ma
     if bits_per_voxel < 1:
         bpv = -int(1 / bits_per_voxel)
     else:
-        bpv = bits_per_voxel
+        bpv = int(bits_per_voxel)
         
     buffer[40:44] = signed_int_to_bytes(bpv)
     

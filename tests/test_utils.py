@@ -48,15 +48,26 @@ def test_bytes_to_signed_int():
 
 
 def test_define_blockshape():
-    assert 4, (4, 4, 512) == define_blockshape(4, (4, 4, 512))
-    assert 4, (4, 4, 512) == define_blockshape(4, (4, 4, -1))
-    assert 4, (4, 4, 512) == define_blockshape(4, (4, -1, 512))
-    assert 4, (4, 4, 512) == define_blockshape(4, (-1, 4, 512))
-    assert 4, (4, 4, 512) == define_blockshape(-1, (4, 4, 512))
-    assert 2, (64, 64, 4) == define_blockshape(-1, (64, 64, 4))
-
-    assert 0.5, (4, 4, 4096) == define_blockshape(0.5, (4, 4, -1))
-    assert 0.25, (4, 4, 8192) == define_blockshape(0.25, (4, 4, -1))
+    assert (4, (4, 4, 512)) == define_blockshape(4, (4, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape("4", (4, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape(4, (4, 4, -1))
+    assert (4, (4, 4, 512)) == define_blockshape("4", (4, 4, -1))
+    assert (4, (4, 4, 512)) == define_blockshape(4, (4, -1, 512))
+    assert (4, (4, 4, 512)) == define_blockshape("4", (4, -1, 512))
+    assert (4, (4, 4, 512)) == define_blockshape(4, (-1, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape("4", (-1, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape(-1, (4, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape("-1", (4, 4, 512))
+    assert (2, (64, 64, 4)) == define_blockshape(-1, (64, 64, 4))
+    assert (2, (64, 64, 4)) == define_blockshape("-1", (64, 64, 4))
+    assert (0.5, (4, 4, 4096)) == define_blockshape(-2, (4, 4, -1))
+    assert (0.5, (4, 4, 4096)) == define_blockshape("-2", (4, 4, -1))
+    assert (0.25, (4, 4, 8192)) == define_blockshape(-1, (4, 4, 8192))
+    assert (0.25, (4, 4, 8192)) == define_blockshape("-1", (4, 4, 8192))
+    assert (0.5, (4, 4, 4096)) == define_blockshape(0.5, (4, 4, -1))
+    assert (0.5, (4, 4, 4096)) == define_blockshape("0.5", (4, 4, -1))
+    assert (0.25, (4, 4, 8192)) == define_blockshape(0.25, (4, 4, -1))
+    assert (0.25, (4, 4, 8192)) == define_blockshape("0.25", (4, 4, -1))
 
     with pytest.raises(ValueError):
         define_blockshape(-1, (4, 4, -1))

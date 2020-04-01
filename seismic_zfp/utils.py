@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, division
 import struct
 import time
 import datetime
@@ -29,11 +29,17 @@ def np_float_to_bytes(numpy_float):
 
 
 def bytes_to_int(bytes):
-    return struct.unpack('<I', bytes)[0]
+    if len(bytes) == 4:
+        return struct.unpack('<I', bytes)[0]
+    elif len(bytes) == 2:
+        return struct.unpack('<H', bytes)[0]
 
 
 def bytes_to_signed_int(bytes):
-    return struct.unpack('<i', bytes)[0]
+    if len(bytes) == 4:
+        return struct.unpack('<i', bytes)[0]
+    elif len(bytes) == 2:
+        return struct.unpack('<h', bytes)[0]
 
 
 def int_to_bytes(bytes):
@@ -45,11 +51,16 @@ def signed_int_to_bytes(bytes):
 
 
 def define_blockshape(bits_per_voxel, blockshape):
-    n_undefined = sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1])
-    if n_undefined > 1:
+    if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
         raise ValueError("Blockshape is underdefined")
+
+    if isinstance(bits_per_voxel, str):
+        bits_per_voxel = float(bits_per_voxel)
+
+    bits_per_voxel = 1 / -bits_per_voxel if bits_per_voxel < -1 else bits_per_voxel
+
     if bits_per_voxel == -1:
-        bits_per_voxel = DISK_BLOCK_BYTES * 8 // (blockshape[0] * blockshape[1] * blockshape[2])
+        bits_per_voxel = DISK_BLOCK_BYTES * 8 / (blockshape[0] * blockshape[1] * blockshape[2])
     else:
         if blockshape[0] == -1:
             blockshape = (int(DISK_BLOCK_BYTES * 8 //
