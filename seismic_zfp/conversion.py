@@ -192,11 +192,21 @@ class SegyConverter(object):
                 assert 0 <= self.min_xl < self.max_xl, "min_xl out of valid range"
                 assert 0 < self.max_xl <= len(segyfile.xlines), "max_xl out of valid range"
 
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                                                    headers_to_store, numpy_headers_arrays,
-                                                    self.min_il, self.max_il, self.min_xl, self.max_xl))
-        loop.close()
+        inline_set_bytes = blockshape[0]*(len(segyfile.xlines)*len(segyfile.samples))*4
+
+        if inline_set_bytes > virtual_memory().total // 2:
+            print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
+            print("Try using fewer inlines in the blockshape, or compressing a subcube")
+            raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
+
+        max_queue_length = min(16, (virtual_memory().total // 2) // inline_set_bytes)
+        print("VirtualMemory={}MB, InlineSet={}MB : Using queue of length {}".format(virtual_memory().total/(1024*1024),
+                                                                                     inline_set_bytes/(1024*1024),
+                                                                                     max_queue_length))
+
+        run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
+                            headers_to_store, numpy_headers_arrays,
+                            self.min_il, self.max_il, self.min_xl, self.max_xl, queuesize=max_queue_length)
 
         with open(self.out_filename, 'ab') as f:
             for header_array in numpy_headers_arrays:
