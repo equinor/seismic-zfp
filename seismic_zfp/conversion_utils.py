@@ -1,9 +1,10 @@
 from pyzfp import compress
-import asyncio
 import time
 import numpy as np
 import segyio
 import pkg_resources
+from threading import Thread
+from queue import Queue
 
 from .version import SeismicZfpVersion
 from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer
@@ -106,7 +107,30 @@ def get_header_arrays(in_filename):
     return numpy_headers_arrays
 
 
-async def produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
+def io_thread_func(i, blockshape, headers_to_store, max_xl, min_il, min_xl, n_xlines, numpy_headers_arrays,
+                   plane_set_id, planes_to_read, segy_buffer, segyfile, trace_length):
+    if i < planes_to_read:
+        data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + i]]
+                          )[min_xl:max_xl, :]
+    else:
+        # Repeat last plane across padding to give better compression accuracy
+        data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + planes_to_read - 1]]
+                          )[min_xl:max_xl, :]
+    segy_buffer[i, 0:n_xlines, 0:trace_length] = data
+    # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
+    segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
+    segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
+    start_trace = (plane_set_id * blockshape[0] + i) * len(segyfile.xlines) + min_xl
+    header_generator = segyfile.header[start_trace: start_trace + n_xlines]
+    for t, header in enumerate(header_generator, start_trace):
+        t_xl = t % len(segyfile.xlines)
+        t_il = t // len(segyfile.xlines)
+        t_store = (t_xl - min_xl) + (t_il - min_il) * n_xlines
+        for j, h in enumerate(headers_to_store):
+            numpy_headers_arrays[j][t_store] = header[h]
+
+
+def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
                   min_il, max_il, min_xl, max_xl, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename) as segyfile:
@@ -138,65 +162,51 @@ async def produce(queue, in_filename, blockshape, headers_to_store, numpy_header
             else:
                 planes_to_read = blockshape[0]
 
+            t = [None for _ in range(blockshape[0])]
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
             for i in range(blockshape[0]):
-                if i < planes_to_read:
-                    data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id*blockshape[0] + i]]
-                                      )[min_xl:max_xl, :]
-                else:
-                    # Repeat last plane across padding to give better compression accuracy
-                    data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id*blockshape[0] + planes_to_read - 1]]
-                                      )[min_xl:max_xl, :]
-                segy_buffer[i, 0:n_xlines, 0:trace_length] = data
+                t[i] = Thread(target=io_thread_func, args=(i, blockshape, headers_to_store, max_xl, min_il, min_xl,
+                                                        n_xlines, numpy_headers_arrays, plane_set_id, planes_to_read,
+                                                        segy_buffer, segyfile, trace_length))
+                t[i].daemon = True
+                t[i].start()
 
-                # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
-                segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
-                segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
-
-                start_trace = (plane_set_id*blockshape[0] + i) * len(segyfile.xlines) + min_xl
-                header_generator = segyfile.header[start_trace: start_trace+n_xlines]
-
-                for t, header in enumerate(header_generator, start_trace):
-                    t_xl = t % len(segyfile.xlines)
-                    t_il = t // len(segyfile.xlines)
-                    t_store = (t_xl - min_xl) + (t_il - min_il) * n_xlines
-                    for j, h in enumerate(headers_to_store):
-                        numpy_headers_arrays[j][t_store] = header[h]
+            for i in range(blockshape[0]):
+                t[i].join()
 
             if blockshape[0] == 4:
-                await queue.put(segy_buffer)
+                queue.put(segy_buffer)
             else:
                 for x in range(padded_shape[1] // blockshape[1]):
                     for z in range(padded_shape[2] // blockshape[2]):
                         slice = segy_buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
                                                z * blockshape[2]: (z + 1) * blockshape[2]].copy()
-                        await queue.put(slice)
+                        queue.put(slice)
 
 
-async def consume(header, queue, out_filename, bits_per_voxel):
+def consumer(queue, header, out_filename, bits_per_voxel):
     """Fetches compressed sets of inlines (or just blocks) and writes them to disk"""
     with open(out_filename, 'wb') as f:
         f.write(header)
         while True:
-            segy_buffer = await queue.get()
+            segy_buffer = queue.get()
             compressed = compress(segy_buffer, rate=bits_per_voxel)
             f.write(compressed)
             queue.task_done()
 
 
-async def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
-                              numpy_headers_arrays, min_il, max_il, min_xl, max_xl):
+def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
+                              numpy_headers_arrays, min_il, max_il, min_xl, max_xl, queuesize=16):
     header = make_header(in_filename, bits_per_voxel, blockshape, min_il, max_il, min_xl, max_xl)
 
     # Maxsize can be reduced for machines with little memory
     # ... or for files which are so big they might be very useful.
-    queue = asyncio.Queue(maxsize=16)
+    queue = Queue(maxsize=queuesize)
     # schedule the consumer
-    consumer = asyncio.ensure_future(consume(header, queue, out_filename, bits_per_voxel))
+    t = Thread(target=consumer, args=(queue, header, out_filename, bits_per_voxel))
+    t.daemon = True
+    t.start()
     # run the producer and wait for completion
-    await produce(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
-                  min_il, max_il, min_xl, max_xl)
+    producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, min_il, max_il, min_xl, max_xl)
     # wait until the consumer has processed all items
-    await queue.join()
-    # the consumer is still awaiting for an item, cancel it
-    consumer.cancel()
+    queue.join()
