@@ -1,5 +1,6 @@
 import tkinter.filedialog as filedialog
 import tkinter as tk
+import seismic_zfp
 from seismic_zfp.conversion import SgzReader, SegyConverter, SgzConverter
 from datetime import timedelta
 import time
