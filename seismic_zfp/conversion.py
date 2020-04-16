@@ -41,7 +41,7 @@ class SegyConverter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream"):
+    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream", reduce_iops=False):
         """General entrypoint for converting SEG-Y files to SGZ
 
         Parameters
@@ -87,7 +87,7 @@ class SegyConverter(object):
             self.convert_segy_inmem(bits_per_voxel, blockshape)
         elif method == "Stream":
             print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
-            self.convert_segy_stream(bits_per_voxel, blockshape)
+            self.convert_segy_stream(bits_per_voxel, blockshape, reduce_iops=reduce_iops)
         else:
             raise NotImplementedError("Invalid conversion method {}, try 'InMemory' or 'Stream'".format(method))
 
@@ -167,7 +167,7 @@ class SegyConverter(object):
 
         print("Total conversion time: {}".format(t3-t0))
 
-    def convert_segy_stream(self, bits_per_voxel, blockshape):
+    def convert_segy_stream(self, bits_per_voxel, blockshape, reduce_iops=False):
         """Memory-efficient method of compressing SEG-Y file larger than machine memory.
         Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
@@ -206,7 +206,8 @@ class SegyConverter(object):
 
         run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
                             headers_to_store, numpy_headers_arrays,
-                            self.min_il, self.max_il, self.min_xl, self.max_xl, queuesize=max_queue_length)
+                            self.min_il, self.max_il, self.min_xl, self.max_xl,
+                            queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         with open(self.out_filename, 'ab') as f:
             for header_array in numpy_headers_arrays:
