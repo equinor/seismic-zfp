@@ -107,15 +107,58 @@ def get_header_arrays(in_filename):
     return numpy_headers_arrays
 
 
+class MinimalInlineReader:
+    def __init__(self, filename):
+
+        self.filename = filename
+        with segyio.open(filename) as segyfile:
+            self.n_il = len(segyfile.ilines)
+            self.n_xl = len(segyfile.xlines)
+            self.n_samp = len(segyfile.samples)
+            self.format = segyfile.bin[segyio.BinField.Format]
+        self.file = open(self.filename, "rb")
+
+    def self_test(self):
+        with segyio.open(self.filename) as segyfile:
+            segyio_slice = segyfile.iline[segyfile.ilines[0]]
+        minimal_reader_slice = self.read_line(0)
+        return np.array_equal(segyio_slice, minimal_reader_slice)
+
+    def read_line(self, i):
+        self.file.seek(3600 + i * self.n_xl * (self.n_samp * 4 + 240), 0)
+        buf = self.file.read(self.n_xl * (self.n_samp * 4 + 240))
+        dt = np.dtype(np.float32).newbyteorder('>')
+        array = np.frombuffer(buf, dtype=dt).reshape((self.n_xl, self.n_samp + 60))[:, 60:]
+        if self.format == 1:
+            return segyio.tools.native(array)
+        elif self.format == 5:
+            return array
+        else:
+            raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.file.close()
+
+
 def io_thread_func(i, blockshape, headers_to_store, max_xl, min_il, min_xl, n_xlines, numpy_headers_arrays,
-                   plane_set_id, planes_to_read, segy_buffer, segyfile, trace_length):
+                   plane_set_id, planes_to_read, segy_buffer, segyfile, minimal_il_reader, trace_length):
     if i < planes_to_read:
-        data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + i]]
-                          )[min_xl:max_xl, :]
+        if minimal_il_reader is None:
+            data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + i]]
+                              )[min_xl:max_xl, :]
+        else:
+            data = minimal_il_reader.read_line(min_il + plane_set_id * blockshape[0] + i)[min_xl:max_xl, :]
     else:
         # Repeat last plane across padding to give better compression accuracy
-        data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + planes_to_read - 1]]
-                          )[min_xl:max_xl, :]
+        if minimal_il_reader is None:
+            data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + planes_to_read - 1]]
+                              )[min_xl:max_xl, :]
+        else:
+            data = minimal_il_reader.read_line(min_il + plane_set_id * blockshape[0] + planes_to_read - 1)[min_xl:max_xl, :]
+
     segy_buffer[i, 0:n_xlines, 0:trace_length] = data
     # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
     segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
@@ -131,7 +174,7 @@ def io_thread_func(i, blockshape, headers_to_store, max_xl, min_il, min_xl, n_xl
 
 
 def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
-                  min_il, max_il, min_xl, max_xl, verbose=True):
+                  min_il, max_il, min_xl, max_xl, reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename) as segyfile:
 
@@ -150,6 +193,14 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
 
         padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
+        minimal_il_reader = None
+        if reduce_iops:
+            print("Attempting to use MinimalInlineReader")
+            minimal_il_reader = MinimalInlineReader(in_filename)
+            if not minimal_il_reader.self_test():
+                minimal_il_reader = None
+                print("MinimalInlineReader failed self-test, using fallback")
+
         # Loop over groups of 4 inlines
         n_plane_sets = padded_shape[0] // blockshape[0]
         start_time = time.time()
@@ -167,7 +218,7 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
             for i in range(blockshape[0]):
                 t[i] = Thread(target=io_thread_func, args=(i, blockshape, headers_to_store, max_xl, min_il, min_xl,
                                                         n_xlines, numpy_headers_arrays, plane_set_id, planes_to_read,
-                                                        segy_buffer, segyfile, trace_length))
+                                                        segy_buffer, segyfile, minimal_il_reader, trace_length))
                 t[i].daemon = True
                 t[i].start()
 
@@ -196,7 +247,7 @@ def consumer(queue, header, out_filename, bits_per_voxel):
 
 
 def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
-                              numpy_headers_arrays, min_il, max_il, min_xl, max_xl, queuesize=16):
+                              numpy_headers_arrays, min_il, max_il, min_xl, max_xl, queuesize=16, reduce_iops=False):
     header = make_header(in_filename, bits_per_voxel, blockshape, min_il, max_il, min_xl, max_xl)
 
     # Maxsize can be reduced for machines with little memory
@@ -207,6 +258,7 @@ def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, h
     t.daemon = True
     t.start()
     # run the producer and wait for completion
-    producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, min_il, max_il, min_xl, max_xl)
+    producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
+             min_il, max_il, min_xl, max_xl, reduce_iops=reduce_iops)
     # wait until the consumer has processed all items
     queue.join()
