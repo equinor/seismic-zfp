@@ -119,14 +119,13 @@ def get_header_arrays(in_filename):
 # identical output. When using this function it is recommended that segyio is used as fallback if self_test fails
 class MinimalInlineReader:
     def __init__(self, filename):
-
         self.filename = filename
+        self.file = open(self.filename, "rb")
         with segyio.open(filename) as segyfile:
             self.n_il = len(segyfile.ilines)
             self.n_xl = len(segyfile.xlines)
             self.n_samp = len(segyfile.samples)
             self.format = segyfile.bin[segyio.BinField.Format]
-        self.file = open(self.filename, "rb")
 
     def self_test(self):
         headers, array = self.read_line(0)
@@ -152,36 +151,37 @@ class MinimalInlineReader:
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
 
-def io_thread_func(i, blockshape, headers_to_store, max_xl, min_il, min_xl, n_xlines, numpy_headers_arrays,
+def io_thread_func(blockshape, headers_to_store, max_xl, min_il, min_xl, n_xlines, numpy_headers_arrays,
                    plane_set_id, planes_to_read, segy_buffer, segyfile, minimal_il_reader, trace_length):
-    start_trace = (plane_set_id * blockshape[0] + i) * len(segyfile.xlines) + min_xl
-    if i < planes_to_read:
-        if minimal_il_reader is None:
-            data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + i]]
-                              )[min_xl:max_xl, :]
-            headers = segyfile.header[start_trace: start_trace + n_xlines]
+    for i in range(blockshape[0]):
+        start_trace = (plane_set_id * blockshape[0] + i) * len(segyfile.xlines) + min_xl
+        if i < planes_to_read:
+            if minimal_il_reader is not None:
+                headers, data = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
+            else:
+                data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + i]]
+                                  )[min_xl:max_xl, :]
+                headers = segyfile.header[start_trace: start_trace + n_xlines]
+
+            for t, header in enumerate(headers, start_trace):
+                t_xl = t % len(segyfile.xlines)
+                t_il = t // len(segyfile.xlines)
+                t_store = (t_xl - min_xl) + (t_il - min_il) * n_xlines
+                for j, h in enumerate(headers_to_store):
+                    numpy_headers_arrays[j][t_store] = header[h]
+
         else:
-            headers, data = minimal_il_reader.read_line(min_il + plane_set_id * blockshape[0] + i)
+            # Repeat last plane across padding to give better compression accuracy
+            if minimal_il_reader is not None:
+                _, data = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
+            else:
+                data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + planes_to_read - 1]]
+                                  )[min_xl:max_xl, :]
 
-        for t, header in enumerate(headers, start_trace):
-            t_xl = t % len(segyfile.xlines)
-            t_il = t // len(segyfile.xlines)
-            t_store = (t_xl - min_xl) + (t_il - min_il) * n_xlines
-            for j, h in enumerate(headers_to_store):
-                numpy_headers_arrays[j][t_store] = header[h]
-
-    else:
-        # Repeat last plane across padding to give better compression accuracy
-        if minimal_il_reader is None:
-            data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + planes_to_read - 1]]
-                              )[min_xl:max_xl, :]
-        else:
-            _, data = minimal_il_reader.read_line(min_il + plane_set_id * blockshape[0] + planes_to_read - 1)
-
-    segy_buffer[i, 0:n_xlines, 0:trace_length] = data
-    # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
-    segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
-    segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
+        segy_buffer[i, 0:n_xlines, 0:trace_length] = data
+        # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
+        segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
+        segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
 
 
 def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
@@ -210,7 +210,6 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
             if minimal_il_reader.self_test() and n_ilines == len(segyfile.ilines) and n_xlines == len(segyfile.xlines):
                 print("MinimalInlineReader passed self-test")
             else:
-                minimal_il_reader = None
                 print("MinimalInlineReader failed self-test, using fallback")
 
         # Loop over groups of 4 inlines
@@ -225,17 +224,11 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
             else:
                 planes_to_read = blockshape[0]
 
-            t = [None for _ in range(blockshape[0])]
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
-            for i in range(blockshape[0]):
-                t[i] = Thread(target=io_thread_func, args=(i, blockshape, headers_to_store, max_xl, min_il, min_xl,
-                                                           n_xlines, numpy_headers_arrays, plane_set_id, planes_to_read,
-                                                           segy_buffer, segyfile, minimal_il_reader, trace_length))
-                t[i].daemon = True
-                t[i].start()
 
-            for i in range(blockshape[0]):
-                t[i].join()
+            io_thread_func(blockshape, headers_to_store, max_xl, min_il, min_xl,
+                           n_xlines, numpy_headers_arrays, plane_set_id, planes_to_read,
+                           segy_buffer, segyfile, minimal_il_reader, trace_length)
 
             if blockshape[0] == 4:
                 queue.put(segy_buffer)
