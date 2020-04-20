@@ -82,7 +82,7 @@ def show_choices():
                 bitrate.set("2")
                 outfile.set(infile.get().replace('.sgy', '_adv.sgz'))
             else:
-                outfile.set(infile.get().replace('.sgy', '_{}.sgz'.format(bitrate.get())))
+                outfile.set(infile.get().replace('.segy', '.sgy').replace('.sgy', '_{}.sgz'.format(bitrate.get())))
             update_action()
             infile_size_gb = get_infile_size_gb()
             outfile_size_gb = ((float(bitrate.get())/32.0)*infile_size_gb)
@@ -170,7 +170,7 @@ bitrates = [('4:1',"8"), ('8:1',"4"), ('16:1',"2"), ('32:1',"1"), ('64:1',"0.5")
 canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=ENERGY_8)
 canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-label = tk.Label(root, text='   seismic-zfp Dekstop Tool', anchor='w', font=('bold', 24), fg=WHITE, bg=ENERGY_RED, bd=5)
+label = tk.Label(root, text='   seismic-zfp Desktop Tool', anchor='w', font=('bold', 24), fg=WHITE, bg=ENERGY_RED, bd=5)
 label.place(relx=0.05, y=20, relwidth=0.9, height=40)
 
 license_button = tk.Button(label, text='License', command=get_license)
