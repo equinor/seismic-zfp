@@ -8,7 +8,7 @@ from threading import Thread
 from queue import Queue
 
 from .version import SeismicZfpVersion
-from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer
+from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer, InferredGeometry
 from .headers import get_headerword_infolist, get_unique_headerwords
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
 
@@ -36,24 +36,28 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
     buffer[0:4] = int_to_bytes(header_blocks)
     version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
 
-    with segyio.open(in_filename, mode='r', strict=True) as segyfile:
+    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
         buffer[4:8] = int_to_bytes(len(segyfile.samples))
-        n_xl = len(segyfile.xlines) if geom is None else len(geom.xlines)
+        n_xl = len(geom.xlines)
         buffer[8:12] = int_to_bytes(n_xl)
-        n_il = len(segyfile.ilines) if geom is None else len(geom.ilines)
+        n_il = len(geom.ilines)
         buffer[12:16] = int_to_bytes(n_il)
 
         # N.B. this format currently only supports integer number of ms as sampling frequency
         buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
-        min_xl = geom.min_xl if segyfile.unstructured else segyfile.xlines[0]
+        min_xl = np.int32(geom.min_xl) if segyfile.unstructured else segyfile.xlines[0]
         buffer[20:24] = np_float_to_bytes(min_xl)
-        min_il = geom.min_il if segyfile.unstructured else segyfile.ilines[0]
+        min_il = np.int32(geom.min_il) if segyfile.unstructured else segyfile.ilines[0]
         buffer[24:28] = np_float_to_bytes(min_il)
 
         buffer[28:32] = np_float_to_bytes(segyfile.samples[1] - segyfile.samples[0])
         if not segyfile.unstructured:
             buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
             buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
+        else:
+            # Assume il/xl steps of 1 for unstructured. Can probably do better than this...
+            buffer[32:36] = np_float_to_bytes(np.int32(1))
+            buffer[36:40] = np_float_to_bytes(np.int32(1))
 
         hw_info_list = get_headerword_infolist(segyfile)
 
@@ -190,19 +194,38 @@ def io_thread_func(blockshape, headers_to_store, geom, numpy_headers_arrays,
         segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
 
 
+def unstructured_io_thread_func(blockshape, headers_to_store, geom,
+                                numpy_headers_arrays, plane_set_id,
+                                segy_buffer, segyfile, trace_length):
+    for i in range(blockshape[0]):
+        for xl_id, xl_num in enumerate(geom.xlines):
+            index = (plane_set_id * blockshape[0] + i + geom.min_il, xl_num)
+            if index in geom.traces_ref:
+                trace_id = geom.traces_ref[index]
+                trace, header = segyfile.trace[trace_id], segyfile.header[trace_id]
+                segy_buffer[i, xl_id, 0:trace_length] = trace
+                t_store = xl_id + (plane_set_id * blockshape[0] + i - geom.min_il) * len(geom.xlines)
+                for k, h in enumerate(headers_to_store):
+                    numpy_headers_arrays[k][t_store] = header[h]
+
+
 def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom,
              reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
-    with segyio.open(in_filename, mode='r', strict=True) as segyfile:
+    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
 
-        n_ilines = len(segyfile.ilines) if geom is None else len(geom.ilines)
-        n_xlines = len(segyfile.xlines) if geom is None else len(geom.xlines)
+        n_ilines = len(geom.ilines)
+        n_xlines = len(geom.xlines)
         trace_length = len(segyfile.samples)
 
         padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
         minimal_il_reader = None
         if reduce_iops:
+            if isinstance(geom, InferredGeometry):
+                print("Cannot use MinimalInlineReader with unstructured SEG-Y")
+                raise RuntimeError("Chaos reigns within. Reflect, repent, and reboot. Order shall return.")
+
             minimal_il_reader = MinimalInlineReader(in_filename)
             if minimal_il_reader.self_test() and n_ilines == len(segyfile.ilines) and n_xlines == len(segyfile.xlines):
                 print("MinimalInlineReader passed self-test")
@@ -223,9 +246,14 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
 
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
 
-            io_thread_func(blockshape, headers_to_store, geom,
-                           numpy_headers_arrays, plane_set_id, planes_to_read,
-                           segy_buffer, segyfile, minimal_il_reader, trace_length)
+            if isinstance(geom, InferredGeometry):
+                unstructured_io_thread_func(blockshape, headers_to_store, geom,
+                                            numpy_headers_arrays, plane_set_id,
+                                            segy_buffer, segyfile, trace_length)
+            else:
+                io_thread_func(blockshape, headers_to_store, geom,
+                               numpy_headers_arrays, plane_set_id, planes_to_read,
+                               segy_buffer, segyfile, minimal_il_reader, trace_length)
 
             if blockshape[0] == 4:
                 queue.put(segy_buffer)
