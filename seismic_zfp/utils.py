@@ -12,6 +12,23 @@ class FileOffset(int):
         return int.__new__(cls, value)
 
 
+class Geometry:
+    def __init__(self, min_il, max_il, min_xl, max_xl):
+        self.ilines = range(min_il, max_il)
+        self.xlines = range(min_xl, max_xl)
+
+
+class InferredGeometry(Geometry):
+    def __init__(self, traces_ref):
+        self.traces_ref = traces_ref
+        il_ids = set([k[0] for k in traces_ref.keys()])
+        xl_ids = set([k[1] for k in traces_ref.keys()])
+        self.min_il, self.max_il, self.il_step = min(il_ids), max(il_ids), (max(il_ids) - min(il_ids)) / len(il_ids)
+        self.min_xl, self.max_xl, self.xl_step = min(xl_ids), max(xl_ids), (max(xl_ids) - min(xl_ids)) / len(xl_ids)
+        self.ilines = range(len(il_ids))
+        self.xlines = range(len(xl_ids))
+
+
 def pad(orig, multiple):
     if orig%multiple == 0:
         return orig
