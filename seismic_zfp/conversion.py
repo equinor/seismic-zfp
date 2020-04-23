@@ -72,6 +72,11 @@ class SegyConverter(object):
             - "InMemory" : Read whole SEG-Y cube into memory before compressing
             - "Stream" : Read 4 inlines at a time... compress, rinse, repeat
 
+        reduce_iops: bool
+            Flag to indicate whether compression should attempt to minimize the number
+            of iops required to read the input SEG-Y file by reading whole inlines including
+            headers in one go. Falls back to segyio if incorrect. Useful under Windows.
+
         Raises
         ------
 
