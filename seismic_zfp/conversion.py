@@ -1,5 +1,5 @@
 from __future__ import print_function
-from pyzfp import compress
+import zfpy
 import warnings
 import numpy as np
 import segyio
@@ -41,7 +41,7 @@ class SegyConverter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream"):
+    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream", reduce_iops=False):
         """General entrypoint for converting SEG-Y files to SGZ
 
         Parameters
@@ -72,6 +72,11 @@ class SegyConverter(object):
             - "InMemory" : Read whole SEG-Y cube into memory before compressing
             - "Stream" : Read 4 inlines at a time... compress, rinse, repeat
 
+        reduce_iops: bool
+            Flag to indicate whether compression should attempt to minimize the number
+            of iops required to read the input SEG-Y file by reading whole inlines including
+            headers in one go. Falls back to segyio if incorrect. Useful under Windows.
+
         Raises
         ------
 
@@ -87,7 +92,7 @@ class SegyConverter(object):
             self.convert_segy_inmem(bits_per_voxel, blockshape)
         elif method == "Stream":
             print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
-            self.convert_segy_stream(bits_per_voxel, blockshape)
+            self.convert_segy_stream(bits_per_voxel, blockshape, reduce_iops=reduce_iops)
         else:
             raise NotImplementedError("Invalid conversion method {}, try 'InMemory' or 'Stream'".format(method))
 
@@ -117,7 +122,7 @@ class SegyConverter(object):
         padded_shape = (pad(data.shape[0], 4), pad(data.shape[1], 4), pad(data.shape[2], 2048//bits_per_voxel))
         data_padded = np.zeros(padded_shape, dtype=np.float32)
         data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
-        compressed = compress(data_padded, rate=bits_per_voxel)
+        compressed = zfpy.compress_numpy(data_padded, rate=bits_per_voxel, write_header=False)
         t2 = time.time()
 
         numpy_headers_arrays = get_header_arrays(self.in_filename)
@@ -159,7 +164,7 @@ class SegyConverter(object):
                         slice = data_padded[i*blockshape[0] : (i+1)*blockshape[0],
                                             x*blockshape[1] : (x+1)*blockshape[1],
                                             z*blockshape[2] : (z+1)*blockshape[2]].copy()
-                        compressed_block = compress(slice, rate=bits_per_voxel)
+                        compressed_block = zfpy.compress_numpy(slice, rate=bits_per_voxel, write_header=False)
                         f.write(compressed_block)
             for header_array in numpy_headers_arrays:
                 f.write(header_array.tobytes())
@@ -167,7 +172,7 @@ class SegyConverter(object):
 
         print("Total conversion time: {}".format(t3-t0))
 
-    def convert_segy_stream(self, bits_per_voxel, blockshape):
+    def convert_segy_stream(self, bits_per_voxel, blockshape, reduce_iops=False):
         """Memory-efficient method of compressing SEG-Y file larger than machine memory.
         Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
@@ -192,11 +197,22 @@ class SegyConverter(object):
                 assert 0 <= self.min_xl < self.max_xl, "min_xl out of valid range"
                 assert 0 < self.max_xl <= len(segyfile.xlines), "max_xl out of valid range"
 
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                                                    headers_to_store, numpy_headers_arrays,
-                                                    self.min_il, self.max_il, self.min_xl, self.max_xl))
-        loop.close()
+        inline_set_bytes = blockshape[0]*(len(segyfile.xlines)*len(segyfile.samples))*4
+
+        if inline_set_bytes > virtual_memory().total // 2:
+            print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
+            print("Try using fewer inlines in the blockshape, or compressing a subcube")
+            raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
+
+        max_queue_length = min(16, (virtual_memory().total // 2) // inline_set_bytes)
+        print("VirtualMemory={}MB, InlineSet={}MB : Using queue of length {}".format(virtual_memory().total/(1024*1024),
+                                                                                     inline_set_bytes/(1024*1024),
+                                                                                     max_queue_length))
+
+        run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
+                            headers_to_store, numpy_headers_arrays,
+                            self.min_il, self.max_il, self.min_xl, self.max_xl,
+                            queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         with open(self.out_filename, 'ab') as f:
             for header_array in numpy_headers_arrays:

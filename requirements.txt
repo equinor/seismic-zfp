@@ -1,6 +1,7 @@
+numpy
 segyio
-pyzfp
 psutil
 pillow
 matplotlib
 Cython
+zfpy

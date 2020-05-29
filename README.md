@@ -14,8 +14,8 @@ Copying whole SEG-Y files uncompressed over networks is also wasteful.
 
 This library addresses both issues by implementing the [seismic-zfp (.SGZ) format](docs/file-specification.md).
 This format is based on [ZFP compression](https://computing.llnl.gov/projects/floating-point-compression)
-from [Peter Lindstrom's paper](https://www.researchgate.net/publication/264417607_Fixed-Rate_Compressed_Floating-Point_Arrays),
-using [the Python wrapper](https://github.com/navjotk/pyzfp) developed by Navjot Kukreja.
+from [Peter Lindstrom's paper](https://www.researchgate.net/publication/264417607_Fixed-Rate_Compressed_Floating-Point_Arrays)
+using the official Python bindings, distributed as zfpy.
 
 
 ZFP compression enables smoothly varying d-dimensional data in 4<sup>d</sup> subvolumes 
@@ -91,9 +91,6 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
     binary_file_header = sgzfile.bin
     text_file_header = sgzfile.text[0]
 ```
-
-## Installation Troubleshooting ##
-- Check your machine has these packages available: python3-devel, git, gcc, gcc-c++
 
 ## Contributing ##
 Contributions welcomed, whether you are reporting or fixing a bug, implementing or requesting a feature. Either make a github issue or fork the project and make a pull request. Please extend the unit tests with relevant passing/failing tests, run these as: `python -m pytest`
