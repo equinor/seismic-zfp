@@ -8,5 +8,7 @@ tests/__pycache__/*
 build/*
 dist/*
 seismic_zfp.egg-info/*
-
-
+gui/build/*
+gui/dist/*
+gui/*.spec
+gui/__pycache__/*
