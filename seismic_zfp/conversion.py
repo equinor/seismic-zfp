@@ -7,7 +7,7 @@ import asyncio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, FileOffset, bytes_to_int
+from .utils import pad, define_blockshape, FileOffset, bytes_to_int, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
 from .conversion_utils import make_header, get_header_arrays, run_conversion_loop
 from .read import SgzReader
@@ -17,7 +17,7 @@ from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 class SegyConverter(object):
     """Writes SEG-Y files from SGZ files"""
 
-    def __init__(self, in_filename, min_il=0, max_il=None, min_xl=0, max_xl=None):
+    def __init__(self, in_filename, min_il=None, max_il=None, min_xl=None, max_xl=None):
         """
         Parameters
         ----------
@@ -27,13 +27,13 @@ class SegyConverter(object):
 
         min_il, max_il, min_xl, max_xl: int
             Cropping parameters to apply to input seismic cube
+            Refers to IL/XL *ordinals* rather than numbers
         """
         self.in_filename = in_filename
         self.out_filename = None
-        self.min_il = min_il
-        self.max_il = max_il
-        self.min_xl = min_xl
-        self.max_xl = max_xl
+        self.geom = None
+        if all([min_il, max_il, min_xl, max_xl]):
+            self.geom = Geometry(min_il, max_il, min_xl, max_xl)
 
     def __enter__(self):
         return self
@@ -68,8 +68,8 @@ class SegyConverter(object):
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
 
         method: str
-            Flag to indicate method for reading SEG-Y
-            - "InMemory" : Read whole SEG-Y cube into memory before compressing
+            DEPRECATED: Flag to indicate method for reading SEG-Y
+            - "InMemory" : Read whole SEG-Y cube into memory before compressing - Removed in v0.0.12
             - "Stream" : Read 4 inlines at a time... compress, rinse, repeat
 
         reduce_iops: bool
@@ -87,117 +87,31 @@ class SegyConverter(object):
         self.out_filename = out_filename
         bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
 
-        if method == "InMemory":
-            print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename, blockshape))
-            self.convert_segy_inmem(bits_per_voxel, blockshape)
-        elif method == "Stream":
+        if method == "Stream":
             print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
             self.convert_segy_stream(bits_per_voxel, blockshape, reduce_iops=reduce_iops)
         else:
-            raise NotImplementedError("Invalid conversion method {}, try 'InMemory' or 'Stream'".format(method))
-
-    def convert_segy_inmem(self, bits_per_voxel, blockshape):
-        with segyio.open(self.in_filename) as segyfile:
-            cube_bytes = len(segyfile.samples) * len(segyfile.xlines) * len(segyfile.ilines) * 4
-
-        if cube_bytes > virtual_memory().total:
-            print("SEG-Y is {} bytes, machine memory is {} bytes".format(cube_bytes, virtual_memory().total))
-            print("Try using method = 'Stream' instead")
-            raise RuntimeError("Out of memory. We wish to hold the whole sky, But we never will.")
-
-        if (blockshape[0] == 4) and (blockshape[1] == 4):
-            self.convert_segy_inmem_default(bits_per_voxel, blockshape)
-        else:
-            self.convert_segy_inmem_advanced(bits_per_voxel, blockshape)
-
-    def convert_segy_inmem_default(self, bits_per_voxel, blockshape):
-        """Reads all data from input file to memory, compresses it and writes as .sgz file to disk,
-        using ZFP's default compression unit order"""
-        header = make_header(self.in_filename, bits_per_voxel, blockshape)
-
-        t0 = time.time()
-        data = segyio.tools.cube(self.in_filename)
-        t1 = time.time()
-
-        padded_shape = (pad(data.shape[0], 4), pad(data.shape[1], 4), pad(data.shape[2], 2048//bits_per_voxel))
-        data_padded = np.zeros(padded_shape, dtype=np.float32)
-        data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
-        compressed = zfpy.compress_numpy(data_padded, rate=bits_per_voxel, write_header=False)
-        t2 = time.time()
-
-        numpy_headers_arrays = get_header_arrays(self.in_filename)
-
-        with open(self.out_filename, 'wb') as f:
-            f.write(header)
-            f.write(compressed)
-            for header_array in numpy_headers_arrays:
-                f.write(header_array.tobytes())
-
-        t3 = time.time()
-
-        print("Total conversion time: {}, of which read={}, compress={}, write={}".format(t3-t0, t1-t0, t2-t1, t3-t2))
-
-    def convert_segy_inmem_advanced(self, bits_per_voxel, blockshape):
-        """Reads all data from input file to memory, compresses it and writes as .sgz file to disk,
-        using custom compression unit order"""
-        header = make_header(self.in_filename, bits_per_voxel, blockshape)
-
-        t0 = time.time()
-        data = segyio.tools.cube(self.in_filename)
-
-        bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
-
-        padded_shape = (pad(data.shape[0], blockshape[0]),
-                        pad(data.shape[1], blockshape[1]),
-                        pad(data.shape[2], blockshape[2]))
-        data_padded = np.zeros(padded_shape, dtype=np.float32)
-
-        data_padded[0:data.shape[0], 0:data.shape[1], 0:data.shape[2]] = data
-
-        numpy_headers_arrays = get_header_arrays(self.in_filename)
-
-        with open(self.out_filename, 'wb') as f:
-            f.write(header)
-            for i in range(data_padded.shape[0] // blockshape[0]):
-                for x in range(data_padded.shape[1] // blockshape[1]):
-                    for z in range(data_padded.shape[2] // blockshape[2]):
-                        slice = data_padded[i*blockshape[0] : (i+1)*blockshape[0],
-                                            x*blockshape[1] : (x+1)*blockshape[1],
-                                            z*blockshape[2] : (z+1)*blockshape[2]].copy()
-                        compressed_block = zfpy.compress_numpy(slice, rate=bits_per_voxel, write_header=False)
-                        f.write(compressed_block)
-            for header_array in numpy_headers_arrays:
-                f.write(header_array.tobytes())
-        t3 = time.time()
-
-        print("Total conversion time: {}".format(t3-t0))
+            raise NotImplementedError("Invalid conversion method {}: only 'Stream' is supported".format(method))
 
     def convert_segy_stream(self, bits_per_voxel, blockshape, reduce_iops=False):
         """Memory-efficient method of compressing SEG-Y file larger than machine memory.
         Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
 
-        with segyio.open(self.in_filename) as segyfile:
-            if self.max_xl is None and self.max_il is None:
-                n_traces = segyfile.tracecount
-            elif self.max_xl is None:
-                n_traces = (self.max_il - self.min_il) * len(segyfile.xlines)
-            elif self.max_il is None:
-                n_traces = (self.max_xl - self.min_xl) * len(segyfile.ilines)
-            else:
-                n_traces = (self.max_xl - self.min_xl) * (self.max_il - self.min_il)
+        with segyio.open(self.in_filename, mode='r', strict=False) as segyfile:
+
+            if self.geom is None:
+                if segyfile.unstructured:
+                    print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
+                    traces_ref = {(h[189], h[193]): i for i, h in enumerate(segyfile.header)}
+                    self.geom = InferredGeometry(traces_ref)
+                else:
+                    self.geom = Geometry(0, len(segyfile.ilines), 0, len(segyfile.xlines))
+            n_traces = len(self.geom.ilines) * len(self.geom.xlines)
+            inline_set_bytes = blockshape[0] * (len(self.geom.xlines) * len(segyfile.samples)) * 4
 
             headers_to_store = get_unique_headerwords(segyfile)
             numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
-
-            if self.max_il is not None:
-                assert 0 <= self.min_il < self.max_il, "min_il out of valid range"
-                assert 0 < self.max_il <= len(segyfile.ilines), "max_il out of valid range"
-            if self.max_xl is not None:
-                assert 0 <= self.min_xl < self.max_xl, "min_xl out of valid range"
-                assert 0 < self.max_xl <= len(segyfile.xlines), "max_xl out of valid range"
-
-        inline_set_bytes = blockshape[0]*(len(segyfile.xlines)*len(segyfile.samples))*4
 
         if inline_set_bytes > virtual_memory().total // 2:
             print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
@@ -210,8 +124,7 @@ class SegyConverter(object):
                                                                                      max_queue_length))
 
         run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                            headers_to_store, numpy_headers_arrays,
-                            self.min_il, self.max_il, self.min_xl, self.max_xl,
+                            headers_to_store, numpy_headers_arrays, self.geom,
                             queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         with open(self.out_filename, 'ab') as f:

@@ -44,7 +44,7 @@ Byte encoding is little-endian.
 |56-59 |uint32 |Number of 4K disk blocks for data
 |60-63 |uint32 |Number of bytes for each header array
 |64-67 |uint32 |Number of header arrays
-|68-71 |---     | --- Unused ---
+|68-71 |uint32 |Number of traces (unstructured files)
 |72-75 |uint32 |Encoded version number
 |76-979 |---  | --- Unused ---
 |980-2047 |** |Default trace header values

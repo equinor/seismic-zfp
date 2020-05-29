@@ -8,12 +8,12 @@ from threading import Thread
 from queue import Queue
 
 from .version import SeismicZfpVersion
-from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer
+from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer, InferredGeometry
 from .headers import get_headerword_infolist, get_unique_headerwords
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
 
 
-def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, max_il=None, min_xl=0, max_xl=None):
+def make_header(in_filename, bits_per_voxel, blockshape, geom):
     """Generate header for SGZ file
 
     Returns
@@ -36,21 +36,28 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, ma
     buffer[0:4] = int_to_bytes(header_blocks)
     version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
 
-    with segyio.open(in_filename) as segyfile:
+    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
         buffer[4:8] = int_to_bytes(len(segyfile.samples))
-        n_xl = len(segyfile.xlines) if max_xl is None else max_xl - min_xl
+        n_xl = len(geom.xlines)
         buffer[8:12] = int_to_bytes(n_xl)
-        n_il = len(segyfile.ilines) if max_il is None else max_il - min_il
+        n_il = len(geom.ilines)
         buffer[12:16] = int_to_bytes(n_il)
 
         # N.B. this format currently only supports integer number of ms as sampling frequency
         buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
-        buffer[20:24] = np_float_to_bytes(segyfile.xlines[min_xl])
-        buffer[24:28] = np_float_to_bytes(segyfile.ilines[min_il])
+        min_xl = np.int32(geom.min_xl) if segyfile.unstructured else segyfile.xlines[0]
+        buffer[20:24] = np_float_to_bytes(min_xl)
+        min_il = np.int32(geom.min_il) if segyfile.unstructured else segyfile.ilines[0]
+        buffer[24:28] = np_float_to_bytes(min_il)
 
         buffer[28:32] = np_float_to_bytes(segyfile.samples[1] - segyfile.samples[0])
-        buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
-        buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
+        if not segyfile.unstructured:
+            buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
+            buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
+        else:
+            # Assume il/xl steps of 1 for unstructured. Can probably do better than this...
+            buffer[32:36] = np_float_to_bytes(np.int32(1))
+            buffer[36:40] = np_float_to_bytes(np.int32(1))
 
         hw_info_list = get_headerword_infolist(segyfile)
 
@@ -73,13 +80,16 @@ def make_header(in_filename, bits_per_voxel, blockshape=(4, 4, -1), min_il=0, ma
     buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
-    header_entry_length_bytes = (len(segyfile.xlines) * len(segyfile.ilines) * 32) // 8
+    if geom is None:
+        header_entry_length_bytes = (len(segyfile.xlines) * len(segyfile.ilines) * 32) // 8
+    else:
+        header_entry_length_bytes = (len(geom.xlines) * len(geom.ilines) * 32) // 8
     buffer[60:64] = int_to_bytes(header_entry_length_bytes)
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
     buffer[64:68] = int_to_bytes(n_header_arrays)
-
+    buffer[68:72] = int_to_bytes(segyfile.tracecount)
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
@@ -151,22 +161,22 @@ class MinimalInlineReader:
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
 
-def io_thread_func(blockshape, headers_to_store, max_xl, min_il, min_xl, n_xlines, numpy_headers_arrays,
+def io_thread_func(blockshape, headers_to_store, geom, numpy_headers_arrays,
                    plane_set_id, planes_to_read, segy_buffer, segyfile, minimal_il_reader, trace_length):
     for i in range(blockshape[0]):
-        start_trace = (plane_set_id * blockshape[0] + i) * len(segyfile.xlines) + min_xl
+        start_trace = (plane_set_id * blockshape[0] + i) * len(segyfile.xlines) + geom.xlines[0]
         if i < planes_to_read:
             if minimal_il_reader is not None:
                 headers, data = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
             else:
-                data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + i]]
-                                  )[min_xl:max_xl, :]
-                headers = segyfile.header[start_trace: start_trace + n_xlines]
+                data = np.asarray(segyfile.iline[segyfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + i]]
+                                  )[geom.xlines[0]:geom.xlines[-1]+1, :]
+                headers = segyfile.header[start_trace: start_trace + len(geom.xlines)]
 
             for t, header in enumerate(headers, start_trace):
                 t_xl = t % len(segyfile.xlines)
                 t_il = t // len(segyfile.xlines)
-                t_store = (t_xl - min_xl) + (t_il - min_il) * n_xlines
+                t_store = (t_xl - geom.xlines[0]) + (t_il - geom.ilines[0]) * len(geom.xlines)
                 for j, h in enumerate(headers_to_store):
                     numpy_headers_arrays[j][t_store] = header[h]
 
@@ -175,37 +185,47 @@ def io_thread_func(blockshape, headers_to_store, max_xl, min_il, min_xl, n_xline
             if minimal_il_reader is not None:
                 _, data = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
             else:
-                data = np.asarray(segyfile.iline[segyfile.ilines[min_il + plane_set_id * blockshape[0] + planes_to_read - 1]]
-                                  )[min_xl:max_xl, :]
+                data = np.asarray(segyfile.iline[segyfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1]]
+                                  )[geom.xlines[0]:geom.xlines[-1]+1, :]
 
-        segy_buffer[i, 0:n_xlines, 0:trace_length] = data
+        segy_buffer[i, 0:len(geom.xlines), 0:trace_length] = data
         # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
-        segy_buffer[i, n_xlines:, 0:trace_length] = data[-1, :]
+        segy_buffer[i, len(geom.xlines):, 0:trace_length] = data[-1, :]
         segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
 
 
-def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
-                  min_il, max_il, min_xl, max_xl, reduce_iops=True, verbose=True):
+def unstructured_io_thread_func(blockshape, headers_to_store, geom,
+                                numpy_headers_arrays, plane_set_id,
+                                segy_buffer, segyfile, trace_length):
+    for i in range(blockshape[0]):
+        for xl_id, xl_num in enumerate(geom.xlines):
+            index = (plane_set_id * blockshape[0] + i + geom.min_il, xl_num)
+            if index in geom.traces_ref:
+                trace_id = geom.traces_ref[index]
+                trace, header = segyfile.trace[trace_id], segyfile.header[trace_id]
+                segy_buffer[i, xl_id, 0:trace_length] = trace
+                t_store = xl_id + (plane_set_id * blockshape[0] + i - geom.min_il) * len(geom.xlines)
+                for k, h in enumerate(headers_to_store):
+                    numpy_headers_arrays[k][t_store] = header[h]
+
+
+def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom,
+             reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
-    with segyio.open(in_filename) as segyfile:
+    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
 
-        test_slice = segyfile.iline[segyfile.ilines[0]]
-        trace_length = test_slice.shape[1]
-        if max_xl is None:
-            n_xlines = len(segyfile.xlines)
-            max_xl = n_xlines
-        else:
-            n_xlines = max_xl - min_xl
-
-        if max_il is None:
-            n_ilines = len(segyfile.ilines)
-        else:
-            n_ilines = max_il - min_il
+        n_ilines = len(geom.ilines)
+        n_xlines = len(geom.xlines)
+        trace_length = len(segyfile.samples)
 
         padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
         minimal_il_reader = None
         if reduce_iops:
+            if isinstance(geom, InferredGeometry):
+                print("Cannot use MinimalInlineReader with unstructured SEG-Y")
+                raise RuntimeError("Chaos reigns within. Reflect, repent, and reboot. Order shall return.")
+
             minimal_il_reader = MinimalInlineReader(in_filename)
             if minimal_il_reader.self_test() and n_ilines == len(segyfile.ilines) and n_xlines == len(segyfile.xlines):
                 print("MinimalInlineReader passed self-test")
@@ -226,9 +246,14 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
 
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
 
-            io_thread_func(blockshape, headers_to_store, max_xl, min_il, min_xl,
-                           n_xlines, numpy_headers_arrays, plane_set_id, planes_to_read,
-                           segy_buffer, segyfile, minimal_il_reader, trace_length)
+            if isinstance(geom, InferredGeometry):
+                unstructured_io_thread_func(blockshape, headers_to_store, geom,
+                                            numpy_headers_arrays, plane_set_id,
+                                            segy_buffer, segyfile, trace_length)
+            else:
+                io_thread_func(blockshape, headers_to_store, geom,
+                               numpy_headers_arrays, plane_set_id, planes_to_read,
+                               segy_buffer, segyfile, minimal_il_reader, trace_length)
 
             if blockshape[0] == 4:
                 queue.put(segy_buffer)
@@ -252,8 +277,8 @@ def consumer(queue, header, out_filename, bits_per_voxel):
 
 
 def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
-                              numpy_headers_arrays, min_il, max_il, min_xl, max_xl, queuesize=16, reduce_iops=False):
-    header = make_header(in_filename, bits_per_voxel, blockshape, min_il, max_il, min_xl, max_xl)
+                              numpy_headers_arrays, geom, queuesize=16, reduce_iops=False):
+    header = make_header(in_filename, bits_per_voxel, blockshape, geom)
 
     # Maxsize can be reduced for machines with little memory
     # ... or for files which are so big they might be very useful.
@@ -263,7 +288,6 @@ def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, h
     t.daemon = True
     t.start()
     # run the producer and wait for completion
-    producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays,
-             min_il, max_il, min_xl, max_xl, reduce_iops=reduce_iops)
+    producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom, reduce_iops=reduce_iops)
     # wait until the consumer has processed all items
     queue.join()
