@@ -4,6 +4,7 @@ except ImportError:
     from functools32 import lru_cache
 import numpy as np
 import zfpy
+from .utils import get_correlated_diagonal_length, get_anticorrelated_diagonal_length
 
 
 def decompress(buffer, shape, dytype, rate):
@@ -110,16 +111,17 @@ class SgzLoader(object):
             xl_first_chunk_offset = (cd // 4) * self.chunk_bytes * self.shape_pad[1] // 4
 
         xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] + 4) // 4
+        cd_length = get_correlated_diagonal_length(cd, self.shape_pad[0], self.shape_pad[1])
 
         # Allocate memory for compressed data
-        buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
+        buffer = bytearray(self.chunk_bytes * cd_length // 4)
 
-        for chunk_num in range(self.shape_pad[0] // 4):
+        for chunk_num in range(cd_length // 4):
             part = self.get_compressed_bytes(xl_first_chunk_offset + chunk_num * xl_chunk_increment, self.chunk_bytes)
             buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = part
 
         # Specify dtype otherwise pyzfp gets upset.
-        return decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
+        return decompress(buffer, (cd_length, self.blockshape[1], self.shape_pad[2]),
                                   np.dtype('float32'), rate=self.rate)
 
     @lru_cache(maxsize=2)
@@ -130,16 +132,17 @@ class SgzLoader(object):
             xl_first_chunk_offset = (((ad - self.shape_pad[1]) // 4 + 2) * (self.shape_pad[1] // 4) - 1) * self.chunk_bytes
 
         xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] - 4) // 4
+        ad_length = get_anticorrelated_diagonal_length(ad+3, self.shape_pad[0], self.shape_pad[1])
 
         # Allocate memory for compressed data
-        buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
+        buffer = bytearray(self.chunk_bytes * ad_length // 4)
 
-        for chunk_num in range(self.shape_pad[0] // 4):
+        for chunk_num in range(ad_length // 4):
             part = self.get_compressed_bytes(xl_first_chunk_offset + chunk_num * xl_chunk_increment, self.chunk_bytes)
             buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = part
 
         # Specify dtype otherwise pyzfp gets upset.
-        return decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]),
+        return decompress(buffer, (ad_length, self.blockshape[1], self.shape_pad[2]),
                                   np.dtype('float32'), rate=self.rate)
 
     @lru_cache(maxsize=1)
