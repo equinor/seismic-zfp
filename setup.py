@@ -1,17 +1,21 @@
 import setuptools
+import re
 
 
-def read(filename):
-    with open(filename) as f:
-        return f.read()
+def get_long_description():
+    with open('README.md') as f:
+        raw_readme = f.read()
+    base_repo = 'https://github.com/equinor/seismic-zfp/tree/'
+    with open('.git/refs/heads/master') as f:
+        commit = f.read().rstrip()
+    substituted_readme = re.sub('\\]\\((?!https)', '](' + base_repo + commit + '/', raw_readme)
+    return substituted_readme
 
-
-long_description = read('README.md')
 
 setuptools.setup(name='seismic-zfp',
                  author='equinor',
                  description='Compress and decompress seismic data',
-                 long_description=long_description,
+                 long_description=get_long_description(),
                  long_description_content_type='text/markdown',
                  url='https://github.com/equinor/seismic-zfp',
                  license='LGPL-3.0',
