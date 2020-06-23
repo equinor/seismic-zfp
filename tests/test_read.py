@@ -176,3 +176,6 @@ def test_index_errors():
 
     with pytest.raises(IndexError):
         reader.read_anticorrelated_diagonal(9)
+
+    with pytest.raises(IndexError):
+        reader.read_subvolume(0, 10, 0, 10, 0, 100)

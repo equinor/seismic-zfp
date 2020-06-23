@@ -218,7 +218,7 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
-        if il_id < 0 or il_id >= self.n_ilines:
+        if not 0 <= il_id < self.n_ilines:
             raise IndexError("Index {} is out of range ({}, {})".format(il_id, 0, self.n_ilines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_il_set(4 * (il_id // 4))
@@ -240,7 +240,7 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
-        if xl_id < 0 or xl_id >= self.n_xlines:
+        if not 0 <= xl_id < self.n_xlines:
             raise IndexError("Index {} is out of range ({}, {})".format(xl_id, 0, self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_xl_set(4 * (xl_id // 4))
@@ -262,7 +262,7 @@ class SgzReader(object):
         zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
             The specified zslice (time or depth, depending on file contents), decompressed
         """
-        if zslice_id < 0 or zslice_id >= self.n_samples:
+        if not 0 <= zslice_id < self.n_samples:
             raise IndexError("Index {} is out of range ({}, {})".format(zslice_id, 0, self.n_samples - 1))
         blocks_per_dim = tuple(dim // size for dim, size in zip(self.shape_pad, self.blockshape))
         zslice_first_block_offset = zslice_id // self.blockshape[2]
@@ -294,7 +294,7 @@ class SgzReader(object):
         cd_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
             The specified cd_slice, decompressed.
         """
-        if cd_id <= -self.n_xlines or cd_id >= self.n_ilines:
+        if not -self.n_xlines < cd_id < self.n_ilines:
             raise IndexError("Index {} is out of range ({}, {})".format(cd_id, -self.n_xlines, self.n_ilines))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
@@ -335,7 +335,7 @@ class SgzReader(object):
         ad_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
             The specified ad_slice, decompressed.
         """
-        if ad_id < 0 or ad_id >= self.n_ilines + self.n_xlines - 1:
+        if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
             raise IndexError("Index {} is out of range ({}, {})".format(ad_id, 0, self.n_ilines + self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
@@ -368,7 +368,7 @@ class SgzReader(object):
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
 
-    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
+    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
         """Reads a sub-volume from SGZ file
 
         Parameters
@@ -394,6 +394,22 @@ class SgzReader(object):
         subvolume : numpy.ndarray of float32, shape (max_il - min_il, max_xl - min_xl, max_z - min_z)
             The specified subvolume, decompressed
         """
+        upper_il = self.shape_pad[0] if access_padding else self.n_ilines
+        upper_xl = self.shape_pad[1] if access_padding else self.n_xlines
+        upper_z = self.shape_pad[2] if access_padding else self.n_samples
+
+        if not (0 <= min_il < upper_il and 0 < max_il <= upper_il and max_il > min_il):
+            raise IndexError(
+                "{}-{} is out of range ({}, {})".format(min_il, max_il, 0, self.n_ilines))
+
+        if not (0 <= min_xl < upper_xl and 0 < max_xl <= upper_xl and max_xl > min_xl):
+            raise IndexError(
+                "{}-{} is out of range ({}, {})".format(min_xl, max_xl, 0, self.n_xlines))
+
+        if not (0 <= min_z < upper_z and 0 < max_z <= upper_z and max_z > min_z):
+            raise IndexError(
+                "{}-{} is out of range ({}, {})".format(min_z, max_z, 0, self.n_samples))
+
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_chunk_range(max_il, max_xl, max_z, min_il, min_xl, min_z)
 
@@ -453,7 +469,7 @@ class SgzReader(object):
         assert ref_xl % self.blockshape[1] == 0
         return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
                                    ref_xl, ref_xl + self.blockshape[1],
-                                   0, self.n_samples)
+                                   0, self.n_samples, access_padding=True)
 
     def gen_trace_header(self, index):
         header = self.segy_traceheader_template.copy()
