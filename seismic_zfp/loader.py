@@ -132,7 +132,7 @@ class SgzLoader(object):
             xl_first_chunk_offset = (((ad - self.shape_pad[1]) // 4 + 2) * (self.shape_pad[1] // 4) - 1) * self.chunk_bytes
 
         xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] - 4) // 4
-        ad_length = get_anticorrelated_diagonal_length(ad, self.shape_pad[0], self.shape_pad[1])
+        ad_length = get_anticorrelated_diagonal_length(ad+3, self.shape_pad[0], self.shape_pad[1])
 
         # Allocate memory for compressed data
         buffer = bytearray(self.chunk_bytes * ad_length // 4)
