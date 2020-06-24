@@ -1,5 +1,7 @@
 from __future__ import division
 import os
+import platform
+import random
 try:
     from functools import lru_cache
 except ImportError:
@@ -123,7 +125,10 @@ class SgzReader(object):
 
     def open_sgz_file(self):
         if not os.path.exists(self.filename):
-            raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
+            msgs = ["Rather than a beep  Or a rude error message  These words: 'File not found.'",
+                    "A file that big?  It might be very useful.  But now it is gone.",
+                    "Three things are certain:  Death, taxes, and lost data.  Guess which has occurred."]
+            raise FileNotFoundError(random.choice(msgs))
         return open(self.filename, 'rb')
 
     def close_sgz_file(self):
@@ -423,9 +428,9 @@ class SgzReader(object):
             #  - blockshape[0] == blockshape[1] == 4
             decompressed = self.loader.read_unshuffle_and_decompress_chunk_range(max_il, max_xl, max_z, min_il, min_xl, min_z)
 
-            return decompressed[min_il%self.blockshape[0]:(min_il%self.blockshape[0])+max_il-min_il,
-                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
-                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
+            return decompressed[min_il % self.blockshape[0]:(min_il % self.blockshape[0])+max_il-min_il,
+                                min_xl % self.blockshape[1]:(min_xl % self.blockshape[1])+max_xl-min_xl,
+                                min_z % self.blockshape[2]:(min_z % self.blockshape[2])+max_z-min_z]
 
     def read_volume(self):
         """Reads the whole volume from SGZ file
@@ -452,6 +457,11 @@ class SgzReader(object):
         trace : numpy.ndarray of float32, shape (n_samples)
             A single trace, decompressed
         """
+        if not 0 <= index < self.n_ilines * self.n_xlines:
+            if platform.system() == 'Windows':
+                print('Yesterday it worked, Today it is not working, Windows is like that')
+            raise IndexError("Index {} is out of range ({}, {})".format(index, 0, self.n_ilines * self.n_xlines))
+
         il, xl = index // self.n_xlines, index % self.n_xlines
         min_il = self.blockshape[0] * (il // self.blockshape[0])
         min_xl = self.blockshape[1] * (xl // self.blockshape[1])
@@ -472,6 +482,9 @@ class SgzReader(object):
                                    0, self.n_samples, access_padding=True)
 
     def gen_trace_header(self, index):
+        if not 0 <= index < self.n_ilines * self.n_xlines:
+            raise IndexError("Index {} is out of range ({}, {})".format(index, 0, self.n_ilines * self.n_xlines))
+
         header = self.segy_traceheader_template.copy()
         for k, v in header.items():
             if isinstance(v, FileOffset):
