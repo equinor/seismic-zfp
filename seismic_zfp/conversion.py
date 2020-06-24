@@ -6,7 +6,7 @@ import segyio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, FileOffset, bytes_to_int, Geometry, InferredGeometry
+from .utils import pad, define_blockshape, bytes_to_int, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
@@ -28,6 +28,7 @@ class SegyConverter(object):
             Cropping parameters to apply to input seismic cube
             Refers to IL/XL *ordinals* rather than numbers
         """
+        # Quia Ego Sic Dico
         self.in_filename = in_filename
         self.out_filename = None
         self.geom = None
@@ -38,6 +39,7 @@ class SegyConverter(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # Non Timetus Messor
         pass
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream", reduce_iops=False):

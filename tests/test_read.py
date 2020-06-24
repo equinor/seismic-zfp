@@ -145,6 +145,7 @@ def test_read_subvolume():
 
 
 def test_index_errors():
+    # Quis custodiet custard?
     reader = SgzReader(SGZ_FILE_4)
 
     with pytest.raises(IndexError):
