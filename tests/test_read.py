@@ -145,6 +145,7 @@ def test_read_subvolume():
 
 
 def test_index_errors():
+    # Quis custodiet custard?
     reader = SgzReader(SGZ_FILE_4)
 
     with pytest.raises(IndexError):
@@ -176,3 +177,23 @@ def test_index_errors():
 
     with pytest.raises(IndexError):
         reader.read_anticorrelated_diagonal(9)
+
+    with pytest.raises(IndexError):
+        reader.read_subvolume(0, 10, 0, 10, 0, 100)
+
+    with pytest.raises(IndexError):
+        reader.get_trace(-1)
+
+    with pytest.raises(IndexError):
+        reader.get_trace(25)
+
+    with pytest.raises(IndexError):
+        reader.gen_trace_header(-1)
+
+    with pytest.raises(IndexError):
+        reader.gen_trace_header(25)
+
+
+def test_filenotfound_errors():
+    with pytest.raises(FileNotFoundError):
+        SgzReader('test_data/this_file_does_not_exist')

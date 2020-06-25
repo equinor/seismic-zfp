@@ -14,6 +14,10 @@ before_install:
   - pip install -U pytest
 
 install:
+  # Enable setuptools to access git commit hash in order to point PyPI link to correct version's docs.
+  - mkdir -p .git/refs/heads
+  - echo $TRAVIS_COMMIT > .git/refs/heads/master
+
   - pip install ".[test]"
 
 script: pytest

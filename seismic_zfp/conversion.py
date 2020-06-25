@@ -1,15 +1,14 @@
 from __future__ import print_function
-import zfpy
+import os
 import warnings
 import numpy as np
 import segyio
-import asyncio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, FileOffset, bytes_to_int, Geometry, InferredGeometry
+from .utils import pad, define_blockshape, bytes_to_int, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
-from .conversion_utils import make_header, get_header_arrays, run_conversion_loop
+from .conversion_utils import run_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
@@ -29,6 +28,7 @@ class SegyConverter(object):
             Cropping parameters to apply to input seismic cube
             Refers to IL/XL *ordinals* rather than numbers
         """
+        # Quia Ego Sic Dico
         self.in_filename = in_filename
         self.out_filename = None
         self.geom = None
@@ -39,6 +39,7 @@ class SegyConverter(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # Non Timetus Messor
         pass
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream", reduce_iops=False):
@@ -98,6 +99,10 @@ class SegyConverter(object):
         Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
 
+        if not os.path.exists(self.in_filename):
+            msg = "With searching comes loss,  and the presence of absence:  'My Segy' not found."
+            raise FileNotFoundError(msg)
+
         with segyio.open(self.in_filename, mode='r', strict=False) as segyfile:
 
             if self.geom is None:
@@ -150,7 +155,7 @@ class SgzConverter(SgzReader):
         spec.ilines = self.ilines
         spec.sorting = 2
 
-        # seimcic-sfp stores the binary header from the source SEG-Y file.
+        # seimcic-zfp stores the binary header from the source SEG-Y file.
         # In case someone forgot to do this, give them IEEE
         data_sample_format_code = bytes_to_int(
             self.headerbytes[DISK_BLOCK_BYTES+3225: DISK_BLOCK_BYTES+3227])

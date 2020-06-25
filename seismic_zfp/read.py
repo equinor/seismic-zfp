@@ -1,5 +1,7 @@
 from __future__ import division
 import os
+import platform
+import random
 try:
     from functools import lru_cache
 except ImportError:
@@ -28,8 +30,32 @@ class SgzReader(object):
     read_zslice(zslice_id)
         Decompresses and returns one zslice from SGZ file as 2D numpy array
 
+    read_correlated_diagonal(cd_id)
+        Decompresses and returns one diagonal IL ~ XL from SGZ file as 2D numpy array
+
+    read_anticorrelated_diagonal(ad_id)
+        Decompresses and returns one diagonal IL ~ -XL from SGZ file as 2D numpy array
+
     read_subvolume(min_il, max_il, min_xl, max_xl, min_z, max_z)
         Decompresses and returns an arbitrary sub-volume from SGZ file as 3D numpy array
+
+    read_volume(min_il, max_il, min_xl, max_xl, min_z, max_z)
+        Decompresses and returns full cube from SGZ file as 3D numpy array
+
+    get_trace(index)
+        Decompress and return a single trace from SGZ file as 1D numpy array
+
+    gen_trace_header(index)
+        Create and return dictionary of headerword-value pairs for specified trace
+
+    get_file_binary_header
+        Returns dictionary of headerword-value pairs from SEG-Y binary file header
+
+    get_file_text_header
+        Returns SEG-Y textual file header
+
+    get_file_version
+        Returns version of seismic-zfp library which wrote the SGZ file
     """
     def __init__(self, file, filetype_checking=True, preload=False):
         """
@@ -65,13 +91,13 @@ class SgzReader(object):
 
         # Read useful info out of the SGZ header
         self.file_version = self.get_file_version()
-        self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self.parse_dimensions()
-        self.zslices, self.xlines, self.ilines = self.parse_coordinates()
+        self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self._parse_dimensions()
+        self.zslices, self.xlines, self.ilines = self._parse_coordinates()
         self.tracecount = len(self.ilines) * len(self.xlines)
-        self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self.parse_data_sizes()
+        self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
-        self.segy_traceheader_template = self.decode_traceheader_template()
+        self.segy_traceheader_template = self._decode_traceheader_template()
         self.file_text_header = self.headerbytes[DISK_BLOCK_BYTES:
                                                  DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES]
 
@@ -110,6 +136,8 @@ class SgzReader(object):
 
         # Placeholder. Don't read these if you're not going to use them
         self.variant_headers = None
+        
+        self.range_error = "Index {} is out of range [{}, {}]. Try using slice ordinals instead of numbers?"
 
         # Split out responsibility for I/O and decompression
         self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
@@ -123,7 +151,10 @@ class SgzReader(object):
 
     def open_sgz_file(self):
         if not os.path.exists(self.filename):
-            raise FileNotFoundError("Rather than a beep, Or a rude error message, These words: 'File not found.'")
+            msgs = ["Rather than a beep  Or a rude error message  These words: 'File not found.'",
+                    "A file that big?  It might be very useful.  But now it is gone.",
+                    "Three things are certain:  Death, taxes, and lost data.  Guess which has occurred."]
+            raise FileNotFoundError(random.choice(msgs))
         return open(self.filename, 'rb')
 
     def close_sgz_file(self):
@@ -132,7 +163,7 @@ class SgzReader(object):
     def get_file_version(self):
         return SeismicZfpVersion(bytes_to_int(self.headerbytes[72:76]))
 
-    def parse_dimensions(self):
+    def _parse_dimensions(self):
         n_samples = bytes_to_int(self.headerbytes[4:8])
         n_xlines = bytes_to_int(self.headerbytes[8:12])
         n_ilines = bytes_to_int(self.headerbytes[12:16])
@@ -147,26 +178,26 @@ class SgzReader(object):
 
         return n_samples, n_xlines, n_ilines, rate, blockshape
 
-    def parse_coordinates(self):
+    def _parse_coordinates(self):
         zslices_list = gen_coord_list(bytes_to_int(self.headerbytes[16:20]),
                                       bytes_to_int(self.headerbytes[28:32]),
                                       bytes_to_int(self.headerbytes[4:8]))
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
-                                      bytes_to_int(self.headerbytes[32:36]),
-                                      bytes_to_int(self.headerbytes[8:12]))
+                                     bytes_to_int(self.headerbytes[32:36]),
+                                     bytes_to_int(self.headerbytes[8:12]))
         ilines_list = gen_coord_list(bytes_to_int(self.headerbytes[24:28]),
-                                      bytes_to_int(self.headerbytes[36:40]),
-                                      bytes_to_int(self.headerbytes[12:16]))
+                                     bytes_to_int(self.headerbytes[36:40]),
+                                     bytes_to_int(self.headerbytes[12:16]))
         return zslices_list, xlines_list, ilines_list
 
-    def parse_data_sizes(self):
+    def _parse_data_sizes(self):
         compressed_data_diskblocks = bytes_to_int(self.headerbytes[56:60])
         header_entry_length_bytes = bytes_to_int(self.headerbytes[60:64])
         n_header_arrays = bytes_to_int(self.headerbytes[64:68])
 
         return compressed_data_diskblocks, header_entry_length_bytes, n_header_arrays
 
-    def decode_traceheader_template(self):
+    def _decode_traceheader_template(self):
         raw_template = self.headerbytes[980:2048]
         template = [tuple((bytes_to_signed_int(raw_template[i*12 + j:i*12 + j + 4])
                            for j in range(0, 12, 4))) for i in range(89)]
@@ -218,8 +249,8 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
-        if il_id < 0 or il_id >= self.n_ilines:
-            raise IndexError("Index {} is out of range ({}, {})".format(il_id, 0, self.n_ilines - 1))
+        if not 0 <= il_id < self.n_ilines:
+            raise IndexError(self.range_error.format(il_id, 0, self.n_ilines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_il_set(4 * (il_id // 4))
             return decompressed[il_id % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
@@ -240,8 +271,8 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
-        if xl_id < 0 or xl_id >= self.n_xlines:
-            raise IndexError("Index {} is out of range ({}, {})".format(xl_id, 0, self.n_xlines - 1))
+        if not 0 <= xl_id < self.n_xlines:
+            raise IndexError(self.range_error.format(xl_id, 0, self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_xl_set(4 * (xl_id // 4))
             return decompressed[0:self.n_ilines, xl_id % self.blockshape[1], 0:self.n_samples]
@@ -262,8 +293,8 @@ class SgzReader(object):
         zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
             The specified zslice (time or depth, depending on file contents), decompressed
         """
-        if zslice_id < 0 or zslice_id >= self.n_samples:
-            raise IndexError("Index {} is out of range ({}, {})".format(zslice_id, 0, self.n_samples - 1))
+        if not 0 <= zslice_id < self.n_samples:
+            raise IndexError(self.range_error.format(zslice_id, 0, self.n_samples - 1))
         blocks_per_dim = tuple(dim // size for dim, size in zip(self.shape_pad, self.blockshape))
         zslice_first_block_offset = zslice_id // self.blockshape[2]
 
@@ -294,8 +325,8 @@ class SgzReader(object):
         cd_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
             The specified cd_slice, decompressed.
         """
-        if cd_id <= -self.n_xlines or cd_id >= self.n_ilines:
-            raise IndexError("Index {} is out of range ({}, {})".format(cd_id, -self.n_xlines, self.n_ilines))
+        if not -self.n_xlines < cd_id < self.n_ilines:
+            raise IndexError(self.range_error.format(cd_id, -self.n_xlines, self.n_ilines))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
             cd = np.zeros((cd_length, self.n_samples))
@@ -335,8 +366,8 @@ class SgzReader(object):
         ad_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
             The specified ad_slice, decompressed.
         """
-        if ad_id < 0 or ad_id >= self.n_ilines + self.n_xlines - 1:
-            raise IndexError("Index {} is out of range ({}, {})".format(ad_id, 0, self.n_ilines + self.n_xlines - 1))
+        if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
+            raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
             ad = np.zeros((ad_length, self.n_samples))
@@ -360,7 +391,9 @@ class SgzReader(object):
                     if i2 % 4 < (ad_id + 1) % 4:
                         ad[i - start] = decompressed[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
                     else:
-                        if self.n_xlines <= ad_id < self.shape_pad[1] and self.n_xlines != self.shape_pad[1] and (ad_id + 1) % 4 != 0:
+                        if (self.n_xlines <= ad_id < self.shape_pad[1]
+                                and self.n_xlines != self.shape_pad[1]
+                                and (ad_id + 1) % 4 != 0):
                             ad[i - start] = decompressed_offset[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
                         else:
                             ad[i - start] = decompressed_offset[i2, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
@@ -368,7 +401,7 @@ class SgzReader(object):
         else:
             raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
 
-    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z):
+    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
         """Reads a sub-volume from SGZ file
 
         Parameters
@@ -388,12 +421,27 @@ class SgzReader(object):
         max_z : int
             The ordinal number of the maximum zslice to read (C-indexing)
 
+        access_padding : bool
+            Functions which manage voxels used for padding themselves may relax bounds-checking to padded dimensions
 
         Returns
         -------
         subvolume : numpy.ndarray of float32, shape (max_il - min_il, max_xl - min_xl, max_z - min_z)
             The specified subvolume, decompressed
         """
+        upper_il = self.shape_pad[0] if access_padding else self.n_ilines
+        upper_xl = self.shape_pad[1] if access_padding else self.n_xlines
+        upper_z = self.shape_pad[2] if access_padding else self.n_samples
+
+        if not (0 <= min_il < upper_il and 0 < max_il <= upper_il and max_il > min_il):
+            raise IndexError(self.range_error.format(min_il, max_il, 0, self.n_ilines - 1))
+
+        if not (0 <= min_xl < upper_xl and 0 < max_xl <= upper_xl and max_xl > min_xl):
+            raise IndexError(self.range_error.format(min_xl, max_xl, 0, self.n_xlines - 1))
+
+        if not (0 <= min_z < upper_z and 0 < max_z <= upper_z and max_z > min_z):
+            raise IndexError(self.range_error.format(min_z, max_z, 0, self.n_samples - 1))
+
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_chunk_range(max_il, max_xl, max_z, min_il, min_xl, min_z)
 
@@ -407,9 +455,9 @@ class SgzReader(object):
             #  - blockshape[0] == blockshape[1] == 4
             decompressed = self.loader.read_unshuffle_and_decompress_chunk_range(max_il, max_xl, max_z, min_il, min_xl, min_z)
 
-            return decompressed[min_il%self.blockshape[0]:(min_il%self.blockshape[0])+max_il-min_il,
-                                min_xl%self.blockshape[1]:(min_xl%self.blockshape[1])+max_xl-min_xl,
-                                min_z%self.blockshape[2]:(min_z%self.blockshape[2])+max_z-min_z]
+            return decompressed[min_il % self.blockshape[0]:(min_il % self.blockshape[0])+max_il-min_il,
+                                min_xl % self.blockshape[1]:(min_xl % self.blockshape[1])+max_xl-min_xl,
+                                min_z % self.blockshape[2]:(min_z % self.blockshape[2])+max_z-min_z]
 
     def read_volume(self):
         """Reads the whole volume from SGZ file
@@ -424,7 +472,7 @@ class SgzReader(object):
                                    0, self.n_samples)
 
     def get_trace(self, index):
-        """Reads the whole volume from SGZ file
+        """Reads one trace from SGZ file
 
         Parameters
         ----------
@@ -436,26 +484,50 @@ class SgzReader(object):
         trace : numpy.ndarray of float32, shape (n_samples)
             A single trace, decompressed
         """
+        if not 0 <= index < self.n_ilines * self.n_xlines:
+            if platform.system() == 'Windows':
+                print('Yesterday it worked, Today it is not working, Windows is like that')
+            raise IndexError(self.range_error.format(index, 0, self.tracecount))
+
         il, xl = index // self.n_xlines, index % self.n_xlines
         min_il = self.blockshape[0] * (il // self.blockshape[0])
         min_xl = self.blockshape[1] * (xl // self.blockshape[1])
-        chunk = self.read_containing_chunk(min_il, min_xl)
+        chunk = self._read_containing_chunk(min_il, min_xl)
         trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
         return np.squeeze(trace)
 
     # Using a cache of 2048 chunks implies:
     #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
-    #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits
+    #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits, and
+    #       over diagonals will give 9/16 cache hits.
     # (assuming 4x4 chunks... traces shouldn't be accessed intensively from other layouts!)
+    #
+    # Quis Habemus Servamus
+
     @lru_cache(maxsize=2048)
-    def read_containing_chunk(self, ref_il, ref_xl):
+    def _read_containing_chunk(self, ref_il, ref_xl):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0
         return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
                                    ref_xl, ref_xl + self.blockshape[1],
-                                   0, self.n_samples)
+                                   0, self.n_samples, access_padding=True)
 
     def gen_trace_header(self, index):
+        """Generates one trace header from SGZ file
+
+        Parameters
+        ----------
+        index : int
+            The ordinal number of the trace header in the file
+
+        Returns
+        -------
+        header : dict
+            A single header as a dictionary of headerword-value pairs
+        """
+        if not 0 <= index < self.n_ilines * self.n_xlines:
+            raise IndexError(self.range_error.format(index, 0, self.tracecount))
+
         header = self.segy_traceheader_template.copy()
         for k, v in header.items():
             if isinstance(v, FileOffset):

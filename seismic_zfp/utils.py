@@ -13,12 +13,14 @@ class FileOffset(int):
 
 
 class Geometry:
+    """Lightweight place to keep track of IL/XL ranges"""
     def __init__(self, min_il, max_il, min_xl, max_xl):
         self.ilines = range(min_il, max_il)
         self.xlines = range(min_xl, max_xl)
 
 
 class InferredGeometry(Geometry):
+    """Subclass used to signify irregular input SEG-Y"""
     def __init__(self, traces_ref):
         self.traces_ref = traces_ref
         il_ids = set([k[0] for k in traces_ref.keys()])
