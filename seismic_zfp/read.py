@@ -160,7 +160,7 @@ class SgzReader(object):
             msgs = ["Rather than a beep  Or a rude error message  These words: 'File not found.'",
                     "A file that big?  It might be very useful.  But now it is gone.",
                     "Three things are certain:  Death, taxes, and lost data.  Guess which has occurred."]
-            raise FileNotFoundError(random.choice(msgs))
+            raise FileNotFoundError("Cannot find {} ... {}".format(self.filename, random.choice(msgs)))
         return open(self.filename, 'rb')
 
     def close_sgz_file(self):
