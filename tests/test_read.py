@@ -11,43 +11,48 @@ SGZ_FILE_4 = 'test_data/small_4bit.sgz'
 SGZ_FILE_8 = 'test_data/small_8bit.sgz'
 SGY_FILE = 'test_data/small.sgy'
 
+SGZ_FILE_DEC_8 = 'test_data/small-dec_8bit.sgz'
+SGY_FILE_DEC = 'test_data/small-dec.sgy'
 
-def compare_inline(sgz_filename, tolerance):
+
+def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
     for preload in [True, False]:
         reader = SgzReader(sgz_filename, preload=preload)
-        for line_number in range(5):
+        for line_number in range(lines):
             slice_sgz = reader.read_inline(line_number)
-            with segyio.open(SGY_FILE) as segyfile:
+            with segyio.open(sgy_filename) as segyfile:
                 slice_segy = segyfile.iline[segyfile.ilines[line_number]]
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
 
 def test_read_inline():
-    compare_inline(SGZ_FILE_025, tolerance=1e+1)
-    compare_inline(SGZ_FILE_05, tolerance=1e-1)
-    compare_inline(SGZ_FILE_1, tolerance=1e-2)
-    compare_inline(SGZ_FILE_2, tolerance=1e-4)
-    compare_inline(SGZ_FILE_4, tolerance=1e-6)
-    compare_inline(SGZ_FILE_8, tolerance=1e-10)
+    compare_inline(SGZ_FILE_025, SGY_FILE, 5, tolerance=1e+1)
+    compare_inline(SGZ_FILE_05, SGY_FILE, 5, tolerance=1e-1)
+    compare_inline(SGZ_FILE_1, SGY_FILE, 5, tolerance=1e-2)
+    compare_inline(SGZ_FILE_2, SGY_FILE, 5, tolerance=1e-4)
+    compare_inline(SGZ_FILE_4, SGY_FILE, 5, tolerance=1e-6)
+    compare_inline(SGZ_FILE_8, SGY_FILE, 5, tolerance=1e-10)
+    compare_inline(SGZ_FILE_DEC_8, SGY_FILE_DEC, 3, tolerance=1e-6)
 
 
-def compare_crossline(sgz_filename, tolerance):
+def compare_crossline(sgz_filename, sgy_filename, lines, tolerance):
     for preload in [True, False]:
         reader = SgzReader(sgz_filename, preload=preload)
-        for line_number in range(5):
+        for line_number in range(lines):
             slice_sgz = reader.read_crossline(line_number)
-            with segyio.open(SGY_FILE) as segyfile:
+            with segyio.open(sgy_filename) as segyfile:
                 slice_segy = segyfile.xline[segyfile.xlines[line_number]]
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
 
 def test_read_crossline():
-    compare_crossline(SGZ_FILE_025, tolerance=1e+1)
-    compare_crossline(SGZ_FILE_05, tolerance=1e-1)
-    compare_crossline(SGZ_FILE_1, tolerance=1e-2)
-    compare_crossline(SGZ_FILE_2, tolerance=1e-4)
-    compare_crossline(SGZ_FILE_4, tolerance=1e-6)
-    compare_crossline(SGZ_FILE_8, tolerance=1e-10)
+    compare_crossline(SGZ_FILE_025, SGY_FILE, 5, tolerance=1e+1)
+    compare_crossline(SGZ_FILE_05, SGY_FILE, 5, tolerance=1e-1)
+    compare_crossline(SGZ_FILE_1, SGY_FILE, 5, tolerance=1e-2)
+    compare_crossline(SGZ_FILE_2, SGY_FILE, 5, tolerance=1e-4)
+    compare_crossline(SGZ_FILE_4, SGY_FILE, 5, tolerance=1e-6)
+    compare_crossline(SGZ_FILE_8, SGY_FILE, 5, tolerance=1e-10)
+    compare_crossline(SGZ_FILE_DEC_8, SGY_FILE_DEC, 3, tolerance=1e-6)
 
 
 def compare_zslice(sgz_filename, tolerance):
