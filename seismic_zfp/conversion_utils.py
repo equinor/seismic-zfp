@@ -265,29 +265,29 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
                         queue.put(slice)
 
 
-def consumer(queue, header, out_filename, bits_per_voxel):
+def consumer(queue, header, out_filehandle, bits_per_voxel):
     """Fetches compressed sets of inlines (or just blocks) and writes them to disk"""
-    with open(out_filename, 'wb') as f:
-        f.write(header)
-        while True:
-            segy_buffer = queue.get()
-            compressed = zfpy.compress_numpy(segy_buffer, rate=bits_per_voxel, write_header=False)
-            f.write(compressed)
-            queue.task_done()
+    out_filehandle.write(header)
+    while True:
+        segy_buffer = queue.get()
+        compressed = zfpy.compress_numpy(segy_buffer, rate=bits_per_voxel, write_header=False)
+        out_filehandle.write(compressed)
+        queue.task_done()
 
 
 def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
                               numpy_headers_arrays, geom, queuesize=16, reduce_iops=False):
     header = make_header(in_filename, bits_per_voxel, blockshape, geom)
-
-    # Maxsize can be reduced for machines with little memory
-    # ... or for files which are so big they might be very useful.
-    queue = Queue(maxsize=queuesize)
-    # schedule the consumer
-    t = Thread(target=consumer, args=(queue, header, out_filename, bits_per_voxel))
-    t.daemon = True
-    t.start()
-    # run the producer and wait for completion
-    producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom, reduce_iops=reduce_iops)
-    # wait until the consumer has processed all items
-    queue.join()
+    with open(out_filename, 'wb') as out_filehandle:
+        # Maxsize can be reduced for machines with little memory
+        # ... or for files which are so big they might be very useful.
+        queue = Queue(maxsize=queuesize)
+        # schedule the consumer
+        t = Thread(target=consumer, args=(queue, header, out_filehandle, bits_per_voxel))
+        t.daemon = True
+        t.start()
+        # run the producer and wait for completion
+        producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom, reduce_iops=reduce_iops)
+        # wait until the consumer has processed all items
+        queue.join()
+        out_filehandle.flush()
