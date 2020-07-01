@@ -21,11 +21,17 @@ class SgzReader(object):
 
     Methods
     -------
+    read_inline_number(il_no)
+        Decompresses and returns one inline from SGZ file as 2D numpy array (by inline number)
+
     read_inline(il_id)
-        Decompresses and returns one inline from SGZ file as 2D numpy array
+        Decompresses and returns one inline from SGZ file as 2D numpy array (by inline ordinal)
+
+    read_crossline_number(xl_no)
+        Decompresses and returns one crossline from SGZ file as 2D numpy array (by crossline number)
 
     read_crossline(xl_id)
-        Decompresses and returns one crossline from SGZ file as 2D numpy array
+        Decompresses and returns one crossline from SGZ file as 2D numpy array (by crossline ordinal)
 
     read_zslice(zslice_id)
         Decompresses and returns one zslice from SGZ file as 2D numpy array
@@ -154,7 +160,7 @@ class SgzReader(object):
             msgs = ["Rather than a beep  Or a rude error message  These words: 'File not found.'",
                     "A file that big?  It might be very useful.  But now it is gone.",
                     "Three things are certain:  Death, taxes, and lost data.  Guess which has occurred."]
-            raise FileNotFoundError(random.choice(msgs))
+            raise FileNotFoundError("Cannot find {} ... {}".format(self.filename, random.choice(msgs)))
         return open(self.filename, 'rb')
 
     def close_sgz_file(self):
@@ -236,6 +242,21 @@ class SgzReader(object):
         else:
             pass
 
+    def read_inline_number(self, il_no):
+        """Reads one inline from SGZ file
+
+        Parameters
+        ----------
+        il_no : int
+            The inline number
+
+        Returns
+        -------
+        inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
+            The specified inline, decompressed
+        """
+        return self.read_inline(self.ilines.index(il_no))
+
     def read_inline(self, il_id):
         """Reads one inline from SGZ file
 
@@ -257,6 +278,21 @@ class SgzReader(object):
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(il_id, il_id + 1, 0, self.n_xlines, 0, self.n_samples))
+
+    def read_crossline_number(self, xl_no):
+        """Reads one crossline from SGZ file
+
+        Parameters
+        ----------
+        xl_no : int
+            The crossline number
+
+        Returns
+        -------
+        crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
+            The specified crossline, decompressed
+        """
+        return self.read_crossline(self.xlines.index(xl_no))
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SGZ file

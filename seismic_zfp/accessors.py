@@ -17,7 +17,7 @@ class Accessor(SgzReader):
         return self.len_object
 
     def __getitem__(self, index):
-        return self.values_function(index - self.keys_object[0])
+        return self.values_function(index)
 
     def __contains__(self, key):
         return key in self.keys_object
@@ -40,7 +40,7 @@ class InlineAccessor(Accessor, Mapping):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_ilines
         self.keys_object = self.ilines
-        self.values_function = self.read_inline
+        self.values_function = self.read_inline_number
 
 
 class CrosslineAccessor(Accessor, Mapping):
@@ -48,7 +48,7 @@ class CrosslineAccessor(Accessor, Mapping):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_xlines
         self.keys_object = self.xlines
-        self.values_function = self.read_crossline
+        self.values_function = self.read_crossline_number
 
 
 class ZsliceAccessor(Accessor, Mapping):
