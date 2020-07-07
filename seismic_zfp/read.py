@@ -363,30 +363,16 @@ class SgzReader(object):
         """
         if not -self.n_xlines < cd_id < self.n_ilines:
             raise IndexError(self.range_error.format(cd_id, -self.n_xlines, self.n_ilines))
-        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
-            cd = np.zeros((cd_length, self.n_samples))
 
-            if cd_id % 4 != 0:
-                decompressed = self.loader.read_and_decompress_cd_set(4 * (cd_id // 4))
-                decompressed_offset = self.loader.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
-            else:
-                decompressed = decompressed_offset = self.loader.read_and_decompress_cd_set(4 * (cd_id // 4))
-
-            for i in range(cd_length):
-                if cd_id >= 0:
-                    if i % 4 < 4 - (cd_id % 4):
-                        cd[i] = decompressed[i + cd_id % 4, i % 4, 0:self.n_samples]
-                    else:
-                        cd[i] = decompressed_offset[i + cd_id % 4 - 4, i % 4, 0:self.n_samples]
-                else:
-                    if i % 4 < 4 - (abs(cd_id) % 4):
-                        cd[i] = decompressed_offset[i, (i - cd_id) % 4, 0:self.n_samples]
-                    else:
-                        cd[i] = decompressed[i, (i + abs(cd_id)) % 4, 0:self.n_samples]
-            return cd
+        cd_len = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
+        cd = np.zeros((cd_len, self.n_samples))
+        if cd_id >= 0:
+            for d in range(cd_len):
+                cd[d, :] = self.get_trace((d + cd_id) * self.n_xlines + d)
         else:
-            raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
+            for d in range(cd_len):
+                cd[d, :] = self.get_trace(d * self.n_xlines+ d - cd_id)
+        return cd
 
     def read_anticorrelated_diagonal(self, ad_id):
         """Reads one diagonal in the direction IL ~ -XL
@@ -403,39 +389,18 @@ class SgzReader(object):
             The specified ad_slice, decompressed.
         """
         if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
-            raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 1))
-        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
-            ad = np.zeros((ad_length, self.n_samples))
+            raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 2))
 
-            if (ad_id + 1) % 4 != 0 and ad_length > 3:
-                decompressed = self.loader.read_and_decompress_ad_set(4 * (ad_id // 4))
-                decompressed_offset = self.loader.read_and_decompress_ad_set(4 * ((ad_id - 4) // 4))
-            else:
-                decompressed = decompressed_offset = self.loader.read_and_decompress_ad_set(4 * (ad_id // 4))
-
-            if ad_id < self.n_xlines:
-                for i in range(ad_length):
-                    if 3 - (i % 4) >= 3 - (ad_id % 4):
-                        ad[i] = decompressed[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
-                    else:
-                        ad[i] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
-            else:
-                start = (4 - (self.n_xlines % 4)) % 4
-                for i in range(start, ad_length + start):
-                    i2 = i + (ad_id + 1) % 4
-                    if i2 % 4 < (ad_id + 1) % 4:
-                        ad[i - start] = decompressed[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
-                    else:
-                        if (self.n_xlines <= ad_id < self.shape_pad[1]
-                                and self.n_xlines != self.shape_pad[1]
-                                and (ad_id + 1) % 4 != 0):
-                            ad[i - start] = decompressed_offset[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
-                        else:
-                            ad[i - start] = decompressed_offset[i2, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
-            return ad
+        ad_len = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
+        ad = np.zeros((ad_len, self.n_samples))
+        if ad_id < self.n_xlines:
+            for d in range(ad_len):
+                ad[d, :] = self.get_trace(ad_id + d*(self.n_xlines - 1))
         else:
-            raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
+            for d in range(ad_len):
+                ad[d, :] = self.get_trace((ad_id - self.n_xlines + 1 + d) * self.n_xlines
+                                                  + (self.n_xlines - d - 1))
+        return ad
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
         """Reads a sub-volume from SGZ file
