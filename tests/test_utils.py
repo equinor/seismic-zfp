@@ -73,3 +73,8 @@ def test_define_blockshape():
         define_blockshape(-1, (4, 4, -1))
     with pytest.raises(AssertionError):
         define_blockshape(1, (4, 4, 128))
+
+
+def test_get_chunk_cache_size():
+    assert 2048 == get_chunk_cache_size(1000, 2000)
+    assert 1024 == get_chunk_cache_size(5000, 511)

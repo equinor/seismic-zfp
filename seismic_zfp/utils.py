@@ -128,3 +128,12 @@ def get_anticorrelated_diagonal_length(ad, n_il, n_xl):
         return min(n_il, n_xl)
     else:
         return n_il + n_xl - ad - 1
+
+
+def get_chunk_cache_size(n_il_chunks, n_xl_chunks):
+    """Determine how many chunks are required to hold an arbitrary diagonal in lru cache - must be power of 2"""
+    cache_size = 1
+    max_chunk_dimension = min(n_il_chunks, n_xl_chunks)
+    while cache_size < max_chunk_dimension:
+        cache_size = cache_size*2
+    return cache_size * 2

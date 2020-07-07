@@ -5,7 +5,6 @@ except ImportError:
 from psutil import virtual_memory
 import numpy as np
 import zfpy
-from .utils import get_correlated_diagonal_length, get_anticorrelated_diagonal_length
 from .sgzconstants import DISK_BLOCK_BYTES
 
 
@@ -92,38 +91,6 @@ class SgzLoader(object):
                     buffer[buf_start:buf_start + sub_block_size_bytes] = \
                         temp_buf[sub_block_num * sub_block_size_bytes:(sub_block_num + 1) * sub_block_size_bytes]
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
-
-    @lru_cache(maxsize=2)
-    def read_and_decompress_cd_set(self, cd):
-        if cd < 0:
-            xl_first_chunk_offset = abs(cd) // 4 * self.chunk_bytes
-        else:
-            xl_first_chunk_offset = (cd // 4) * self.chunk_bytes * self.shape_pad[1] // 4
-
-        xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] + 4) // 4
-        cd_length = get_correlated_diagonal_length(cd, self.shape_pad[0], self.shape_pad[1])
-
-        buffer = bytearray(self.chunk_bytes * cd_length // 4)
-        for chunk_num in range(cd_length // 4):
-            part = self._get_compressed_bytes(xl_first_chunk_offset + chunk_num * xl_chunk_increment, self.chunk_bytes)
-            buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = part
-        return self._decompress(buffer, (cd_length, self.blockshape[1], self.shape_pad[2]))
-
-    @lru_cache(maxsize=2)
-    def read_and_decompress_ad_set(self, ad):
-        if ad < self.shape_pad[1]:
-            xl_first_chunk_offset = ad // 4 * self.chunk_bytes
-        else:
-            xl_first_chunk_offset = (((ad - self.shape_pad[1]) // 4 + 2) * (self.shape_pad[1] // 4) - 1) * self.chunk_bytes
-
-        xl_chunk_increment = self.chunk_bytes * (self.shape_pad[1] - 4) // 4
-        ad_length = get_anticorrelated_diagonal_length(ad+3, self.shape_pad[0], self.shape_pad[1])
-
-        buffer = bytearray(self.chunk_bytes * ad_length // 4)
-        for chunk_num in range(ad_length // 4):
-            part = self._get_compressed_bytes(xl_first_chunk_offset + chunk_num * xl_chunk_increment, self.chunk_bytes)
-            buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = part
-        return self._decompress(buffer, (ad_length, self.blockshape[1], self.shape_pad[2]))
 
     @lru_cache(maxsize=1)
     def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):

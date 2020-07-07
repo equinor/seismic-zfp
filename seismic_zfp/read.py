@@ -12,7 +12,7 @@ from segyio import _segyio
 
 from .loader import SgzLoader
 from .version import SeismicZfpVersion
-from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length
+from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length, get_chunk_cache_size
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
@@ -63,7 +63,7 @@ class SgzReader(object):
     get_file_version
         Returns version of seismic-zfp library which wrote the SGZ file
     """
-    def __init__(self, file, filetype_checking=True, preload=False):
+    def __init__(self, file, filetype_checking=True, preload=False, chunk_cache_size=None):
         """
         Parameters
         ----------
@@ -73,6 +73,14 @@ class SgzReader(object):
              : file handle in 'rb' mode
              Reuse an open file handle
 
+        filetype_checking : bool
+            Decline to attempt reading files which look like SEG-Y
+
+        preload : bool
+            Read whole volume (compressed) into memory at instantiation
+
+        chunk_cache_size : int
+            Number of chunks to cache when reading traces, increase for long diagonals
         """
 
         # Class may be instantiated with either a file path or filehandle
@@ -148,6 +156,18 @@ class SgzReader(object):
         # Split out responsibility for I/O and decompression
         self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
                                self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
+
+        # Using default cache of 2048 chunks implies:
+        #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
+        #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits, and
+        #       over diagonals will give 9/16 cache hits.
+        # (assuming 4x4 chunks... traces shouldn't be accessed intensively from other layouts!)
+        #
+        # Quis Habemus Servamus
+        if chunk_cache_size is None:
+            chunk_cache_size = get_chunk_cache_size(self.shape_pad[0] // self.blockshape[0],
+                                                    self.shape_pad[1] // self.blockshape[1])
+        self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
 
     def __enter__(self):
         return self
@@ -363,30 +383,16 @@ class SgzReader(object):
         """
         if not -self.n_xlines < cd_id < self.n_ilines:
             raise IndexError(self.range_error.format(cd_id, -self.n_xlines, self.n_ilines))
-        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            cd_length = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
-            cd = np.zeros((cd_length, self.n_samples))
 
-            if cd_id % 4 != 0:
-                decompressed = self.loader.read_and_decompress_cd_set(4 * (cd_id // 4))
-                decompressed_offset = self.loader.read_and_decompress_cd_set(4 * ((cd_id + 4) // 4))
-            else:
-                decompressed = decompressed_offset = self.loader.read_and_decompress_cd_set(4 * (cd_id // 4))
-
-            for i in range(cd_length):
-                if cd_id >= 0:
-                    if i % 4 < 4 - (cd_id % 4):
-                        cd[i] = decompressed[i + cd_id % 4, i % 4, 0:self.n_samples]
-                    else:
-                        cd[i] = decompressed_offset[i + cd_id % 4 - 4, i % 4, 0:self.n_samples]
-                else:
-                    if i % 4 < 4 - (abs(cd_id) % 4):
-                        cd[i] = decompressed_offset[i, (i - cd_id) % 4, 0:self.n_samples]
-                    else:
-                        cd[i] = decompressed[i, (i + abs(cd_id)) % 4, 0:self.n_samples]
-            return cd
+        cd_len = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
+        cd = np.zeros((cd_len, self.n_samples))
+        if cd_id >= 0:
+            for d in range(cd_len):
+                cd[d, :] = self.get_trace((d + cd_id) * self.n_xlines + d)
         else:
-            raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
+            for d in range(cd_len):
+                cd[d, :] = self.get_trace(d * self.n_xlines+ d - cd_id)
+        return cd
 
     def read_anticorrelated_diagonal(self, ad_id):
         """Reads one diagonal in the direction IL ~ -XL
@@ -403,39 +409,18 @@ class SgzReader(object):
             The specified ad_slice, decompressed.
         """
         if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
-            raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 1))
-        if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            ad_length = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
-            ad = np.zeros((ad_length, self.n_samples))
+            raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 2))
 
-            if (ad_id + 1) % 4 != 0 and ad_length > 3:
-                decompressed = self.loader.read_and_decompress_ad_set(4 * (ad_id // 4))
-                decompressed_offset = self.loader.read_and_decompress_ad_set(4 * ((ad_id - 4) // 4))
-            else:
-                decompressed = decompressed_offset = self.loader.read_and_decompress_ad_set(4 * (ad_id // 4))
-
-            if ad_id < self.n_xlines:
-                for i in range(ad_length):
-                    if 3 - (i % 4) >= 3 - (ad_id % 4):
-                        ad[i] = decompressed[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
-                    else:
-                        ad[i] = decompressed_offset[i, (3 - i + ad_id + 1) % 4, 0:self.n_samples]
-            else:
-                start = (4 - (self.n_xlines % 4)) % 4
-                for i in range(start, ad_length + start):
-                    i2 = i + (ad_id + 1) % 4
-                    if i2 % 4 < (ad_id + 1) % 4:
-                        ad[i - start] = decompressed[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
-                    else:
-                        if (self.n_xlines <= ad_id < self.shape_pad[1]
-                                and self.n_xlines != self.shape_pad[1]
-                                and (ad_id + 1) % 4 != 0):
-                            ad[i - start] = decompressed_offset[i2 - 4, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
-                        else:
-                            ad[i - start] = decompressed_offset[i2, (3 - i2 + ad_id + 1) % 4, 0:self.n_samples]
-            return ad
+        ad_len = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
+        ad = np.zeros((ad_len, self.n_samples))
+        if ad_id < self.n_xlines:
+            for d in range(ad_len):
+                ad[d, :] = self.get_trace(ad_id + d*(self.n_xlines - 1))
         else:
-            raise NotImplementedError("Diagonals can only be read from default layout SGZ files")
+            for d in range(ad_len):
+                ad[d, :] = self.get_trace((ad_id - self.n_xlines + 1 + d) * self.n_xlines
+                                                  + (self.n_xlines - d - 1))
+        return ad
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
         """Reads a sub-volume from SGZ file
@@ -528,19 +513,10 @@ class SgzReader(object):
         il, xl = index // self.n_xlines, index % self.n_xlines
         min_il = self.blockshape[0] * (il // self.blockshape[0])
         min_xl = self.blockshape[1] * (xl // self.blockshape[1])
-        chunk = self._read_containing_chunk(min_il, min_xl)
+        chunk = self._read_containing_chunk_cached(min_il, min_xl)
         trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
         return np.squeeze(trace)
 
-    # Using a cache of 2048 chunks implies:
-    #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
-    #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits, and
-    #       over diagonals will give 9/16 cache hits.
-    # (assuming 4x4 chunks... traces shouldn't be accessed intensively from other layouts!)
-    #
-    # Quis Habemus Servamus
-
-    @lru_cache(maxsize=2048)
     def _read_containing_chunk(self, ref_il, ref_xl):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0

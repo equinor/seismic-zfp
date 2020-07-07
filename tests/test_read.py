@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from seismic_zfp.read import *
 from seismic_zfp.utils import get_correlated_diagonal_length, get_anticorrelated_diagonal_length
+import itertools
 
 SGZ_FILE_025 = 'test_data/small_025bit.sgz'
 SGZ_FILE_05 = 'test_data/small_05bit.sgz'
@@ -13,6 +14,10 @@ SGY_FILE = 'test_data/small.sgy'
 
 SGZ_FILE_DEC_8 = 'test_data/small-dec_8bit.sgz'
 SGY_FILE_DEC = 'test_data/small-dec.sgy'
+
+SGZ_SGY_FILE_PAIRS = [('test_data/padding/padding_{}x{}.sgz'.format(n, m),
+                       'test_data/padding/padding_{}x{}.sgy'.format(n, m))
+                      for n, m in itertools.product([5, 6, 7, 8], [5, 6, 7, 8])]
 
 
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
@@ -74,12 +79,12 @@ def test_read_zslice():
     compare_zslice(SGZ_FILE_8, tolerance=1e-10)
 
 
-def compare_correlated_diagonal(sgz_filename, tolerance):
+def compare_correlated_diagonal(sgz_filename, sgy_filename):
     for preload in [True, False]:
         reader = SgzReader(sgz_filename, preload=preload)
-        for line_number in range(-4, 4):
+        for line_number in range(-reader.n_xlines+1, reader.n_ilines -1):
             slice_sgz = reader.read_correlated_diagonal(line_number)
-            with segyio.open(SGY_FILE) as segyfile:
+            with segyio.open(sgy_filename) as segyfile:
                 diagonal_length = get_correlated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
                 slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
                 if line_number >= 0:
@@ -88,25 +93,20 @@ def compare_correlated_diagonal(sgz_filename, tolerance):
                 else:
                     for d in range(diagonal_length):
                         slice_segy[d, :] = segyfile.trace[d*len(segyfile.xlines) + d - line_number]
-            assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert np.allclose(slice_sgz, slice_segy, rtol=1e-2, atol=1e-5)
 
 
 def test_read_correlated_diagonal():
-    compare_correlated_diagonal(SGZ_FILE_025, tolerance=1e+1)
-    compare_correlated_diagonal(SGZ_FILE_05, tolerance=1e-1)
-    compare_correlated_diagonal(SGZ_FILE_1, tolerance=1e-2)
-    compare_correlated_diagonal(SGZ_FILE_2, tolerance=1e-4)
-    compare_correlated_diagonal(SGZ_FILE_4, tolerance=1e-6)
-    compare_correlated_diagonal(SGZ_FILE_8, tolerance=1e-10)
+    for sgz_file, sgyfile in SGZ_SGY_FILE_PAIRS:
+        compare_correlated_diagonal(sgz_file, sgyfile)
 
 
-def compare_anticorrelated_diagonal(sgz_filename, tolerance):
+def compare_anticorrelated_diagonal(sgz_filename, sgy_filename):
     for preload in [True, False]:
         reader = SgzReader(sgz_filename, preload=preload)
-        for line_number in range(6):
-            print("\n\n\n\n", line_number)
+        for line_number in range(reader.n_ilines + reader.n_xlines - 1):
             slice_sgz = reader.read_anticorrelated_diagonal(line_number)
-            with segyio.open(SGY_FILE) as segyfile:
+            with segyio.open(sgy_filename) as segyfile:
                 diagonal_length = get_anticorrelated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
                 slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
                 if line_number < len(segyfile.xlines):
@@ -116,16 +116,12 @@ def compare_anticorrelated_diagonal(sgz_filename, tolerance):
                     for d in range(diagonal_length):
                         slice_segy[d, :] = segyfile.trace[(line_number - len(segyfile.xlines) + 1 + d) * len(segyfile.xlines)
                                                           + (len(segyfile.xlines) - d - 1)]
-            assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert np.allclose(slice_sgz, slice_segy, rtol=1e-2, atol=1e-5)
 
 
 def test_read_anticorrelated_diagonal():
-    compare_anticorrelated_diagonal(SGZ_FILE_025, tolerance=1e+1)
-    compare_anticorrelated_diagonal(SGZ_FILE_05, tolerance=1e-1)
-    compare_anticorrelated_diagonal(SGZ_FILE_1, tolerance=1e-2)
-    compare_anticorrelated_diagonal(SGZ_FILE_2, tolerance=1e-4)
-    compare_anticorrelated_diagonal(SGZ_FILE_4, tolerance=1e-6)
-    compare_anticorrelated_diagonal(SGZ_FILE_8, tolerance=1e-10)
+    for sgz_file, sgyfile in SGZ_SGY_FILE_PAIRS:
+        compare_anticorrelated_diagonal(sgz_file, sgyfile)
 
 
 def compare_subvolume(sgz_filename, tolerance):
@@ -197,6 +193,11 @@ def test_index_errors():
 
     with pytest.raises(IndexError):
         reader.gen_trace_header(25)
+
+
+def test_filetype_error():
+    with pytest.raises(RuntimeError):
+        SgzReader(SGY_FILE)
 
 
 def test_filenotfound_errors():
