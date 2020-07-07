@@ -195,6 +195,11 @@ def test_index_errors():
         reader.gen_trace_header(25)
 
 
+def test_filetype_error():
+    with pytest.raises(RuntimeError):
+        SgzReader(SGY_FILE)
+
+
 def test_filenotfound_errors():
     with pytest.raises(FileNotFoundError):
         SgzReader('test_data/this_file_does_not_exist')

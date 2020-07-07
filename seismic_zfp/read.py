@@ -12,7 +12,7 @@ from segyio import _segyio
 
 from .loader import SgzLoader
 from .version import SeismicZfpVersion
-from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length
+from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length, get_chunk_cache_size
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
@@ -63,7 +63,7 @@ class SgzReader(object):
     get_file_version
         Returns version of seismic-zfp library which wrote the SGZ file
     """
-    def __init__(self, file, filetype_checking=True, preload=False):
+    def __init__(self, file, filetype_checking=True, preload=False, chunk_cache_size=None):
         """
         Parameters
         ----------
@@ -73,6 +73,14 @@ class SgzReader(object):
              : file handle in 'rb' mode
              Reuse an open file handle
 
+        filetype_checking : bool
+            Decline to attempt reading files which look like SEG-Y
+
+        preload : bool
+            Read whole volume (compressed) into memory at instantiation
+
+        chunk_cache_size : int
+            Number of chunks to cache when reading traces, increase for long diagonals
         """
 
         # Class may be instantiated with either a file path or filehandle
@@ -148,6 +156,18 @@ class SgzReader(object):
         # Split out responsibility for I/O and decompression
         self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
                                self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
+
+        # Using default cache of 2048 chunks implies:
+        #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
+        #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits, and
+        #       over diagonals will give 9/16 cache hits.
+        # (assuming 4x4 chunks... traces shouldn't be accessed intensively from other layouts!)
+        #
+        # Quis Habemus Servamus
+        if chunk_cache_size is None:
+            chunk_cache_size = get_chunk_cache_size(self.shape_pad[0] // self.blockshape[0],
+                                                    self.shape_pad[1] // self.blockshape[1])
+        self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
 
     def __enter__(self):
         return self
@@ -493,19 +513,10 @@ class SgzReader(object):
         il, xl = index // self.n_xlines, index % self.n_xlines
         min_il = self.blockshape[0] * (il // self.blockshape[0])
         min_xl = self.blockshape[1] * (xl // self.blockshape[1])
-        chunk = self._read_containing_chunk(min_il, min_xl)
+        chunk = self._read_containing_chunk_cached(min_il, min_xl)
         trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
         return np.squeeze(trace)
 
-    # Using a cache of 2048 chunks implies:
-    #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
-    #     - Sequential reading of traces over inlines and crosslines will give 15/16 cache hits, and
-    #       over diagonals will give 9/16 cache hits.
-    # (assuming 4x4 chunks... traces shouldn't be accessed intensively from other layouts!)
-    #
-    # Quis Habemus Servamus
-
-    @lru_cache(maxsize=2048)
     def _read_containing_chunk(self, ref_il, ref_xl):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0
