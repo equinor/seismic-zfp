@@ -26,6 +26,13 @@ def test_read_trace_header_slicing():
                     assert sgz_header == sgy_header
 
 
+def test_header_is_iterable():
+    with seismic_zfp.open(SGZ_FILE) as sgz_file:
+        with segyio.open(SGY_FILE) as sgy_file:
+            for sgz_header, sgy_header in zip(sgz_file.header, sgy_file.header):
+                assert sgz_header == sgy_header
+
+
 def test_read_bin_header():
     with seismic_zfp.open(SGZ_FILE) as sgzfile:
         with segyio.open(SGY_FILE) as segyfile:

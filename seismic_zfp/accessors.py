@@ -11,7 +11,7 @@ class Accessor(SgzReader):
         super(Accessor, self).__init__()
 
     def __iter__(self):
-        return self[:]
+        return iter(self[:])
 
     def __len__(self):
         return self.len_object
