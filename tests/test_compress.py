@@ -6,6 +6,7 @@ import seismic_zfp
 import segyio
 import pytest
 
+SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
 SGY_FILE = 'test_data/small.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
 SGZ_FILE_2 = 'test_data/small_2bit.sgz'
@@ -14,28 +15,29 @@ SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
 
 
-def compress_and_compare_data(tmp_path, bits_per_voxel, rtol):
+def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol):
     for reduce_iops in [True, False]:
         out_sgz = os.path.join(str(tmp_path), 'small_test_data_{}_{}_.sgz'.format(bits_per_voxel, reduce_iops))
 
-        with SegyConverter(SGY_FILE) as converter:
+        with SegyConverter(sgy_file) as converter:
             converter.run(out_sgz, bits_per_voxel=bits_per_voxel, reduce_iops=reduce_iops)
 
         with SgzReader(out_sgz) as reader:
             sgz_data = reader.read_volume()
 
-        assert np.allclose(sgz_data, segyio.tools.cube(SGY_FILE), rtol=rtol)
+        assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
 
 
 def test_compress_data(tmp_path):
-    compress_and_compare_data(tmp_path, 8, 1e-10)
-    compress_and_compare_data(tmp_path, 8.0, 1e-10)
-    compress_and_compare_data(tmp_path, "8.0", 1e-10)
-    compress_and_compare_data(tmp_path, "8", 1e-10)
+    compress_and_compare_data(SGY_FILE_IEEE, tmp_path, 8, 1e-8)
+    compress_and_compare_data(SGY_FILE, tmp_path, 8, 1e-10)
+    compress_and_compare_data(SGY_FILE, tmp_path, 8.0, 1e-10)
+    compress_and_compare_data(SGY_FILE, tmp_path, "8.0", 1e-10)
+    compress_and_compare_data(SGY_FILE, tmp_path, "8", 1e-10)
 
-    compress_and_compare_data(tmp_path, -2, 1e-1)
-    compress_and_compare_data(tmp_path, 0.5, 1e-1)
-    compress_and_compare_data(tmp_path, "0.5", 1e-1)
+    compress_and_compare_data(SGY_FILE, tmp_path, -2, 1e-1)
+    compress_and_compare_data(SGY_FILE, tmp_path, 0.5, 1e-1)
+    compress_and_compare_data(SGY_FILE, tmp_path, "0.5", 1e-1)
 
 
 def test_compress_headers(tmp_path):
@@ -78,9 +80,16 @@ def test_compress_unstructured(tmp_path):
 
 def test_compress_unstructured_reduce_iops(tmp_path):
     with pytest.raises(RuntimeError):
-        out_sgz = os.path.join(str(tmp_path), 'small_test_data_reduce-iops_.sgz')
-        with SegyConverter(SGZ_FILE_IRREG) as converter:
+        out_sgz = os.path.join(str(tmp_path), 'small_test_data_reduce-iops.sgz')
+        with SegyConverter(SGY_FILE_IRREG) as converter:
             converter.run(out_sgz, reduce_iops=True)
+
+
+def test_compresss_non_existent_file(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'non-existent-file.sgz')
+    with pytest.raises(FileNotFoundError):
+        with SegyConverter('./non-existent-file.sgy') as converter:
+            converter.run(out_sgz)
 
 
 def test_convert_to_adv_from_compressed(tmp_path):
