@@ -6,7 +6,7 @@ import segyio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, bytes_to_int, Geometry, InferredGeometry
+from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader

@@ -107,17 +107,6 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
     return buffer
 
 
-def get_header_arrays(in_filename):
-    with segyio.open(in_filename) as segyfile:
-        headers_to_store = get_unique_headerwords(segyfile)
-        header_generator = segyfile.header[0:segyfile.tracecount]
-        numpy_headers_arrays = [np.zeros(segyfile.tracecount, dtype=np.int32) for _ in range(len(headers_to_store))]
-        for i, header in enumerate(header_generator):
-            for j, h in enumerate(headers_to_store):
-                numpy_headers_arrays[j][i] = header[h]
-    return numpy_headers_arrays
-
-
 # A minimal IL reader reads an inline with the minimum number of read calls, i.e. one.
 # segyio is designed around Linux, which is quite happy to wrap up millions of fread calls
 # into reading from disk buffers. Windows appears reluctant to perform the same trick.
