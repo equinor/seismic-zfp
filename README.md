@@ -71,9 +71,9 @@ with SgzConverter("out-standard.sgz") as converter:
 ```python
 from seismic_zfp.read import SgzReader
 with SgzReader("in.sgz") as reader:
-    inline_slice = reader.read_inline(LINE_NO)
-    crossline_slice = reader.read_crossline(LINE_NO)
-    z_slice = reader.read_zslice(LINE_NO)
+    inline_slice = reader.read_inline(LINE_IDX)
+    crossline_slice = reader.read_crossline(LINE_IDX)
+    z_slice = reader.read_zslice(LINE_IDX)
     sub_vol = reader.read_subvolume(min_il=min_il, max_il=max_il, 
                                     min_xl=min_xl, max_xl=max_xl, 
                                     min_z=min_z, max_z=max_z)
@@ -83,11 +83,11 @@ with SgzReader("in.sgz") as reader:
 ```python
 import seismic_zfp
 with seismic_zfp.open("in.sgz")) as sgzfile:
-    inline_slice = sgzfile.iline[sgzfile.ilines[LINE_ID]]
-    xslice_sgz = sgzfile.xline[sgzfile.xlines[LINE_ID]]
-    zslice_sgz = sgzfile.depth_slice[sgzfile.zslices[SLICE_ID]]
-    trace = sgzfile.trace[TRACE_ID]
-    trace_header = sgzfile.header[TRACE_ID]
+    il_slice = sgzfile.iline[sgzfile.ilines[LINE_NUMBER]]
+    xl_slices = [xl for xl in sgzfile.xline]
+    zslices = sgzfile.depth_slice[:5317]
+    trace = sgzfile.trace[TRACE_IDX]
+    trace_header = sgzfile.header[TRACE_IDX]
     binary_file_header = sgzfile.bin
     text_file_header = sgzfile.text[0]
 ```
