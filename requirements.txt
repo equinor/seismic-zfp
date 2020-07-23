@@ -5,4 +5,5 @@ pillow
 matplotlib
 Cython
 zfpy
+click
 zgy2sgz
