@@ -51,19 +51,27 @@ and varying trace header values and storing these appropriately.
 
 Full example code is provided [here](examples), but the following reference is useful:
 
-#### Create SGZ files from SEG-Y, and convert back to SEG-Y ####
+#### Create SGZ files from SEG-Y or ZGY ####
 
 ```python
-from seismic_zfp.conversion import SegyConverter
+from seismic_zfp.conversion import SegyConverter, ZgyConverter, SgzConverter
+
 with SegyConverter("in.sgy") as converter:
     # Create a "standard" SGZ file with 8:1 compression, using in-memory method
-    converter.run("out-standard.sgz", bits_per_voxel=4,
-                  method="InMemory")
+    converter.run("out_standard.sgz", bits_per_voxel=4)
     # Create a "z-slice optimized" SGZ file
-    converter.run("out-advanced.sgz", bits_per_voxel=2, 
-                  blockshape=(64, 64, 4))
-# Convert back to SEG-Y
-with SgzConverter("out-standard.sgz") as converter:
+    converter.run("out_adv.sgz", bits_per_voxel=2, blockshape=(64, 64, 4))
+                  
+with ZgyConverter("in_8-int.zgy") as converter:
+    # 8-bit integer ZGY and 1-bit SGZ have similar quality
+    converter.run("out_8bit.sgz", bits_per_voxel=1)
+```
+
+#### Convert SGZ files to SEG-Y ####
+
+```python
+# Convert SGZ to SEG-Y
+with SgzConverter("out_standard.sgz") as converter:
     converter.convert_to_segy("recovered.sgy")
 ```
 
