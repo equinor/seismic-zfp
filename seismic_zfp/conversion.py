@@ -5,6 +5,7 @@ import numpy as np
 import segyio
 import time
 from psutil import virtual_memory
+import zgy2sgz
 
 from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
@@ -13,8 +14,33 @@ from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
 
+class ZgyConverter(object):
+    """Reads a file in Schlumberger's ZGY format and compresses it to SGZ file(s)"""
+
+    def __init__(self, in_filename):
+        """
+        Parameters
+        ----------
+
+        in_filename: str
+            The ZGY file to be converted to SGZ
+
+        """
+        self.in_filename = in_filename
+        self.out_filename = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def run(self, out_filename, bits_per_voxel=4):
+        zgy2sgz.convertFile(bytes(self.in_filename, 'ascii'), bytes(out_filename, 'ascii'), int(bits_per_voxel))
+
+
 class SegyConverter(object):
-    """Writes SEG-Y files from SGZ files"""
+    """Reads SEG-Y file and compresses to SGZ file(s)"""
 
     def __init__(self, in_filename, min_il=None, max_il=None, min_xl=None, max_xl=None):
         """
@@ -141,7 +167,9 @@ class SegyConverter(object):
 
 
 class SgzConverter(SgzReader):
-    """Writes 'advanced-layout' SGZ files from 'default-layout' SGZ files"""
+    """Reads SGZ files and either:
+       - Writes seismic data as SEG-Y file
+       - Writes 'advanced-layout' SGZ files (input must be 'default-layout' SGZ file)"""
 
     def convert_to_segy(self, out_file):
         # Currently only works for default SGZ layout (?)

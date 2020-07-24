@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from seismic_zfp.conversion import SegyConverter, SgzConverter
+from seismic_zfp.conversion import ZgyConverter, SegyConverter, SgzConverter
 from seismic_zfp.read import SgzReader
 import seismic_zfp
 import segyio
@@ -13,6 +13,29 @@ SGZ_FILE_2 = 'test_data/small_2bit.sgz'
 
 SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
+
+ZGY_FILE_32 = 'test_data/zgy/small-32bit.zgy'
+ZGY_FILE_16 = 'test_data/zgy/small-16bit.zgy'
+ZGY_FILE_8 = 'test_data/zgy/small-8bit.zgy'
+
+
+def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol):
+    out_sgz = os.path.join(str(tmp_path), 'test_{}_{}_.sgz'.format(os.path.splitext(os.path.basename(zgy_file))[0],
+                                                                   bits_per_voxel))
+
+    with ZgyConverter(zgy_file) as converter:
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+    with SgzReader(out_sgz) as reader:
+        sgz_data = reader.read_volume()
+
+    assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
+
+
+def test_compress_zgy8(tmp_path):
+    compress_and_compare_zgy(ZGY_FILE_8, SGY_FILE, tmp_path, 16, 1e-2)
+    compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE, tmp_path, 16, 1e-4)
+    compress_and_compare_zgy(ZGY_FILE_32, SGY_FILE, tmp_path, 16, 1e-5)
 
 
 def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol):
