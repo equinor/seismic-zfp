@@ -92,11 +92,3 @@ def get_headerword_infolist(segyfile):
         hw_info_list.append((get_headerword_code(hw), default, mapping))
 
     return hw_info_list
-
-
-if __name__ == '__main__':
-    filename = sys.argv[1]
-
-    with segyio.open(filename) as segyfile:
-        hw_info_list = get_headerword_infolist(segyfile)
-        print(hw_info_list)

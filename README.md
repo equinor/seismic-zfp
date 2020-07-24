@@ -51,19 +51,27 @@ and varying trace header values and storing these appropriately.
 
 Full example code is provided [here](examples), but the following reference is useful:
 
-#### Create SGZ files from SEG-Y, and convert back to SEG-Y ####
+#### Create SGZ files from SEG-Y or ZGY ####
 
 ```python
-from seismic_zfp.conversion import SegyConverter
+from seismic_zfp.conversion import SegyConverter, ZgyConverter, SgzConverter
+
 with SegyConverter("in.sgy") as converter:
     # Create a "standard" SGZ file with 8:1 compression, using in-memory method
-    converter.run("out-standard.sgz", bits_per_voxel=4,
-                  method="InMemory")
+    converter.run("out_standard.sgz", bits_per_voxel=4)
     # Create a "z-slice optimized" SGZ file
-    converter.run("out-advanced.sgz", bits_per_voxel=2, 
-                  blockshape=(64, 64, 4))
-# Convert back to SEG-Y
-with SgzConverter("out-standard.sgz") as converter:
+    converter.run("out_adv.sgz", bits_per_voxel=2, blockshape=(64, 64, 4))
+                  
+with ZgyConverter("in_8-int.zgy") as converter:
+    # 8-bit integer ZGY and 1-bit SGZ have similar quality
+    converter.run("out_8bit.sgz", bits_per_voxel=1)
+```
+
+#### Convert SGZ files to SEG-Y ####
+
+```python
+# Convert SGZ to SEG-Y
+with SgzConverter("out_standard.sgz") as converter:
     converter.convert_to_segy("recovered.sgy")
 ```
 
@@ -71,9 +79,9 @@ with SgzConverter("out-standard.sgz") as converter:
 ```python
 from seismic_zfp.read import SgzReader
 with SgzReader("in.sgz") as reader:
-    inline_slice = reader.read_inline(LINE_NO)
-    crossline_slice = reader.read_crossline(LINE_NO)
-    z_slice = reader.read_zslice(LINE_NO)
+    inline_slice = reader.read_inline(LINE_IDX)
+    crossline_slice = reader.read_crossline(LINE_IDX)
+    z_slice = reader.read_zslice(LINE_IDX)
     sub_vol = reader.read_subvolume(min_il=min_il, max_il=max_il, 
                                     min_xl=min_xl, max_xl=max_xl, 
                                     min_z=min_z, max_z=max_z)
@@ -83,11 +91,11 @@ with SgzReader("in.sgz") as reader:
 ```python
 import seismic_zfp
 with seismic_zfp.open("in.sgz")) as sgzfile:
-    inline_slice = sgzfile.iline[sgzfile.ilines[LINE_ID]]
-    xslice_sgz = sgzfile.xline[sgzfile.xlines[LINE_ID]]
-    zslice_sgz = sgzfile.depth_slice[sgzfile.zslices[SLICE_ID]]
-    trace = sgzfile.trace[TRACE_ID]
-    trace_header = sgzfile.header[TRACE_ID]
+    il_slice = sgzfile.iline[sgzfile.ilines[LINE_NUMBER]]
+    xl_slices = [xl for xl in sgzfile.xline]
+    zslices = sgzfile.depth_slice[:5317]
+    trace = sgzfile.trace[TRACE_IDX]
+    trace_header = sgzfile.header[TRACE_IDX]
     binary_file_header = sgzfile.bin
     text_file_header = sgzfile.text[0]
 ```

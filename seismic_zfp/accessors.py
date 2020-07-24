@@ -11,13 +11,18 @@ class Accessor(SgzReader):
         super(Accessor, self).__init__()
 
     def __iter__(self):
-        return self[:]
+        return iter(self[:])
 
     def __len__(self):
         return self.len_object
 
-    def __getitem__(self, index):
-        return self.values_function(index)
+    def __getitem__(self, subscript):
+        if isinstance(subscript, slice):
+            # Acquiris Quodcumquae Rapis
+            start, stop, step = subscript.indices(len(self))
+            return [self.values_function(index) for index in range(start, stop, step)]
+        else:
+            return self.values_function(subscript)
 
     def __contains__(self, key):
         return key in self.keys_object
