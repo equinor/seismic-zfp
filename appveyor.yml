@@ -1,0 +1,19 @@
+environment:
+
+  matrix:
+    - PYTHON: "C:\\Python38-x64"
+    - PYTHON: "C:\\Python37-x64"
+    - PYTHON: "C:\\Python36-x64"
+    - PYTHON: "C:\\Python35-x64"
+
+
+install:
+  - "echo %APPVEYOR_REPO_COMMIT% > .git/refs/heads/master"
+  - "%PYTHON%\\python.exe -m pip install -U pip setuptools pytest"
+  - "%PYTHON%\\python.exe -m pip install -U -r requirements.txt"
+  - "%PYTHON%\\python.exe -m pip install -e ."
+
+build: off
+
+test_script:
+  - "%PYTHON%\\python.exe -m pytest"
