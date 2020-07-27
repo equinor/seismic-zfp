@@ -94,9 +94,9 @@ class SgzLoader(object):
 
     @lru_cache(maxsize=1)
     def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):
-        z_units = (max_z + 4) // 4 - min_z // 4
-        xl_units = (max_xl + 4) // 4 - min_xl // 4
-        il_units = (max_il + 4) // 4 - min_il // 4
+        z_units = (max_z + 3) // 4 - min_z // 4
+        xl_units = (max_xl + 3) // 4 - min_xl // 4
+        il_units = (max_il + 3) // 4 - min_il // 4
 
         buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
         read_length = self.unit_bytes * z_units
