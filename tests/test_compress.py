@@ -18,6 +18,10 @@ ZGY_FILE_32 = 'test_data/zgy/small-32bit.zgy'
 ZGY_FILE_16 = 'test_data/zgy/small-16bit.zgy'
 ZGY_FILE_8 = 'test_data/zgy/small-8bit.zgy'
 
+SGY_FILE_32 = 'test_data/zgy/small-32bit.sgy'
+SGY_FILE_16 = 'test_data/zgy/small-16bit.sgy'
+SGY_FILE_8 = 'test_data/zgy/small-8bit.sgy'
+
 
 def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol):
     out_sgz = os.path.join(str(tmp_path), 'test_{}_{}_.sgz'.format(os.path.splitext(os.path.basename(zgy_file))[0],
@@ -33,9 +37,9 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
 
 
 def test_compress_zgy8(tmp_path):
-    compress_and_compare_zgy(ZGY_FILE_8, SGY_FILE, tmp_path, 16, 1e-2)
-    compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE, tmp_path, 16, 1e-4)
-    compress_and_compare_zgy(ZGY_FILE_32, SGY_FILE, tmp_path, 16, 1e-5)
+    compress_and_compare_zgy(ZGY_FILE_8, SGY_FILE_8, tmp_path, 16, 1e-4)
+    compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE_16, tmp_path, 16, 1e-4)
+    compress_and_compare_zgy(ZGY_FILE_32, SGY_FILE_32, tmp_path, 16, 1e-5)
 
 
 def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol):
