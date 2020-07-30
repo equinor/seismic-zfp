@@ -55,9 +55,8 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
             buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
             buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
         else:
-            # Assume il/xl steps of 1 for unstructured. Can probably do better than this...
-            buffer[32:36] = np_float_to_bytes(np.int32(1))
-            buffer[36:40] = np_float_to_bytes(np.int32(1))
+            buffer[32:36] = np_float_to_bytes(np.int32(geom.il_step))
+            buffer[36:40] = np_float_to_bytes(np.int32(geom.xl_step))
 
         hw_info_list = get_headerword_infolist(segyfile)
 
@@ -188,12 +187,12 @@ def unstructured_io_thread_func(blockshape, headers_to_store, geom,
                                 segy_buffer, segyfile, trace_length):
     for i in range(blockshape[0]):
         for xl_id, xl_num in enumerate(geom.xlines):
-            index = (plane_set_id * blockshape[0] + i + geom.min_il, xl_num)
+            index = ((plane_set_id * blockshape[0] + i) * geom.il_step + geom.min_il, xl_num)
             if index in geom.traces_ref:
                 trace_id = geom.traces_ref[index]
                 trace, header = segyfile.trace[trace_id], segyfile.header[trace_id]
                 segy_buffer[i, xl_id, 0:trace_length] = trace
-                t_store = xl_id + (plane_set_id * blockshape[0] + i - geom.min_il) * len(geom.xlines)
+                t_store = xl_id + (plane_set_id * blockshape[0] + i) * len(geom.xlines)
                 for k, h in enumerate(headers_to_store):
                     numpy_headers_arrays[k][t_store] = header[h]
 
