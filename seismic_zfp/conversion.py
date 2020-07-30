@@ -136,6 +136,7 @@ class SegyConverter(object):
                     print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
                     traces_ref = {(h[189], h[193]): i for i, h in enumerate(segyfile.header)}
                     self.geom = InferredGeometry(traces_ref)
+                    print("... inferred geometry is:", self.geom)
                 else:
                     self.geom = Geometry(0, len(segyfile.ilines), 0, len(segyfile.xlines))
             n_traces = len(self.geom.ilines) * len(self.geom.xlines)
