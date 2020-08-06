@@ -5,13 +5,19 @@ import numpy as np
 import segyio
 import time
 from psutil import virtual_memory
-import zgy2sgz
 
 from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
+
+try:
+    import zgy2sgz
+except ImportError:
+    _has_zgy2sgz = False
+else:
+    _has_zgy2sgz = True
 
 
 class ZgyConverter(object):
@@ -171,6 +177,11 @@ class SgzConverter(SgzReader):
     """Reads SGZ files and either:
        - Writes seismic data as SEG-Y file
        - Writes 'advanced-layout' SGZ files (input must be 'default-layout' SGZ file)"""
+
+    def __init__(self, file, filetype_checking=True, preload=False, chunk_cache_size=None):
+        if not _has_zgy2sgz:
+            raise ImportError("zgy2sgz is required for SgzConverter. Install optional dependency seismic-zfp[zgy] with pip.")
+        super().__init__(file, filetype_checking, preload, chunk_cache_size)
 
     def convert_to_segy(self, out_file):
         # Currently only works for default SGZ layout (?)
