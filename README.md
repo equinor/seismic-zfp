@@ -49,7 +49,8 @@ and varying trace header values and storing these appropriately.
 #### NOTE: Previously the extension .sz was used for seismic-zfp, but has been replaced with .sgz to avoid confusion around the compression algorithm used.
 
 ## Get seismic-zfp
-- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/): `pip install seismic-zfp`
+- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) with zgy support: `pip install seismic-zfp[zgy]`
+- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) without zgy support: `pip install seismic-zfp`
 - Source from [Github](https://github.com/equinor/seismic-zfp): `git clone https://github.com/equinor/seismic-zfp.git`
 
 *Note that seismic-zfp depends on the Python packages [ZFPY](https://pypi.org/project/zfpy/) and [zgy2sgz](https://pypi.org/project/zgy2sgz/), which are binary distributions on PyPI built for Linux and Windows.*
