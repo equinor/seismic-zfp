@@ -107,6 +107,21 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
     text_file_header = sgzfile.text[0]
 ```
 
+## Command Line Interface
+A simple command line interface for converting from SEGY or ZGY to SGZ is also bundled with seismic-zfp. This is available using the command `seismic-zfp`.
+
+#### Converting from SEGY to SGZ
+```bash
+seismic-zfp sgy2sgz <INPUT FILE PATH> <OUTPUT FILE PATH> --bits-per-voxel 4
+```
+To see all options run the command `seismic-zfp sgy2sgz --help`
+
+#### Converting from ZGY to SGZ
+```bash
+seismic-zfp zgy2sgz <INPUT FILE PATH> <OUTPUT FILE PATH> --bits-per-voxel 4
+```
+To see all options run the command `seismic-zfp zgy2sgz --help`
+
 ## Contributing ##
 Contributions welcomed, whether you are reporting or fixing a bug, implementing or requesting a feature. Either make a github issue or fork the project and make a pull request. Please extend the unit tests with relevant passing/failing tests, run these as: `python -m pytest`
 
