@@ -22,11 +22,14 @@ setuptools.setup(name='seismic-zfp',
 
                  use_scm_version=True,
                  install_requires=['functools32;python_version<"3"',
-                                   'numpy>=1.16', 'segyio', 'zfpy', 'psutil', 'pillow', 'matplotlib', 'Cython'],
+                                   'numpy>=1.16', 'segyio', 'zfpy', 'psutil', 'pillow', 'matplotlib', 'Cython', 'click'],
                  extras_require={
                      'zgy': ['zgy2sgz']
                  },
                  setup_requires=['setuptools', 'setuptools_scm'],
-
+                 entry_points="""
+                     [console_scripts]
+                     seismic-zfp=seismic_zfp.cli:cli
+                 """,
                  packages=['seismic_zfp']
                  )
