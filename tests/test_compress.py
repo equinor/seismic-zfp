@@ -13,6 +13,7 @@ SGZ_FILE_2 = 'test_data/small_2bit.sgz'
 
 SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
+SGY_FILE_IRREG_DEC = 'test_data/small-irreg-dec.sgy'
 
 ZGY_FILE_32 = 'test_data/zgy/small-32bit.zgy'
 ZGY_FILE_16 = 'test_data/zgy/small-16bit.zgy'
@@ -32,8 +33,13 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
 
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
+        sgz_ilines = reader.ilines
+
+    with segyio.open(sgy_file) as f:
+        ref_ilines = f.ilines
 
     assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
+    assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
 
 
 def test_compress_zgy8(tmp_path):
@@ -89,6 +95,20 @@ def test_compress_crop(tmp_path):
         sgz_data = reader.read_volume()
 
     assert np.allclose(sgz_data, segyio.tools.cube(SGY_FILE)[1:4, 1:3, :], rtol=1e-8)
+
+
+def test_compress_unstructured_decimated(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small_test-irregular_decimated_data.sgz')
+
+    with SegyConverter(SGY_FILE_IRREG_DEC) as converter:
+        converter.run(out_sgz, bits_per_voxel=16)
+
+    with SgzReader(out_sgz) as reader:
+        sgz_data = reader.read_volume()
+
+    segy_cube = segyio.tools.cube(SGY_FILE)[::2, ::2, :]
+    segy_cube[2, 2, :] = 0
+    assert np.allclose(sgz_data, segy_cube, atol=1e-4)
 
 
 def test_compress_unstructured(tmp_path):

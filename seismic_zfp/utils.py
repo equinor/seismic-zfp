@@ -25,10 +25,14 @@ class InferredGeometry(Geometry):
         self.traces_ref = traces_ref
         il_ids = set([k[0] for k in traces_ref.keys()])
         xl_ids = set([k[1] for k in traces_ref.keys()])
-        self.min_il, self.max_il, self.il_step = min(il_ids), max(il_ids), (max(il_ids) - min(il_ids) + 1) // len(il_ids)
-        self.min_xl, self.max_xl, self.xl_step = min(xl_ids), max(xl_ids), (max(xl_ids) - min(xl_ids) + 1) // len(xl_ids)
+        self.min_il, self.max_il, self.il_step = min(il_ids), max(il_ids), (max(il_ids) - min(il_ids)) // (len(il_ids) - 1)
+        self.min_xl, self.max_xl, self.xl_step = min(xl_ids), max(xl_ids), (max(xl_ids) - min(xl_ids)) // (len(xl_ids) - 1)
         self.ilines = range(self.min_il, self.max_il + 1, self.il_step)
         self.xlines = range(self.min_xl, self.max_xl + 1, self.xl_step)
+
+    def __repr__(self):
+        return 'IL:[{},{},{}] -- XL:[{},{},{}]'.format(self.min_il, self.max_il, self.il_step,
+                                                       self.min_xl, self.max_xl, self.xl_step)
 
 
 def pad(orig, multiple):
