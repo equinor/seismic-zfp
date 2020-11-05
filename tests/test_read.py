@@ -25,6 +25,15 @@ SGZ_SGY_FILE_PAIRS = [('test_data/padding/padding_{}x{}.sgz'.format(n, m),
                       for n, m in itertools.product([5, 6, 7, 8], [5, 6, 7, 8])]
 
 
+def test_read_trace_header():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        for trace_number in range(25):
+            sgz_header = reader.gen_trace_header(trace_number)
+            sgy_header = sgyfile.header[trace_number]
+            assert sgz_header == sgy_header
+
+
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:

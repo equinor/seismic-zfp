@@ -540,6 +540,7 @@ class SgzReader(object):
         if not 0 <= index < self.n_ilines * self.n_xlines:
             raise IndexError(self.range_error.format(index, 0, self.tracecount))
 
+        self.read_variant_headers()
         header = self.segy_traceheader_template.copy()
         for k, v in header.items():
             if isinstance(v, FileOffset):
