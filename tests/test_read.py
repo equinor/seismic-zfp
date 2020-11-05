@@ -34,6 +34,15 @@ def test_read_trace_header():
             assert sgz_header == sgy_header
 
 
+def test_read_trace_header_preload():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        for trace_number in range(25):
+            sgz_header = reader.gen_trace_header(trace_number, load_all_headers=True)
+            sgy_header = sgyfile.header[trace_number]
+            assert sgz_header == sgy_header
+
+
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:
