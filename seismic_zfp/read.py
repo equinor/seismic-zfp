@@ -73,13 +73,13 @@ class SgzReader(object):
              : file handle in 'rb' mode
              Reuse an open file handle
 
-        filetype_checking : bool
+        filetype_checking : bool, optional
             Decline to attempt reading files which look like SEG-Y
 
-        preload : bool
+        preload : bool, optional
             Read whole volume (compressed) into memory at instantiation
 
-        chunk_cache_size : int
+        chunk_cache_size : int, optional
             Number of chunks to cache when reading traces, increase for long diagonals
         """
 
@@ -442,7 +442,7 @@ class SgzReader(object):
         max_z : int
             The ordinal number of the maximum zslice to read (C-indexing)
 
-        access_padding : bool
+        access_padding : bool, optional
             Functions which manage voxels used for padding themselves may relax bounds-checking to padded dimensions
 
         Returns
@@ -524,13 +524,17 @@ class SgzReader(object):
                                    ref_xl, ref_xl + self.blockshape[1],
                                    0, self.n_samples, access_padding=True)
 
-    def gen_trace_header(self, index):
+    def gen_trace_header(self, index, load_all_headers=False):
         """Generates one trace header from SGZ file
 
         Parameters
         ----------
         index : int
             The ordinal number of the trace header in the file
+
+        load_all_headers : bool, optional
+            Load full header-arrays from disk.
+            More efficient if accessing headers for whole file.
 
         Returns
         -------
@@ -541,9 +545,15 @@ class SgzReader(object):
             raise IndexError(self.range_error.format(index, 0, self.tracecount))
 
         header = self.segy_traceheader_template.copy()
+
         for k, v in header.items():
             if isinstance(v, FileOffset):
-                header[k] = self.variant_headers[k][index]
+                if load_all_headers:
+                    self.read_variant_headers()
+                    header[k] = self.variant_headers[k][index]
+                else:
+                    self.file.seek(v + 4*index)  # A 32-bit int is 4 bytes
+                    header[k] = np.frombuffer(self.file.read(4), dtype=np.int32)[0]
         return header
 
     def get_file_binary_header(self):
