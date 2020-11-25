@@ -184,10 +184,6 @@ class SgzConverter(SgzReader):
         super().__init__(file, filetype_checking, preload, chunk_cache_size)
 
     def convert_to_segy(self, out_file):
-        # Currently only works for default SGZ layout (?)
-        assert (self.blockshape[0] == 4)
-        assert (self.blockshape[1] == 4)
-
         spec = segyio.spec()
         spec.samples = self.zslices
         spec.offsets = [0]
@@ -209,12 +205,9 @@ class SgzConverter(SgzReader):
             warnings.filterwarnings("ignore", message="Implicit conversion to contiguous array")
             with segyio.create(out_file, spec) as segyfile:
                 self.read_variant_headers()
-                for i, iline in enumerate(spec.ilines):
-                    if i % self.blockshape[0] == 0:
-                        decompressed = self.loader.read_and_decompress_il_set(i)
-                    for h in range(i * len(spec.xlines), (i + 1) * len(spec.xlines)):
-                        segyfile.header[h] = self.gen_trace_header(h)
-                    segyfile.iline[iline] = decompressed[i % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
+                # Doing this is fine now there is decent caching on the loader
+                segyfile.trace = [self.get_trace(i) for i in range(len(segyfile.trace))]
+                segyfile.header = [self.gen_trace_header(i) for i in range(len(segyfile.header))]
 
         with open(out_file, "r+b") as f:
             f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
