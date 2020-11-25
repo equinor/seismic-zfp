@@ -7,6 +7,7 @@ import segyio
 import pytest
 
 SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
+SGY_FILE_US = 'test_data/small_us.sgy'
 SGY_FILE = 'test_data/small.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
 SGZ_FILE_2 = 'test_data/small_2bit.sgz'
@@ -63,6 +64,7 @@ def compress_and_compare_axes(sgy_file, unit, tmp_path):
 
 def test_compress_axes(tmp_path):
     compress_and_compare_axes(SGY_FILE, "milliseconds", tmp_path)
+    compress_and_compare_axes(SGY_FILE_US, "microseconds", tmp_path)
 
 
 def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol):
