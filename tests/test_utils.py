@@ -9,8 +9,8 @@ def test_pad():
 
 
 def test_gen_coord_list():
-    assert [0, 5] == gen_coord_list(0, 5, 2)
-    assert [0, 2, 4] == gen_coord_list(0, 2, 3)
+    assert np.all(np.arange(0, 10, 5) == gen_coord_list(0, 5, 2))
+    assert np.all(np.arange(0, 6, 2) == gen_coord_list(0, 2, 3))
 
 
 def test_np_float_to_bytes():

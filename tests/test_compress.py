@@ -48,6 +48,23 @@ def test_compress_zgy8(tmp_path):
     compress_and_compare_zgy(ZGY_FILE_32, SGY_FILE_32, tmp_path, 16, 1e-5)
 
 
+def compress_and_compare_axes(sgy_file, unit, tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small_test_axes_{}.sgz'.format(unit))
+
+    with SegyConverter(sgy_file) as converter:
+        converter.run(out_sgz)
+
+    with segyio.open(sgy_file) as f:
+        with SgzReader(out_sgz) as reader:
+            assert np.all(reader.ilines == f.ilines)
+            assert np.all(reader.xlines == f.xlines)
+            assert np.all(reader.zslices == f.samples)
+
+
+def test_compress_axes(tmp_path):
+    compress_and_compare_axes(SGY_FILE, "milliseconds", tmp_path)
+
+
 def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol):
     for reduce_iops in [True, False]:
         out_sgz = os.path.join(str(tmp_path), 'small_test_data_{}_{}_.sgz'.format(bits_per_voxel, reduce_iops))

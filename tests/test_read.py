@@ -25,6 +25,24 @@ SGZ_SGY_FILE_PAIRS = [('test_data/padding/padding_{}x{}.sgz'.format(n, m),
                       for n, m in itertools.product([5, 6, 7, 8], [5, 6, 7, 8])]
 
 
+def test_read_ilines_list():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        assert np.all(reader.ilines == sgyfile.ilines)
+
+
+def test_read_xlines_list():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        assert np.all(reader.xlines == sgyfile.xlines)
+
+
+def test_read_samples_list():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        assert np.all(reader.zslices == sgyfile.samples)
+
+
 def test_read_trace_header():
     reader = SgzReader(SGZ_FILE_1)
     with segyio.open(SGY_FILE) as sgyfile:

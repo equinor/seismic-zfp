@@ -275,7 +275,7 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
-        return self.read_inline(self.ilines.index(il_no))
+        return self.read_inline(np.where(self.ilines == il_no)[0][0])
 
     def read_inline(self, il_id):
         """Reads one inline from SGZ file
@@ -312,7 +312,7 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
-        return self.read_crossline(self.xlines.index(xl_no))
+        return self.read_crossline(np.where(self.xlines == xl_no)[0][0])
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SGZ file
