@@ -2,6 +2,7 @@ from __future__ import print_function, division
 import struct
 import time
 import datetime
+import numpy as np
 
 from .sgzconstants import DISK_BLOCK_BYTES
 
@@ -43,7 +44,7 @@ def pad(orig, multiple):
 
 
 def gen_coord_list(start, step, count):
-    return list(range(start, start + step*count, step))
+    return np.arange(start, start + step*count, step)
 
 
 def np_float_to_bytes(numpy_float):

@@ -21,7 +21,7 @@ The padding of the IL/XL/Samples dimensions is to the logical size of those dime
 
 ---
 
-### SeismicZFP Header (v0.0.8 onwards)
+### SeismicZFP Header (v0.1.7 onwards)
 
 Byte encoding is little-endian.
 
@@ -34,7 +34,7 @@ Byte encoding is little-endian.
 |16-19 |uint32 |Minimum sample time/depth
 |20-23 |uint32 |Minimum crossline number
 |24-27 |uint32 |Minimum inline number
-|28-31 |uint32 |Sample interval (ms/m)
+|28-31 |uint32 |Sample interval (μs/m)
 |32-35 |uint32 |Crossline interval
 |36-39 |uint32 |Inline interval
 |40-43 |int32 |Bits-per-voxel (negative signifying reciprocal)

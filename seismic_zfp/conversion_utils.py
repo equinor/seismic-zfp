@@ -6,6 +6,7 @@ from segyio.field import Field
 import pkg_resources
 from threading import Thread
 from queue import Queue
+import numpy as np
 
 from .version import SeismicZfpVersion
 from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer, InferredGeometry
@@ -43,14 +44,14 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
         n_il = len(geom.ilines)
         buffer[12:16] = int_to_bytes(n_il)
 
-        # N.B. this format currently only supports integer number of ms as sampling frequency
         buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
         min_xl = np.int32(geom.min_xl) if segyfile.unstructured else segyfile.xlines[0]
         buffer[20:24] = np_float_to_bytes(min_xl)
         min_il = np.int32(geom.min_il) if segyfile.unstructured else segyfile.ilines[0]
         buffer[24:28] = np_float_to_bytes(min_il)
 
-        buffer[28:32] = np_float_to_bytes(segyfile.samples[1] - segyfile.samples[0])
+        # segyio.BinField.Interval is in microseconds
+        buffer[28:32] = np_float_to_bytes(np.array(segyfile.bin[segyio.BinField.Interval]))
         if not segyfile.unstructured:
             buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
             buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])

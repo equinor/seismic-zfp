@@ -205,8 +205,16 @@ class SgzReader(object):
         return n_samples, n_xlines, n_ilines, rate, blockshape
 
     def _parse_coordinates(self):
+        sample_rate_ms = bytes_to_int(self.headerbytes[28:32])
+
+        # Use microseconds to store sample interval for files written with version 0.1.7 and above.
+        # zslices is still in milliseconds for segyio compatibility, but now has float type rather than int.
+        # Conversion from ZGY still uses milliseconds, this is safe as zgy2sgz gives a version of 0.0.0
+        if self.file_version > SeismicZfpVersion("0.1.6"):
+            sample_rate_ms /= 1000
+
         zslices_list = gen_coord_list(bytes_to_int(self.headerbytes[16:20]),
-                                      bytes_to_int(self.headerbytes[28:32]),
+                                      sample_rate_ms,
                                       bytes_to_int(self.headerbytes[4:8]))
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
                                      bytes_to_int(self.headerbytes[32:36]),
@@ -275,7 +283,7 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
-        return self.read_inline(self.ilines.index(il_no))
+        return self.read_inline(np.where(self.ilines == il_no)[0][0])
 
     def read_inline(self, il_id):
         """Reads one inline from SGZ file
@@ -312,7 +320,7 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
-        return self.read_crossline(self.xlines.index(xl_no))
+        return self.read_crossline(np.where(self.xlines == xl_no)[0][0])
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SGZ file
