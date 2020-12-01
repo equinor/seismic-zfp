@@ -46,7 +46,8 @@ Byte encoding is little-endian.
 |64-67 |uint32 |Number of header arrays
 |68-71 |uint32 |Number of traces (unstructured files)
 |72-75 |uint32 |Encoded version number
-|76-979 |---  | --- Unused ---
+|76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY
+|80-979 |---  | --- Unused ---
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---
 |4096-7295 |[SEG-Y](https://seg.org/Portals/0/SEG/News%20and%20Resources/Technical%20Standards/seg_y_rev2_0-mar2017.pdf)  | SEG-Y First textual header
