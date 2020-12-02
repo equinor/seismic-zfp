@@ -10,7 +10,7 @@ class SeismicZfpVersion:
             self.major = arg//(1024*2048)
             self.minor = (arg - self.major*1024*2048) // 2048
             self.patch = (arg - self.major*1024*2048 - self.minor*2048) // 2
-            self.changes_exist = arg % 2 == 1
+            self.changes_exist = arg % 2 == 0
         elif isinstance(arg, tuple):
             self.major = arg[0]
             self.minor = arg[1]
@@ -21,9 +21,9 @@ class SeismicZfpVersion:
         self.string_version = self.to_string()
 
     def to_encoding(self):
-        encoding = 1024*2048*self.major + 2048*self.minor + 2*self.patch
+        encoding = 1024*2048*self.major + 2048*self.minor + 2*self.patch + 1
         if self.changes_exist:
-            encoding += 1
+            encoding -= 1
         return encoding
 
     def to_string(self):

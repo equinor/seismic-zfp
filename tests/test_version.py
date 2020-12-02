@@ -15,7 +15,7 @@ def test_create_from_encoding():
     assert version.major == 100
     assert version.minor == 23
     assert version.patch == 9
-    assert version.changes_exist is True
+    assert version.changes_exist is False
 
 
 def test_create_from_encoding_rev():
@@ -23,7 +23,7 @@ def test_create_from_encoding_rev():
     assert version.major == 100
     assert version.minor == 23
     assert version.patch == 9
-    assert version.changes_exist is False
+    assert version.changes_exist is True
 
 
 def test_create_from_tuple():
@@ -43,4 +43,4 @@ def test_compare():
 def test_order():
     version_development = SeismicZfpVersion("100.23.9.dev")
     version_release = SeismicZfpVersion("100.23.9")
-    assert version_release < version_development
+    assert version_release > version_development
