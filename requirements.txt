@@ -1,9 +1,6 @@
 numpy
 segyio
 psutil
-pillow
-matplotlib
-Cython
 zfpy
 click
 zgy2sgz
