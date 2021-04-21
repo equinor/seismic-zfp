@@ -32,6 +32,8 @@ class ZgyConverter(object):
             The ZGY file to be converted to SGZ
 
         """
+        if not _has_zgy2sgz:
+            raise ImportError("zgy2sgz is required for ZgyConverter. Install optional dependency seismic-zfp[zgy] with pip.")
         self.in_filename = in_filename
         self.out_filename = None
 
@@ -179,8 +181,6 @@ class SgzConverter(SgzReader):
        - Writes 'advanced-layout' SGZ files (input must be 'default-layout' SGZ file)"""
 
     def __init__(self, file, filetype_checking=True, preload=False, chunk_cache_size=None):
-        if not _has_zgy2sgz:
-            raise ImportError("zgy2sgz is required for SgzConverter. Install optional dependency seismic-zfp[zgy] with pip.")
         super().__init__(file, filetype_checking, preload, chunk_cache_size)
 
     def convert_to_segy(self, out_file):
