@@ -9,7 +9,15 @@ from queue import Queue
 import numpy as np
 
 from .version import SeismicZfpVersion
-from .utils import pad, int_to_bytes, signed_int_to_bytes, np_float_to_bytes, progress_printer, InferredGeometry
+from .utils import (
+    pad,
+    int_to_bytes,
+    signed_int_to_bytes,
+    np_float_to_bytes,
+    np_float_to_bytes_signed,
+    progress_printer,
+    InferredGeometry,
+)
 from .headers import get_headerword_infolist, get_unique_headerwords
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
 
@@ -44,7 +52,7 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
         n_il = len(geom.ilines)
         buffer[12:16] = int_to_bytes(n_il)
 
-        buffer[16:20] = np_float_to_bytes(segyfile.samples[0])
+        buffer[16:20] = np_float_to_bytes_signed(segyfile.samples[0])
         min_xl = np.int32(geom.min_xl) if segyfile.unstructured else segyfile.xlines[0]
         buffer[20:24] = np_float_to_bytes(min_xl)
         min_il = np.int32(geom.min_il) if segyfile.unstructured else segyfile.ilines[0]

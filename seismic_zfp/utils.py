@@ -51,6 +51,8 @@ def np_float_to_bytes(numpy_float):
     # How is this so hard?
     return struct.pack("<I", int((numpy_float).astype(int)))
 
+def np_float_to_bytes_signed(numpy_float):
+    return struct.pack("<i", int((numpy_float).astype(int)))
 
 def bytes_to_int(bytes):
     if len(bytes) == 4:

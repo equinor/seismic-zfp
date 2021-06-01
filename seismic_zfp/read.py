@@ -213,7 +213,7 @@ class SgzReader(object):
         if self.file_version > SeismicZfpVersion("0.1.6"):
             sample_rate_ms /= 1000
 
-        zslices_list = gen_coord_list(bytes_to_int(self.headerbytes[16:20]),
+        zslices_list = gen_coord_list(bytes_to_signed_int(self.headerbytes[16:20]),
                                       sample_rate_ms,
                                       bytes_to_int(self.headerbytes[4:8]))
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
