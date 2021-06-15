@@ -21,10 +21,10 @@ setuptools.setup(name='seismic-zfp',
                  license='LGPL-3.0',
 
                  use_scm_version=True,
-                 install_requires=['functools32;python_version<"3"',
-                                   'numpy>=1.16', 'segyio', 'zfpy', 'psutil', 'click'],
+                 install_requires=['numpy>=1.16', 'numpy>=1.20; python_version>="3.9.0"',
+                                   'segyio', 'zfpy', 'psutil', 'click'],
                  extras_require={
-                     'zgy': ['zgy2sgz>=0.1.2']
+                     'zgy': ['zgy2sgz>=0.1.3']
                  },
                  setup_requires=['setuptools', 'setuptools_scm'],
                  entry_points="""
