@@ -3,6 +3,7 @@ try:
 except ImportError:
     from functools32 import lru_cache
 from psutil import virtual_memory
+from operator import floordiv
 import numpy as np
 import zfpy
 from .sgzconstants import DISK_BLOCK_BYTES
@@ -16,6 +17,7 @@ class SgzLoader(object):
         self.compressed_data_diskblocks = compressed_data_diskblocks
         self.shape_pad = shape_pad
         self.blockshape = blockshape
+        self.block_dims = tuple(map(floordiv, shape_pad, blockshape))
         self.chunk_bytes = chunk_bytes
         self.block_bytes = block_bytes
         self.unit_bytes = unit_bytes
@@ -104,13 +106,11 @@ class SgzLoader(object):
             for x in range(xl_units):
                 # No need to loop over z... it's contiguous, so do it in one file read
                 bytes_start = self.unit_bytes * (
-                                (i + (min_il // 4)) * (self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
-                                (x + (min_xl // 4)) * (self.shape_pad[2] // 4) +
-                                (min_z // 4))
+                                ((min_il // 4) + i) * (self.shape_pad[1] // 4) * (self.shape_pad[2] // 4) +
+                                ((min_xl // 4) + x) * (self.shape_pad[2] // 4) +
+                                 (min_z // 4))
                 buf_start = (i * xl_units * z_units + x * z_units) * self.unit_bytes
-                buf_end = buf_start + read_length
-                part = self._get_compressed_bytes(bytes_start, read_length)
-                buffer[buf_start:buf_end] = part
+                buffer[buf_start:buf_start] = self._get_compressed_bytes(bytes_start, read_length)
         return self._decompress(buffer, (il_units * 4, xl_units * 4, z_units * 4))
 
     @lru_cache(maxsize=1)
@@ -120,19 +120,15 @@ class SgzLoader(object):
         il_blocks = (max_il + self.blockshape[0]) // self.blockshape[0] - min_il // self.blockshape[0]
         decompressed = np.zeros((il_blocks * self.blockshape[0],
                                  xl_blocks * self.blockshape[1],
-                                 z_blocks * self.blockshape[2]), dtype=np.float32)
-        for i in range(il_blocks):
-            for x in range(xl_blocks):
-                for z in range(z_blocks):
-                    bytes_start = self.block_bytes * (
-                            (i + (min_il // self.blockshape[0])) * (self.shape_pad[1] // self.blockshape[1]) * (
-                                self.shape_pad[2] // self.blockshape[2]) +
-                            (x + (min_xl // self.blockshape[1])) * (self.shape_pad[2] // self.blockshape[2]) +
-                            (z + (min_z // self.blockshape[2])))
+                                 z_blocks  * self.blockshape[2]), dtype=np.float32)
+        for ni, i in enumerate(range(min_il // self.blockshape[0], min_il // self.blockshape[0] + il_blocks)):
+            for nx, x in enumerate(range(min_xl // self.blockshape[1], min_xl // self.blockshape[1] + xl_blocks)):
+                for nz, z in enumerate(range(min_z // self.blockshape[2], min_z // self.blockshape[2] + z_blocks)):
+                    bytes_start = self.block_bytes * (self.block_dims[2] * ((self.block_dims[1] * i) + x) + z)
                     buffer = self._get_compressed_bytes(bytes_start, self.block_bytes)
-                    decompressed_part = self._decompress(buffer,
-                                                         (self.blockshape[0], self.blockshape[1], self.blockshape[2]))
-                    decompressed[i * self.blockshape[0]:(i + 1) * self.blockshape[0],
-                    x * self.blockshape[1]:(x + 1) * self.blockshape[1],
-                    z * self.blockshape[2]:(z + 1) * self.blockshape[2]] = decompressed_part
+                    # Fill decompressed buffer brick by brick
+                    decompressed[ni * self.blockshape[0]:(ni + 1) * self.blockshape[0],
+                                 nx * self.blockshape[1]:(nx + 1) * self.blockshape[1],
+                                 nz * self.blockshape[2]:(nz + 1) * self.blockshape[2]] \
+                        = self._decompress(buffer, self.blockshape)
         return decompressed
