@@ -218,10 +218,10 @@ class SgzReader(object):
                                       bytes_to_int(self.headerbytes[4:8])).astype('float')
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
                                      bytes_to_int(self.headerbytes[32:36]),
-                                     bytes_to_int(self.headerbytes[8:12]))
+                                     bytes_to_int(self.headerbytes[8:12])).astype('intc')
         ilines_list = gen_coord_list(bytes_to_int(self.headerbytes[24:28]),
                                      bytes_to_int(self.headerbytes[36:40]),
-                                     bytes_to_int(self.headerbytes[12:16]))
+                                     bytes_to_int(self.headerbytes[12:16])).astype('intc')
         return zslices_list, xlines_list, ilines_list
 
     def _parse_data_sizes(self):
