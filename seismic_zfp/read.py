@@ -215,7 +215,7 @@ class SgzReader(object):
 
         zslices_list = gen_coord_list(bytes_to_signed_int(self.headerbytes[16:20]),
                                       sample_rate_ms,
-                                      bytes_to_int(self.headerbytes[4:8]))
+                                      bytes_to_int(self.headerbytes[4:8])).astype('float')
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),
                                      bytes_to_int(self.headerbytes[32:36]),
                                      bytes_to_int(self.headerbytes[8:12]))
