@@ -46,6 +46,8 @@ The [seismic-zfp (.SGZ) format](docs/file-specification.md) also allows for pres
 SEG-Y file and trace headers, with compression code identifying constant 
 and varying trace header values and storing these appropriately.
 
+For further explanation of the design and implementation of seismic-zfp, please refer to [publications](#publications).
+
 #### NOTE: Previously the extension .sz was used for seismic-zfp, but has been replaced with .sgz to avoid confusion around the compression algorithm used.
 
 ## Get seismic-zfp
@@ -123,6 +125,10 @@ seismic-zfp zgy2sgz <INPUT FILE PATH> <OUTPUT FILE PATH> --bits-per-voxel 4
 ```
 To see all options run the command `seismic-zfp zgy2sgz --help`
 
-## Contributing ##
+## Contributing
 Contributions welcomed, whether you are reporting or fixing a bug, implementing or requesting a feature. Either make a github issue or fork the project and make a pull request. Please extend the unit tests with relevant passing/failing tests, run these as: `python -m pytest`
 
+## Publications
+Wade, David (2020): _Seismic-ZFP: Fast and Efficient Compression and Decompression of Seismic Data_, First EAGE Digitalization Conference and Exhibition, Nov 2020, Volume 2020, p.1-5
+- [Full-Text PDF](docs/EAGE_extended-abstract.pdf) (without EAGE formatting)
+- [EarthDoc Link](https://www.earthdoc.org/content/papers/10.3997/2214-4609.202032080) (N.B. paywall protected)
