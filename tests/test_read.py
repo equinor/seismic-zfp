@@ -43,6 +43,24 @@ def test_read_samples_list():
         assert np.all(reader.zslices == sgyfile.samples)
 
 
+def test_read_ilines_datatype():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        assert reader.ilines.dtype == sgyfile.ilines.dtype
+
+
+def test_read_xlines_datatype():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        assert reader.xlines.dtype == sgyfile.xlines.dtype
+
+
+def test_read_samples_datatype():
+    reader = SgzReader(SGZ_FILE_1)
+    with segyio.open(SGY_FILE) as sgyfile:
+        assert reader.zslices.dtype == sgyfile.samples.dtype
+
+
 def test_read_trace_header():
     reader = SgzReader(SGZ_FILE_1)
     with segyio.open(SGY_FILE) as sgyfile:

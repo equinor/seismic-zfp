@@ -59,7 +59,7 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
         buffer[24:28] = np_float_to_bytes(min_il)
 
         # segyio.BinField.Interval is in microseconds
-        buffer[28:32] = np_float_to_bytes(np.array(segyfile.bin[segyio.BinField.Interval]))
+        buffer[28:32] = np_float_to_bytes(1000.0*np.array(segyfile.samples[1] - segyfile.samples[0]))
         if not segyfile.unstructured:
             buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
             buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
