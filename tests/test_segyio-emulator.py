@@ -93,3 +93,61 @@ def test_zslice_accessor():
     compare_zslice(SGZ_FILE_2, tolerance=1e-4)
     compare_zslice(SGZ_FILE_4, tolerance=1e-6)
     compare_zslice(SGZ_FILE_8, tolerance=1e-10)
+
+
+def compare_subvolume(sgz_filename, sgy_filename, il_min, il_max, il_step, xl_min, xl_max, xl_step, z_min, z_max, z_step, tolerance):
+    with seismic_zfp.open(sgz_filename) as sgzfile:
+        with segyio.open(sgy_filename) as sgyfile:
+            vol_sgz = sgzfile.subvolume[il_min:il_max:il_step, xl_min:xl_max:xl_step, z_min:z_max:z_step]
+
+            start_il = 0 if il_min is None else np.where(sgyfile.ilines == il_min)[0][0]
+            stop_il = sgyfile.n_ilines if (il_max is None) or (il_max == sgyfile.ilines[-1] + sgyfile.ilines[1] - sgyfile.ilines[0]) else np.where(sgyfile.ilines ==il_max)[0][0]
+            step_il = il_step // (sgyfile.ilines[1] - sgyfile.ilines[0]) if il_step is not None else 1
+
+            start_xl = 0 if xl_min is None else np.where(sgyfile.xlines == xl_min)[0][0]
+            stop_xl = sgyfile.n_xlines if (xl_max is None) or (xl_max == sgyfile.xlines[-1] + sgyfile.xlines[1] - sgyfile.xlines[0]) else np.where(sgyfile.xlines ==xl_max)[0][0]
+            step_xl = xl_step // (sgyfile.xlines[1] - sgyfile.xlines[0]) if xl_step is not None else 1
+
+            start_z = 0 if z_min is None else np.where(sgyfile.samples.astype('intc') == z_min)[0][0]
+            stop_z = len(sgyfile.samples) if (z_max is None) or (z_max == sgyfile.samples.astype('intc')[-1] + sgyfile.samples.astype('intc')[1] - sgyfile.samples.astype('intc')[0]) else np.where(sgyfile.samples.astype('intc') == z_max)[0][0]
+            step_z = int(z_step // (sgyfile.samples[1] - sgyfile.samples[0])) if z_step is not None else 1
+
+            vol_segy = segyio.tools.cube(sgy_filename)[start_il:stop_il:step_il,
+                                                       start_xl:stop_xl:step_xl,
+                                                       start_z:stop_z:step_z]
+
+            assert np.allclose(vol_sgz, vol_segy, rtol=tolerance)
+
+def test_subvolume_accessor():
+    compare_subvolume(SGZ_FILE_8, SGY_FILE, 1,4,None, 21,23,None, 12,36,None, tolerance=1e-10)
+    compare_subvolume(SGZ_FILE_8, SGY_FILE, 1,4,None, 21,23,None, 12,36,4, tolerance=1e-10)
+    compare_subvolume(SGZ_FILE_8, SGY_FILE, 1,4,None, 21,23,2, 12,36,None, tolerance=1e-10)
+    compare_subvolume(SGZ_FILE_8, SGY_FILE, 1,4,2, 21,23,None, 12,36,None, tolerance=1e-10)
+    compare_subvolume(SGZ_FILE_DEC_8, SGY_FILE_DEC, 1,5,None, 20,22,None, None,None,None, tolerance=1e-6)
+    compare_subvolume(SGZ_FILE_DEC_8, SGY_FILE_DEC, 1,3,2, 20,24,2, None,None,8, tolerance=1e-6)
+
+def test_subvolume_accessor_errors():
+    with seismic_zfp.open(SGZ_FILE_4) as sgzfile:
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[0:6:None, 20:21:None, 0:40:None]
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[0:5:None, 20:26:None, 0:40:None]
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[0:5:None, 20:21:None, 0:400:None]
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[-1:6:None, 20:21:None, 0:40:None]
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[0:5:None, 20:21:None, 0:40:3]
+
+    with seismic_zfp.open(SGZ_FILE_DEC_8) as sgzfile:
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[0:5:1, 20:21:None, 0:None:None]
+
+        with pytest.raises(IndexError):
+            data = sgzfile.subvolume[0:5:2, 20:21:3, 0:None:None]
