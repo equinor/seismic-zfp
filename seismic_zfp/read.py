@@ -436,20 +436,20 @@ class SgzReader(object):
         Parameters
         ----------
         min_il : int
-            The ordinal number of the minimum inline to read (C-indexing)
+            The index of the first inline to get from the cube. Use 0 to for the first inline in the cube
         max_il : int
-            The ordinal number of the maximum inline to read (C-indexing)
+            The index of the last inline to get, non inclusive. To get one inline, use max_il = min_il + 1
 
         min_xl : int
-            The ordinal number of the minimum crossline to read (C-indexing)
+            The index of the first crossline to get from the cube. Use 0 for the first crossline in the cube
         max_xl : int
-            The ordinal number of the maximum crossline to read (C-indexing)
+            The index of the last crossline to get, non inclusive. To get one crossline, use max_xl = min_xl + 1
 
         min_z : int
-            The ordinal number of the minimum zslice to read (C-indexing)
+            The index of the first time sample to get from the cube. Use 0 for the first time sample in the cube
         max_z : int
-            The ordinal number of the maximum zslice to read (C-indexing)
-
+            The index of the last time sample to get, non inclusive. To get one time sample, use max_z = min_z + 1
+            
         access_padding : bool, optional
             Functions which manage voxels used for padding themselves may relax bounds-checking to padded dimensions
 
