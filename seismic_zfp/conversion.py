@@ -1,5 +1,6 @@
 from __future__ import print_function
 import os
+import collections
 import warnings
 import numpy as np
 import segyio
@@ -8,7 +9,7 @@ from psutil import virtual_memory
 
 from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
-from .conversion_utils import run_conversion_loop
+from .conversion_utils import run_segy_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
@@ -150,8 +151,9 @@ class SegyConverter(object):
             n_traces = len(self.geom.ilines) * len(self.geom.xlines)
             inline_set_bytes = blockshape[0] * (len(self.geom.xlines) * len(segyfile.samples)) * 4
 
-            headers_to_store = get_unique_headerwords(segyfile)
-            numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
+            headers_dict = collections.OrderedDict.fromkeys(get_unique_headerwords(segyfile))
+            for k in get_unique_headerwords(segyfile):
+                headers_dict[k] = np.zeros(n_traces, dtype=np.int32)
 
         if inline_set_bytes > virtual_memory().total // 2:
             print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
@@ -163,12 +165,11 @@ class SegyConverter(object):
                                                                                      inline_set_bytes/(1024*1024),
                                                                                      max_queue_length))
 
-        run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                            headers_to_store, numpy_headers_arrays, self.geom,
-                            queuesize=max_queue_length, reduce_iops=reduce_iops)
+        run_segy_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
+                                 headers_dict, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         with open(self.out_filename, 'ab') as f:
-            for header_array in numpy_headers_arrays:
+            for header_array in headers_dict.values():
                 f.write(header_array.tobytes())
 
         t3 = time.time()

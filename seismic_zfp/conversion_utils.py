@@ -158,7 +158,7 @@ class MinimalInlineReader:
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
 
-def io_thread_func(blockshape, headers_to_store, geom, numpy_headers_arrays,
+def io_thread_func(blockshape, headers_dict, geom,
                    plane_set_id, planes_to_read, segy_buffer, segyfile, minimal_il_reader, trace_length):
     for i in range(blockshape[0]):
         start_trace = (plane_set_id * blockshape[0] + i) * len(segyfile.xlines) + geom.xlines[0]
@@ -174,8 +174,8 @@ def io_thread_func(blockshape, headers_to_store, geom, numpy_headers_arrays,
                 t_xl = t % len(segyfile.xlines)
                 t_il = t // len(segyfile.xlines)
                 t_store = (t_xl - geom.xlines[0]) + (t_il - geom.ilines[0]) * len(geom.xlines)
-                for j, h in enumerate(headers_to_store):
-                    numpy_headers_arrays[j][t_store] = header[h]
+                for tracefield, array in headers_dict.items():
+                    array[t_store] = header[tracefield]
 
         else:
             # Repeat last plane across padding to give better compression accuracy
@@ -191,8 +191,7 @@ def io_thread_func(blockshape, headers_to_store, geom, numpy_headers_arrays,
         segy_buffer[i, :, trace_length:] = np.expand_dims(segy_buffer[i, :, trace_length - 1], 1)
 
 
-def unstructured_io_thread_func(blockshape, headers_to_store, geom,
-                                numpy_headers_arrays, plane_set_id,
+def unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                                 segy_buffer, segyfile, trace_length):
     for i in range(blockshape[0]):
         for xl_id, xl_num in enumerate(geom.xlines):
@@ -202,11 +201,11 @@ def unstructured_io_thread_func(blockshape, headers_to_store, geom,
                 trace, header = segyfile.trace[trace_id], segyfile.header[trace_id]
                 segy_buffer[i, xl_id, 0:trace_length] = trace
                 t_store = xl_id + (plane_set_id * blockshape[0] + i) * len(geom.xlines)
-                for k, h in enumerate(headers_to_store):
-                    numpy_headers_arrays[k][t_store] = header[h]
+                for tracefield, array in headers_dict.items():
+                    array[t_store] = header[tracefield]
 
 
-def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom,
+def producer(queue, in_filename, blockshape, headers_dict, geom,
              reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename, mode='r', strict=False) as segyfile:
@@ -244,12 +243,10 @@ def producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arr
             segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
 
             if isinstance(geom, InferredGeometry):
-                unstructured_io_thread_func(blockshape, headers_to_store, geom,
-                                            numpy_headers_arrays, plane_set_id,
+                unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                                             segy_buffer, segyfile, trace_length)
             else:
-                io_thread_func(blockshape, headers_to_store, geom,
-                               numpy_headers_arrays, plane_set_id, planes_to_read,
+                io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
                                segy_buffer, segyfile, minimal_il_reader, trace_length)
 
             if blockshape[0] == 4:
@@ -272,8 +269,8 @@ def consumer(queue, header, out_filehandle, bits_per_voxel):
         queue.task_done()
 
 
-def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, headers_to_store,
-                              numpy_headers_arrays, geom, queuesize=16, reduce_iops=False):
+def run_segy_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape,
+                             headers_dict, geom, queuesize=16, reduce_iops=False):
     header = make_header(in_filename, bits_per_voxel, blockshape, geom)
     with open(out_filename, 'wb') as out_filehandle:
         # Maxsize can be reduced for machines with little memory
@@ -284,7 +281,7 @@ def run_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape, h
         t.daemon = True
         t.start()
         # run the producer and wait for completion
-        producer(queue, in_filename, blockshape, headers_to_store, numpy_headers_arrays, geom, reduce_iops=reduce_iops)
+        producer(queue, in_filename, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
         queue.join()
         out_filehandle.flush()
