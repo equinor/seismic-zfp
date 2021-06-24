@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from seismic_zfp.conversion import SegyConverter, SgzConverter
+from seismic_zfp.conversion import SegyConverter, SgzConverter, NumpyConverter
 try:
     import zgy2sgz
 except ImportError:
@@ -101,6 +101,7 @@ def test_compress_data(tmp_path):
     compress_and_compare_data(SGY_FILE, tmp_path, -2, 1e-1)
     compress_and_compare_data(SGY_FILE, tmp_path, 0.5, 1e-1)
     compress_and_compare_data(SGY_FILE, tmp_path, "0.5", 1e-1)
+
 
 
 def test_compress_headers(tmp_path):
@@ -216,3 +217,28 @@ def test_decompress_unstructured(tmp_path):
 
     assert np.allclose(segyio.tools.cube(out_sgy), segy_cube, rtol=1e-2)
 
+
+def test_compress_numpy_array(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'from-numpy.sgz')
+
+    trace_length = 1501
+    min_iline, n_ilines = 0, 8
+    min_xline, n_xlines = 8, 12
+
+    test_trace = np.arange(trace_length, dtype=np.float32)
+    array = np.broadcast_to(test_trace, (n_ilines, n_xlines, trace_length))
+    trace_headers = {segyio.tracefield.TraceField.INLINE_3D:
+                         np.broadcast_to(np.expand_dims(np.arange(min_iline, min_iline+n_ilines), axis=1), (n_ilines, n_xlines)),
+                     segyio.tracefield.TraceField.CROSSLINE_3D:
+                         np.broadcast_to(np.arange(min_xline, min_xline+n_xlines), (n_ilines,n_xlines))}
+
+    with NumpyConverter(array, ilines=np.arange(min_iline, min_iline+n_ilines),
+                               xlines=np.arange(min_xline, min_xline+n_xlines),
+                               samples=np.arange(trace_length),
+                               trace_headers=trace_headers) as converter:
+        converter.run(out_sgz)
+
+    with SgzReader(out_sgz) as reader:
+        sgz_data = reader.read_volume()
+
+    assert np.allclose(sgz_data, array, rtol=1e-8)

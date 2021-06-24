@@ -22,7 +22,33 @@ from .headers import get_headerword_infolist, get_unique_headerwords
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
 
 
-def make_header(in_filename, bits_per_voxel, blockshape, geom):
+def make_header_segy(in_filename, bits_per_voxel, blockshape, geom):
+    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
+        buffer = make_header(segyfile.ilines,
+                             segyfile.xlines,
+                             segyfile.samples,
+                             segyfile.tracecount,
+                             segyfile.unstructured,
+                             get_headerword_infolist(segyfile),
+                             bits_per_voxel, blockshape, geom)
+
+    # Just copy the bytes from the SEG-Y file header
+    with open(in_filename, "rb") as f:
+        segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
+        buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
+
+    return buffer
+
+
+def make_header_numpy(bits_per_voxel, blockshape, ilines, xlines, samples, headers_dict, geom):
+    hw_info_list = [(hw, 0, 0) for hw in headers_dict.keys()]
+    buffer = make_header(ilines, xlines, samples, len(ilines)*len(xlines), False,
+                             hw_info_list, bits_per_voxel, blockshape, geom)
+    buffer[76:80] = int_to_bytes(20)
+    return buffer
+
+
+def make_header(ilines, xlines, samples, tracecount, unstructured, hw_info_list, bits_per_voxel, blockshape, geom):
     """Generate header for SGZ file
 
     Returns
@@ -45,29 +71,25 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
     buffer[0:4] = int_to_bytes(header_blocks)
     version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
 
-    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
-        buffer[4:8] = int_to_bytes(len(segyfile.samples))
-        n_xl = len(geom.xlines)
-        buffer[8:12] = int_to_bytes(n_xl)
-        n_il = len(geom.ilines)
-        buffer[12:16] = int_to_bytes(n_il)
+    buffer[4:8] = int_to_bytes(len(samples))
+    n_xl = len(geom.xlines)
+    buffer[8:12] = int_to_bytes(n_xl)
+    n_il = len(geom.ilines)
+    buffer[12:16] = int_to_bytes(n_il)
 
-        buffer[16:20] = np_float_to_bytes_signed(segyfile.samples[0])
-        min_xl = np.int32(geom.min_xl) if segyfile.unstructured else segyfile.xlines[0]
-        buffer[20:24] = np_float_to_bytes(min_xl)
-        min_il = np.int32(geom.min_il) if segyfile.unstructured else segyfile.ilines[0]
-        buffer[24:28] = np_float_to_bytes(min_il)
+    buffer[16:20] = np_float_to_bytes_signed(samples[0])
+    min_xl = np.int32(geom.min_xl) if unstructured else xlines[0]
+    buffer[20:24] = np_float_to_bytes(min_xl)
+    min_il = np.int32(geom.min_il) if unstructured else ilines[0]
+    buffer[24:28] = np_float_to_bytes(min_il)
 
-        # segyio.BinField.Interval is in microseconds
-        buffer[28:32] = np_float_to_bytes(1000.0*np.array(segyfile.samples[1] - segyfile.samples[0]))
-        if not segyfile.unstructured:
-            buffer[32:36] = np_float_to_bytes(segyfile.xlines[1] - segyfile.xlines[0])
-            buffer[36:40] = np_float_to_bytes(segyfile.ilines[1] - segyfile.ilines[0])
-        else:
-            buffer[32:36] = np_float_to_bytes(np.int32(geom.il_step))
-            buffer[36:40] = np_float_to_bytes(np.int32(geom.xl_step))
-
-        hw_info_list = get_headerword_infolist(segyfile)
+    buffer[28:32] = np_float_to_bytes(1000.0*np.array(samples[1] - samples[0]))
+    if not unstructured:
+        buffer[32:36] = np_float_to_bytes(xlines[1] - xlines[0])
+        buffer[36:40] = np_float_to_bytes(ilines[1] - ilines[0])
+    else:
+        buffer[32:36] = np_float_to_bytes(np.int32(geom.il_step))
+        buffer[36:40] = np_float_to_bytes(np.int32(geom.xl_step))
 
     if bits_per_voxel < 1:
         bpv = -int(1 / bits_per_voxel)
@@ -82,14 +104,14 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
 
     # Length of the seismic amplitudes cube after compression
     compressed_data_length_diskblocks = int(((bits_per_voxel *
-                                    pad(len(segyfile.samples), blockshape[2]) *
+                                    pad(len(samples), blockshape[2]) *
                                     pad(n_xl, blockshape[1]) *
                                     pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
     buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
     if geom is None:
-        header_entry_length_bytes = (len(segyfile.xlines) * len(segyfile.ilines) * 32) // 8
+        header_entry_length_bytes = (len(xlines) * len(ilines) * 32) // 8
     else:
         header_entry_length_bytes = (len(geom.xlines) * len(geom.ilines) * 32) // 8
     buffer[60:64] = int_to_bytes(header_entry_length_bytes)
@@ -97,7 +119,7 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
     # Number of trace header arrays stored after compressed seismic amplitudes
     n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
     buffer[64:68] = int_to_bytes(n_header_arrays)
-    buffer[68:72] = int_to_bytes(segyfile.tracecount)
+    buffer[68:72] = int_to_bytes(tracecount)
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
@@ -108,11 +130,8 @@ def make_header(in_filename, bits_per_voxel, blockshape, geom):
         buffer[start + 4:start + 8] = signed_int_to_bytes(hw_info[1])
         buffer[start + 8:start + 12] = signed_int_to_bytes(hw_info[2])
 
-    # Just copy the bytes from the SEG-Y file header
-    with open(in_filename, "rb") as f:
-        segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
-        buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
     return buffer
+
 
 
 # A minimal IL reader reads an inline with the minimum number of read calls, i.e. one.
@@ -204,9 +223,28 @@ def unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                 for tracefield, array in headers_dict.items():
                     array[t_store] = header[tracefield]
 
+def numpy_producer(queue, in_array, blockshape, headers_dict, geom):
+    n_ilines, n_xlines, trace_length = in_array.shape
+    padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
-def producer(queue, in_filename, blockshape, headers_dict, geom,
-             reduce_iops=True, verbose=True):
+    # Loop over groups of inlines
+    n_plane_sets = padded_shape[0] // blockshape[0]
+    print(n_plane_sets)
+    for plane_set_id in range(n_plane_sets):
+        buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
+        buffer[0:blockshape[0], 0:in_array.shape[1],0:in_array.shape[2]] = in_array[plane_set_id*blockshape[0]:(plane_set_id+1)*blockshape[0],:,:]
+        if blockshape[0] == 4:
+            queue.put(buffer)
+#        else:
+#            for x in range(padded_shape[1] // blockshape[1]):
+#                for z in range(padded_shape[2] // blockshape[2]):
+#                    slice = buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
+#                            z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+#                    queue.put(slice)
+
+
+def segy_producer(queue, in_filename, blockshape, headers_dict, geom,
+                  reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
     with segyio.open(in_filename, mode='r', strict=False) as segyfile:
 
@@ -263,15 +301,15 @@ def consumer(queue, header, out_filehandle, bits_per_voxel):
     """Fetches compressed sets of inlines (or just blocks) and writes them to disk"""
     out_filehandle.write(header)
     while True:
-        segy_buffer = queue.get()
-        compressed = zfpy.compress_numpy(segy_buffer, rate=bits_per_voxel, write_header=False)
+        buffer = queue.get()
+        compressed = zfpy.compress_numpy(buffer, rate=bits_per_voxel, write_header=False)
         out_filehandle.write(compressed)
         queue.task_done()
 
 
 def run_segy_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape,
                              headers_dict, geom, queuesize=16, reduce_iops=False):
-    header = make_header(in_filename, bits_per_voxel, blockshape, geom)
+    header = make_header_segy(in_filename, bits_per_voxel, blockshape, geom)
     with open(out_filename, 'wb') as out_filehandle:
         # Maxsize can be reduced for machines with little memory
         # ... or for files which are so big they might be very useful.
@@ -281,7 +319,24 @@ def run_segy_conversion_loop(in_filename, out_filename, bits_per_voxel, blocksha
         t.daemon = True
         t.start()
         # run the producer and wait for completion
-        producer(queue, in_filename, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
+        segy_producer(queue, in_filename, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
+        # wait until the consumer has processed all items
+        queue.join()
+        out_filehandle.flush()
+
+def run_numpy_conversion_loop(in_array, out_filename, ilines, xlines, samples, bits_per_voxel, blockshape,
+                              headers_dict, geom, queuesize=16):
+    header = make_header_numpy(bits_per_voxel, blockshape, ilines, xlines, samples, headers_dict, geom)
+    with open(out_filename, 'wb') as out_filehandle:
+        # Maxsize can be reduced for machines with little memory
+        # ... or for files which are so big they might be very useful.
+        queue = Queue(maxsize=queuesize)
+        # schedule the consumer
+        t = Thread(target=consumer, args=(queue, header, out_filehandle, bits_per_voxel))
+        t.daemon = True
+        t.start()
+        # run the producer and wait for completion
+        numpy_producer(queue, in_array, blockshape, headers_dict, geom)
         # wait until the consumer has processed all items
         queue.join()
         out_filehandle.flush()

@@ -46,7 +46,7 @@ Byte encoding is little-endian.
 |64-67 |uint32 |Number of header arrays
 |68-71 |uint32 |Number of traces (unstructured files)
 |72-75 |uint32 |Encoded version number
-|76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY
+|76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY, 20=numpy
 |80-979 |---  | --- Unused ---
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---

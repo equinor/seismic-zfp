@@ -9,7 +9,7 @@ from psutil import virtual_memory
 
 from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
-from .conversion_utils import run_segy_conversion_loop
+from .conversion_utils import run_segy_conversion_loop, run_numpy_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
@@ -257,3 +257,58 @@ class SgzConverter(SgzReader):
             self.read_variant_headers()
             for k, header_array in self.variant_headers.items():
                 outfile.write(header_array.tobytes())
+
+
+class NumpyConverter(object):
+    def __init__(self, data_array, ilines=None, xlines=None, samples=None, trace_headers={}):
+        # Get ilines axis. If overspecified check consistency, and generate if unspecified.
+        if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
+            self.ilines = trace_headers[segyio.tracefield.TraceField.INLINE_3D][:, 0]
+            if ilines is not None:
+                assert np.array_equal(self.ilines, ilines)
+        else:
+            self.ilines = np.arange(data_array.shape[0]) if ilines is None else ilines
+
+
+        # Get xlines axis. If overspecified check consistency, and generate if unspecified.
+        if segyio.tracefield.TraceField.CROSSLINE_3D in trace_headers:
+            self.xlines = trace_headers[segyio.tracefield.TraceField.CROSSLINE_3D][0, :]
+            if xlines is not None:
+                assert np.array_equal(self.xlines, xlines)
+        else:
+            self.xlines = np.arange(data_array.shape[1]) if xlines is None else xlines
+
+        self.samples = 4*np.arange(data_array.shape[2]) if samples is None else samples # Default 4ms sampling
+        self.trace_headers = collections.OrderedDict(sorted(trace_headers.items()))
+
+        if segyio.tracefield.TraceField.INLINE_3D not in self.trace_headers:
+            self.trace_headers[segyio.tracefield.TraceField.INLINE_3D] = np.broadcast_to(np.expand_dims(self.ilines, 1), (len(self.ilines), len(self.xlines)))
+
+        if segyio.tracefield.TraceField.CROSSLINE_3D not in self.trace_headers:
+            self.trace_headers[segyio.tracefield.TraceField.CROSSLINE_3D] = np.broadcast_to(self.xlines, (len(self.ilines), len(self.xlines)))
+
+        # Do some sanity checks
+        assert data_array.dtype == np.float32
+        assert data_array.shape == (len(self.ilines), len(self.xlines), len(self.samples))
+        for tracefield, header_array in self.trace_headers.items():
+            assert tracefield in segyio.tracefield.keys.values()
+            assert header_array.shape == data_array[:,:,0].shape
+
+        self.data_array = data_array
+
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
+        self.out_filename = out_filename
+        bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
+        self.convert_numpy_stream(bits_per_voxel, blockshape)
+
+    def convert_numpy_stream(self, bits_per_voxel, blockshape):
+        self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
+        run_numpy_conversion_loop(self.data_array, self.out_filename, self.ilines, self.xlines, self.samples,
+                                  bits_per_voxel, blockshape, self.trace_headers, self.geom)
