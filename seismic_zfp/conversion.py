@@ -7,9 +7,9 @@ import segyio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
+from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
-from .conversion_utils import run_segy_conversion_loop, run_numpy_conversion_loop
+from .conversion_utils import run_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 
@@ -165,8 +165,8 @@ class SegyConverter(object):
                                                                                      inline_set_bytes/(1024*1024),
                                                                                      max_queue_length))
 
-        run_segy_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                                 headers_dict, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
+        run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
+                            headers_dict, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         with open(self.out_filename, 'ab') as f:
             for header_array in headers_dict.values():
@@ -310,5 +310,6 @@ class NumpyConverter(object):
 
     def convert_numpy_stream(self, bits_per_voxel, blockshape):
         self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
-        run_numpy_conversion_loop(self.data_array, self.out_filename, self.ilines, self.xlines, self.samples,
-                                  bits_per_voxel, blockshape, self.trace_headers, self.geom)
+        input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
+        run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape,
+                            self.trace_headers, self.geom)

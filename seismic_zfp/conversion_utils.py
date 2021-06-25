@@ -16,6 +16,7 @@ from .utils import (
     np_float_to_bytes,
     np_float_to_bytes_signed,
     progress_printer,
+    CubeWithAxes,
     InferredGeometry,
 )
 from .headers import get_headerword_infolist, get_unique_headerwords
@@ -229,18 +230,24 @@ def numpy_producer(queue, in_array, blockshape, headers_dict, geom):
 
     # Loop over groups of inlines
     n_plane_sets = padded_shape[0] // blockshape[0]
-    print(n_plane_sets)
     for plane_set_id in range(n_plane_sets):
-        buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
-        buffer[0:blockshape[0], 0:in_array.shape[1],0:in_array.shape[2]] = in_array[plane_set_id*blockshape[0]:(plane_set_id+1)*blockshape[0],:,:]
+        if (plane_set_id+1)*blockshape[0] > n_ilines:
+            buffer = np.pad(in_array[plane_set_id*blockshape[0]:(plane_set_id+1)*blockshape[0],:,:],
+                            ((0, n_ilines%blockshape[0]), (0, padded_shape[1]-n_xlines), (0, padded_shape[2]-trace_length)),
+                            'edge')
+        else:
+            buffer = np.pad(in_array[plane_set_id * blockshape[0]:(plane_set_id + 1) * blockshape[0], :, :],
+                            ((0, 0), (0, padded_shape[1]-n_xlines), (0, padded_shape[2]-trace_length)),
+                            'edge')
+
         if blockshape[0] == 4:
             queue.put(buffer)
-#        else:
-#            for x in range(padded_shape[1] // blockshape[1]):
-#                for z in range(padded_shape[2] // blockshape[2]):
-#                    slice = buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
-#                            z * blockshape[2]: (z + 1) * blockshape[2]].copy()
-#                    queue.put(slice)
+        else:
+            for x in range(padded_shape[1] // blockshape[1]):
+                for z in range(padded_shape[2] // blockshape[2]):
+                    slice = buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
+                            z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                    queue.put(slice)
 
 
 def segy_producer(queue, in_filename, blockshape, headers_dict, geom,
@@ -307,9 +314,12 @@ def consumer(queue, header, out_filehandle, bits_per_voxel):
         queue.task_done()
 
 
-def run_segy_conversion_loop(in_filename, out_filename, bits_per_voxel, blockshape,
-                             headers_dict, geom, queuesize=16, reduce_iops=False):
-    header = make_header_segy(in_filename, bits_per_voxel, blockshape, geom)
+def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
+                        headers_dict, geom, queuesize=16, reduce_iops=False):
+    if isinstance(source, CubeWithAxes):
+        header = make_header_numpy(bits_per_voxel, blockshape, source.ilines, source.xlines, source.samples, headers_dict, geom)
+    else:
+        header = make_header_segy(source, bits_per_voxel, blockshape, geom)
     with open(out_filename, 'wb') as out_filehandle:
         # Maxsize can be reduced for machines with little memory
         # ... or for files which are so big they might be very useful.
@@ -319,24 +329,10 @@ def run_segy_conversion_loop(in_filename, out_filename, bits_per_voxel, blocksha
         t.daemon = True
         t.start()
         # run the producer and wait for completion
-        segy_producer(queue, in_filename, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
-        # wait until the consumer has processed all items
-        queue.join()
-        out_filehandle.flush()
-
-def run_numpy_conversion_loop(in_array, out_filename, ilines, xlines, samples, bits_per_voxel, blockshape,
-                              headers_dict, geom, queuesize=16):
-    header = make_header_numpy(bits_per_voxel, blockshape, ilines, xlines, samples, headers_dict, geom)
-    with open(out_filename, 'wb') as out_filehandle:
-        # Maxsize can be reduced for machines with little memory
-        # ... or for files which are so big they might be very useful.
-        queue = Queue(maxsize=queuesize)
-        # schedule the consumer
-        t = Thread(target=consumer, args=(queue, header, out_filehandle, bits_per_voxel))
-        t.daemon = True
-        t.start()
-        # run the producer and wait for completion
-        numpy_producer(queue, in_array, blockshape, headers_dict, geom)
+        if isinstance(source, CubeWithAxes):
+            numpy_producer(queue, source.data_array, blockshape, headers_dict, geom)
+        else:
+            segy_producer(queue, source, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
         queue.join()
         out_filehandle.flush()

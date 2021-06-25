@@ -218,15 +218,16 @@ def test_decompress_unstructured(tmp_path):
     assert np.allclose(segyio.tools.cube(out_sgy), segy_cube, rtol=1e-2)
 
 
-def test_compress_numpy_array(tmp_path):
+def compress_numpy_and_compare_data(trace_length, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol):
+
     out_sgz = os.path.join(str(tmp_path), 'from-numpy.sgz')
 
-    trace_length = 1501
-    min_iline, n_ilines = 0, 8
-    min_xline, n_xlines = 8, 12
-
     test_trace = np.arange(trace_length, dtype=np.float32)
-    array = np.broadcast_to(test_trace, (n_ilines, n_xlines, trace_length))
+    array = np.broadcast_to(test_trace, (n_ilines, n_xlines, trace_length)).copy()
+    for i in range(n_ilines):
+        for x in range(n_xlines):
+            array[i,x,:] = (i*0.1 + i*x*0.001)
+
     trace_headers = {segyio.tracefield.TraceField.INLINE_3D:
                          np.broadcast_to(np.expand_dims(np.arange(min_iline, min_iline+n_ilines), axis=1), (n_ilines, n_xlines)),
                      segyio.tracefield.TraceField.CROSSLINE_3D:
@@ -236,9 +237,17 @@ def test_compress_numpy_array(tmp_path):
                                xlines=np.arange(min_xline, min_xline+n_xlines),
                                samples=np.arange(trace_length),
                                trace_headers=trace_headers) as converter:
-        converter.run(out_sgz)
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
 
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
 
-    assert np.allclose(sgz_data, array, rtol=1e-8)
+    assert np.allclose(sgz_data, array, rtol=rtol)
+
+
+
+def test_compress_numpy_data(tmp_path):
+    compress_numpy_and_compare_data(16, 0, 8, 8, 12, tmp_path, 4, 1e-6)
+    compress_numpy_and_compare_data(801, 0, 8, 8, 12, tmp_path, 4, 1e-6)
+    compress_numpy_and_compare_data(512, 0, 9, 8, 12, tmp_path, 4, 1e-6)
+    compress_numpy_and_compare_data(512, 0, 8, 8, 13, tmp_path, 4, 1e-6)
