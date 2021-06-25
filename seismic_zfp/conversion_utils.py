@@ -224,7 +224,7 @@ def unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                 for tracefield, array in headers_dict.items():
                     array[t_store] = header[tracefield]
 
-def numpy_producer(queue, in_array, blockshape, headers_dict, geom):
+def numpy_producer(queue, in_array, blockshape):
     n_ilines, n_xlines, trace_length = in_array.shape
     padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
@@ -232,8 +232,9 @@ def numpy_producer(queue, in_array, blockshape, headers_dict, geom):
     n_plane_sets = padded_shape[0] // blockshape[0]
     for plane_set_id in range(n_plane_sets):
         if (plane_set_id+1)*blockshape[0] > n_ilines:
+            ilines_pad = blockshape[0] - n_ilines%blockshape[0]
             buffer = np.pad(in_array[plane_set_id*blockshape[0]:(plane_set_id+1)*blockshape[0],:,:],
-                            ((0, n_ilines%blockshape[0]), (0, padded_shape[1]-n_xlines), (0, padded_shape[2]-trace_length)),
+                            ((0, ilines_pad), (0, padded_shape[1]-n_xlines), (0, padded_shape[2]-trace_length)),
                             'edge')
         else:
             buffer = np.pad(in_array[plane_set_id * blockshape[0]:(plane_set_id + 1) * blockshape[0], :, :],
@@ -330,7 +331,7 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
         t.start()
         # run the producer and wait for completion
         if isinstance(source, CubeWithAxes):
-            numpy_producer(queue, source.data_array, blockshape, headers_dict, geom)
+            numpy_producer(queue, source.data_array, blockshape)
         else:
             segy_producer(queue, source, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
