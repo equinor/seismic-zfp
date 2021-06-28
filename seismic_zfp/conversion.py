@@ -260,7 +260,24 @@ class SgzConverter(SgzReader):
 
 
 class NumpyConverter(object):
+    """Compresses 3D numpy array to SGZ file(s)"""
+
     def __init__(self, data_array, ilines=None, xlines=None, samples=None, trace_headers={}):
+        """
+        Parameters
+        ----------
+
+        data_array: np.ndarray of dtype==np.float32
+            The 3D numpy array of 32-bit floats to be compressed.
+
+        ilines, xlines, samples: 1D array-like objects
+            Axes labels for input array
+
+        trace_headers: dict
+            key, value pairs pf:
+                - Member of segyio.tracefield.TraceField Enum
+                - 2D numpy array of integers in inline-major order, representing trace header values to be inserted
+        """
         # Get ilines axis. If overspecified check consistency, and generate if unspecified.
         if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
             self.ilines = trace_headers[segyio.tracefield.TraceField.INLINE_3D][:, 0]
@@ -304,6 +321,31 @@ class NumpyConverter(object):
         pass
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
+        """General entrypoint for converting numpy arrays to SGZ files
+
+        Parameters
+        ----------
+
+        out_filename: str
+            The SGZ output file
+
+        bits_per_voxel: int, float, str
+            The number of bits to use for storing each seismic voxel.
+            - Uncompressed seismic has 32-bits per voxel
+            - Using 16-bits gives almost perfect reproduction
+            - Tested using 8, 4, 2, 1, 0.5 & 0.25 bit
+            - Recommended using 4-bit, giving 8:1 compression
+            - Negative value implies reciprocal: i.e. -2 ==> 1/2 bits per voxel
+
+        blockshape: (int, int, int)
+            The physical shape of voxels compressed to one disk block.
+            Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, 4th is redundant.
+            - Specifying -1 for one of these will calculate that one
+            - Specifying -1 for more than one of these will fail
+            - Each one must be a power of 2
+            - (4, 4, -1) - default - is good for IL/XL reading
+            - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
+        """
         self.out_filename = out_filename
         bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
         self.convert_numpy_stream(bits_per_voxel, blockshape)

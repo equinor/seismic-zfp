@@ -24,14 +24,15 @@ from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_H
 
 
 def make_header_segy(in_filename, bits_per_voxel, blockshape, geom):
+    """Generate header for SGZ file from SEG-Y file"""
     with segyio.open(in_filename, mode='r', strict=False) as segyfile:
         buffer = make_header(segyfile.ilines,
                              segyfile.xlines,
                              segyfile.samples,
                              segyfile.tracecount,
-                             segyfile.unstructured,
                              get_headerword_infolist(segyfile),
-                             bits_per_voxel, blockshape, geom)
+                             bits_per_voxel, blockshape, geom,
+                             unstructured=segyfile.unstructured)
 
     # Just copy the bytes from the SEG-Y file header
     with open(in_filename, "rb") as f:
@@ -41,15 +42,20 @@ def make_header_segy(in_filename, bits_per_voxel, blockshape, geom):
     return buffer
 
 
-def make_header_numpy(bits_per_voxel, blockshape, ilines, xlines, samples, headers_dict, geom):
+def make_header_numpy(bits_per_voxel, blockshape, source, headers_dict, geom):
+    """Generate header for SGZ file from numpy arrays representing axis and header values"""
+
+    # Nothing clever to identify duplicated header arrays yet, just include everything we're given.
     hw_info_list = [(hw, 0, 0) for hw in headers_dict.keys()]
-    buffer = make_header(ilines, xlines, samples, len(ilines)*len(xlines), False,
-                             hw_info_list, bits_per_voxel, blockshape, geom)
+    buffer = make_header(source.ilines, source.xlines, source.samples,
+                         len(source.ilines)*len(source.xlines),
+                         hw_info_list, bits_per_voxel, blockshape, geom)
+    # These 4 bytes indicate the data source for the SGZ file. Use 20 to indicate numpy.
     buffer[76:80] = int_to_bytes(20)
     return buffer
 
 
-def make_header(ilines, xlines, samples, tracecount, unstructured, hw_info_list, bits_per_voxel, blockshape, geom):
+def make_header(ilines, xlines, samples, tracecount, hw_info_list, bits_per_voxel, blockshape, geom, unstructured=False):
     """Generate header for SGZ file
 
     Returns
@@ -225,6 +231,7 @@ def unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                     array[t_store] = header[tracefield]
 
 def numpy_producer(queue, in_array, blockshape):
+    """Copies plane-sets from input array, and puts them in the queue for writing to disk"""
     n_ilines, n_xlines, trace_length = in_array.shape
     padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
@@ -253,7 +260,7 @@ def numpy_producer(queue, in_array, blockshape):
 
 def segy_producer(queue, in_filename, blockshape, headers_dict, geom,
                   reduce_iops=True, verbose=True):
-    """Reads and compresses data from input file, and puts it in the queue for writing to disk"""
+    """Reads and compresses data from input file, and puts them in the queue for writing to disk"""
     with segyio.open(in_filename, mode='r', strict=False) as segyfile:
 
         n_ilines = len(geom.ilines)
@@ -318,7 +325,7 @@ def consumer(queue, header, out_filehandle, bits_per_voxel):
 def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
                         headers_dict, geom, queuesize=16, reduce_iops=False):
     if isinstance(source, CubeWithAxes):
-        header = make_header_numpy(bits_per_voxel, blockshape, source.ilines, source.xlines, source.samples, headers_dict, geom)
+        header = make_header_numpy(bits_per_voxel, blockshape, source, headers_dict, geom)
     else:
         header = make_header_segy(source, bits_per_voxel, blockshape, geom)
     with open(out_filename, 'wb') as out_filehandle:
@@ -329,7 +336,7 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
         t = Thread(target=consumer, args=(queue, header, out_filehandle, bits_per_voxel))
         t.daemon = True
         t.start()
-        # run the producer and wait for completion
+        # run the appropriate producer and wait for completion
         if isinstance(source, CubeWithAxes):
             numpy_producer(queue, source.data_array, blockshape)
         else:

@@ -14,6 +14,7 @@ class FileOffset(int):
 
 
 class CubeWithAxes:
+    """Utility class to hold 3D numpy array and corresponding axes"""
     def __init__(self, data_array, ilines, xlines, samples):
         self.data_array = data_array
         self.ilines = ilines
