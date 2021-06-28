@@ -109,6 +109,14 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
     binary_file_header = sgzfile.bin
     text_file_header = sgzfile.text[0]
 ```
+Plus some extended utility functionality:
+```python
+import seismic_zfp
+with seismic_zfp.open("in.sgz")) as sgzfile:
+    subvolume = sgzfile.subvolume[IL_NO_START:IL_NO_STOP:IL_NO_STEP, 
+                                  XL_NO_START:XL_NO_STOP:XL_NO_STEP,
+                                  SAMP_NO_START:SAMP_NO_STOP:SAMP_NO_STEP]
+```
 
 ## Command Line Interface
 A simple command line interface for converting from SEGY or ZGY to SGZ is also bundled with seismic-zfp. This is available using the command `seismic-zfp`.
