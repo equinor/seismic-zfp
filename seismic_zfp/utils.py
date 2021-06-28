@@ -13,6 +13,15 @@ class FileOffset(int):
         return int.__new__(cls, value)
 
 
+class CubeWithAxes:
+    """Utility class to hold 3D numpy array and corresponding axes"""
+    def __init__(self, data_array, ilines, xlines, samples):
+        self.data_array = data_array
+        self.ilines = ilines
+        self.xlines = xlines
+        self.samples = samples
+
+
 class Geometry:
     """Lightweight place to keep track of IL/XL ranges"""
     def __init__(self, min_il, max_il, min_xl, max_xl):

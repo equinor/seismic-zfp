@@ -1,12 +1,13 @@
 from __future__ import print_function
 import os
+import collections
 import warnings
 import numpy as np
 import segyio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, Geometry, InferredGeometry
+from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry
 from .headers import get_unique_headerwords
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
@@ -150,8 +151,9 @@ class SegyConverter(object):
             n_traces = len(self.geom.ilines) * len(self.geom.xlines)
             inline_set_bytes = blockshape[0] * (len(self.geom.xlines) * len(segyfile.samples)) * 4
 
-            headers_to_store = get_unique_headerwords(segyfile)
-            numpy_headers_arrays = [np.zeros(n_traces, dtype=np.int32) for _ in range(len(headers_to_store))]
+            headers_dict = collections.OrderedDict.fromkeys(get_unique_headerwords(segyfile))
+            for k in get_unique_headerwords(segyfile):
+                headers_dict[k] = np.zeros(n_traces, dtype=np.int32)
 
         if inline_set_bytes > virtual_memory().total // 2:
             print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
@@ -164,11 +166,10 @@ class SegyConverter(object):
                                                                                      max_queue_length))
 
         run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                            headers_to_store, numpy_headers_arrays, self.geom,
-                            queuesize=max_queue_length, reduce_iops=reduce_iops)
+                            headers_dict, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         with open(self.out_filename, 'ab') as f:
-            for header_array in numpy_headers_arrays:
+            for header_array in headers_dict.values():
                 f.write(header_array.tobytes())
 
         t3 = time.time()
@@ -256,3 +257,101 @@ class SgzConverter(SgzReader):
             self.read_variant_headers()
             for k, header_array in self.variant_headers.items():
                 outfile.write(header_array.tobytes())
+
+
+class NumpyConverter(object):
+    """Compresses 3D numpy array to SGZ file(s)"""
+
+    def __init__(self, data_array, ilines=None, xlines=None, samples=None, trace_headers={}):
+        """
+        Parameters
+        ----------
+
+        data_array: np.ndarray of dtype==np.float32
+            The 3D numpy array of 32-bit floats to be compressed.
+
+        ilines, xlines, samples: 1D array-like objects
+            Axes labels for input array
+
+        trace_headers: dict
+            key, value pairs pf:
+                - Member of segyio.tracefield.TraceField Enum
+                - 2D numpy array of integers in inline-major order, representing trace header values to be inserted
+        """
+        # Get ilines axis. If overspecified check consistency, and generate if unspecified.
+        if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
+            self.ilines = trace_headers[segyio.tracefield.TraceField.INLINE_3D][:, 0]
+            if ilines is not None:
+                assert np.array_equal(self.ilines, ilines)
+        else:
+            self.ilines = np.arange(data_array.shape[0]) if ilines is None else ilines
+
+
+        # Get xlines axis. If overspecified check consistency, and generate if unspecified.
+        if segyio.tracefield.TraceField.CROSSLINE_3D in trace_headers:
+            self.xlines = trace_headers[segyio.tracefield.TraceField.CROSSLINE_3D][0, :]
+            if xlines is not None:
+                assert np.array_equal(self.xlines, xlines)
+        else:
+            self.xlines = np.arange(data_array.shape[1]) if xlines is None else xlines
+
+        self.samples = 4*np.arange(data_array.shape[2]) if samples is None else samples # Default 4ms sampling
+        self.trace_headers = collections.OrderedDict(sorted(trace_headers.items()))
+
+        if segyio.tracefield.TraceField.INLINE_3D not in self.trace_headers:
+            self.trace_headers[segyio.tracefield.TraceField.INLINE_3D] = np.broadcast_to(np.expand_dims(self.ilines, 1), (len(self.ilines), len(self.xlines)))
+
+        if segyio.tracefield.TraceField.CROSSLINE_3D not in self.trace_headers:
+            self.trace_headers[segyio.tracefield.TraceField.CROSSLINE_3D] = np.broadcast_to(self.xlines, (len(self.ilines), len(self.xlines)))
+
+        # Do some sanity checks
+        assert data_array.dtype == np.float32
+        assert data_array.shape == (len(self.ilines), len(self.xlines), len(self.samples))
+        for tracefield, header_array in self.trace_headers.items():
+            assert tracefield in segyio.tracefield.keys.values()
+            assert header_array.shape == data_array[:,:,0].shape
+
+        self.data_array = data_array
+
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
+        """General entrypoint for converting numpy arrays to SGZ files
+
+        Parameters
+        ----------
+
+        out_filename: str
+            The SGZ output file
+
+        bits_per_voxel: int, float, str
+            The number of bits to use for storing each seismic voxel.
+            - Uncompressed seismic has 32-bits per voxel
+            - Using 16-bits gives almost perfect reproduction
+            - Tested using 8, 4, 2, 1, 0.5 & 0.25 bit
+            - Recommended using 4-bit, giving 8:1 compression
+            - Negative value implies reciprocal: i.e. -2 ==> 1/2 bits per voxel
+
+        blockshape: (int, int, int)
+            The physical shape of voxels compressed to one disk block.
+            Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, 4th is redundant.
+            - Specifying -1 for one of these will calculate that one
+            - Specifying -1 for more than one of these will fail
+            - Each one must be a power of 2
+            - (4, 4, -1) - default - is good for IL/XL reading
+            - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
+        """
+        self.out_filename = out_filename
+        bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
+        self.convert_numpy_stream(bits_per_voxel, blockshape)
+
+    def convert_numpy_stream(self, bits_per_voxel, blockshape):
+        self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
+        input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
+        run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape,
+                            self.trace_headers, self.geom)
