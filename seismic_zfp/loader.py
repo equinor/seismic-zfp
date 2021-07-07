@@ -2,6 +2,7 @@ try:
     from functools import lru_cache
 except ImportError:
     from functools32 import lru_cache
+import random
 from psutil import virtual_memory
 from operator import floordiv
 import numpy as np
@@ -29,7 +30,10 @@ class SgzLoader(object):
             if uncompressed_buf_size > virtual_memory().total:
                 msg = "Uncompressed volume is {}MB, machine memory is {}MB, try using 'preload=False'"
                 print(msg.format(uncompressed_buf_size//(1024*1024), virtual_memory().total//(1024*1024)))
-                raise RuntimeError("Out of memory.  We wish to hold the whole sky,  But we never will.")
+                msgs = ["Out of memory.  We wish to hold the whole sky,  But we never will.",
+                        "The code was willing, It considered your request, But the chips were weak.",
+                        "To have no errors, Would be life without meaning. No struggle, no joy."]
+                raise RuntimeError(random.choice(msgs))
             self.load_compressed_volume()
 
     def load_compressed_volume(self):
@@ -94,12 +98,8 @@ class SgzLoader(object):
                         temp_buf[sub_block_num * sub_block_size_bytes:(sub_block_num + 1) * sub_block_size_bytes]
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
 
-    @lru_cache(maxsize=1)
-    def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):
-        z_units = (max_z + 3) // 4 - min_z // 4
-        xl_units = (max_xl + 3) // 4 - min_xl // 4
-        il_units = (max_il + 3) // 4 - min_il // 4
 
+    def read_chunk_range(self, min_il, min_xl, min_z, il_units, xl_units, z_units):
         buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
         read_length = self.unit_bytes * z_units
         for i in range(il_units):
@@ -110,8 +110,20 @@ class SgzLoader(object):
                                 ((min_xl // 4) + x) * (self.shape_pad[2] // 4) +
                                  (min_z // 4))
                 buf_start = (i * xl_units * z_units + x * z_units) * self.unit_bytes
-                buffer[buf_start:buf_start] = self._get_compressed_bytes(bytes_start, read_length)
+                buffer[buf_start:buf_start+read_length] = self._get_compressed_bytes(bytes_start, read_length)
+        return buffer
+
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):
+        z_units = (max_z + 3) // 4 - min_z // 4
+        xl_units = (max_xl + 3) // 4 - min_xl // 4
+        il_units = (max_il + 3) // 4 - min_il // 4
+
+        buffer = self.read_chunk_range(min_il, min_xl, min_z,
+                                       il_units, xl_units, z_units)
         return self._decompress(buffer, (il_units * 4, xl_units * 4, z_units * 4))
+
 
     @lru_cache(maxsize=1)
     def read_unshuffle_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):

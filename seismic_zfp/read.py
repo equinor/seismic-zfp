@@ -111,7 +111,7 @@ class SgzReader(object):
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
-        self.segy_traceheader_template = self._decode_traceheader_template()
+        self.segy_traceheader_template, self.stored_header_keys = self._decode_traceheader_template()
         self.file_text_header = self.headerbytes[DISK_BLOCK_BYTES:
                                                  DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES]
 
@@ -236,7 +236,8 @@ class SgzReader(object):
         template = [tuple((bytes_to_signed_int(raw_template[i*12 + j:i*12 + j + 4])
                            for j in range(0, 12, 4))) for i in range(89)]
         header_dict = {}
-        header_count = 0
+        stored_header_keys = []
+
         for hv in template:
             tf = segyio.tracefield.TraceField(hv[0])
             if hv[1] != 0 or hv[2] == 0:
@@ -250,12 +251,12 @@ class SgzReader(object):
                 # This is a new header value
                 header_dict[tf] = FileOffset(DISK_BLOCK_BYTES*self.n_header_blocks +
                                              DISK_BLOCK_BYTES*self.compressed_data_diskblocks +
-                                             header_count*self.header_entry_length_bytes)
-                header_count += 1
+                                             len(stored_header_keys)*self.header_entry_length_bytes)
+                stored_header_keys.append(tf)
 
         # We should find the same number of headers arrays as have been written!
-        assert(header_count == self.n_header_arrays)
-        return header_dict
+        assert(len(stored_header_keys) == self.n_header_arrays)
+        return header_dict, stored_header_keys
 
     def read_variant_headers(self):
         if self.variant_headers is None:
