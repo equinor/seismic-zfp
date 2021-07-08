@@ -50,10 +50,12 @@ def pad(orig, multiple):
     else:
         return multiple * (orig//multiple + 1)
 
-def coord_to_index(coord, coords):
+def coord_to_index(coord, coords, include_stop=False):
     try:
         index = np.where(coords == coord)[0][0]
     except:
+        if include_stop and (coord == coords[-1] + (coords[-1]-coords[-2])):
+            return len(coords)
         raise IndexError("Coordinate {} not in axis".format(coord))
     return index
 
