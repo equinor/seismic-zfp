@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 import numpy as np
 from .read import SgzReader
+from .utils import coord_to_index
 
 
 class SubvolumeAccessor(SgzReader):
@@ -32,8 +33,8 @@ class SubvolumeAccessor(SgzReader):
         return self.read_subvolume(il_start, il_stop, xl_start, xl_stop, z_start, z_stop)[::il_step, ::xl_step, ::z_step]
 
     def _get_index_subscripts(self, coord_subscript, coords):
-        start = 0 if coord_subscript.start is None else np.where(coords == coord_subscript.start)[0][0]
-        stop = len(coords) if (coord_subscript.stop is None) or (coord_subscript.stop == coords[-1] + coords[1] - coords[0]) else np.where(coords == coord_subscript.stop)[0][0]
+        start = 0 if coord_subscript.start is None else coord_to_index(coord_subscript.start, coords)
+        stop = len(coords) if (coord_subscript.stop is None) or (coord_subscript.stop == coords[-1] + coords[1] - coords[0]) else coord_to_index(coord_subscript.stop, coords)
         step = 1 if coord_subscript.step is None else coord_subscript.step // (coords[1] - coords[0])
         return start, step, stop
 

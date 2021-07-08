@@ -8,7 +8,9 @@ from segyio import _segyio
 
 from .loader import SgzLoader
 from .version import SeismicZfpVersion
-from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length, get_chunk_cache_size
+from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
+                    coord_to_index, gen_coord_list, FileOffset,
+                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
@@ -267,6 +269,11 @@ class SgzReader(object):
         else:
             pass
 
+
+    def get_inline_index(self, il_no):
+        """Get inline index from inline number"""
+        return coord_to_index(il_no, self.ilines)
+
     def read_inline_number(self, il_no):
         """Reads one inline from SGZ file
 
@@ -280,7 +287,7 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
-        return self.read_inline(np.where(self.ilines == il_no)[0][0])
+        return self.read_inline(self.get_inline_index(il_no))
 
     def read_inline(self, il_id):
         """Reads one inline from SGZ file
@@ -304,6 +311,11 @@ class SgzReader(object):
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(il_id, il_id + 1, 0, self.n_xlines, 0, self.n_samples))
 
+
+    def get_crossline_index(self, xl_no):
+        """Get crossline index from crossline number"""
+        return coord_to_index(xl_no, self.xlines)
+
     def read_crossline_number(self, xl_no):
         """Reads one crossline from SGZ file
 
@@ -317,7 +329,7 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
-        return self.read_crossline(np.where(self.xlines == xl_no)[0][0])
+        return self.read_crossline(self.get_crossline_index(xl_no))
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SGZ file
@@ -340,6 +352,26 @@ class SgzReader(object):
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, xl_id, xl_id + 1, 0, self.n_samples))
+
+
+    def get_zslice_index(self, zslice_no):
+        """Get zslice index from sample time/depth"""
+        return coord_to_index(zslice_no, self.zslices)
+
+    def read_zslice_coord(self, zslice_no):
+        """Reads one zslice from SGZ file (time or depth, depending on file contents)
+
+        Parameters
+        ----------
+        zslice_no : int
+            The sample time/depth to return a zslice from
+
+        Returns
+        -------
+        zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
+            The specified zslice (time or depth, depending on file contents), decompressed
+        """
+        return self.read_zslice(self.get_zslice_index(zslice_no))
 
     def read_zslice(self, zslice_id):
         """Reads one zslice from SGZ file (time or depth, depending on file contents)
@@ -371,6 +403,7 @@ class SgzReader(object):
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, 0, self.n_xlines, zslice_id, zslice_id + 1))
+
 
     def read_correlated_diagonal(self, cd_id):
         """Reads one diagonal in the direction IL ~ XL

@@ -50,6 +50,12 @@ def pad(orig, multiple):
     else:
         return multiple * (orig//multiple + 1)
 
+def coord_to_index(coord, coords):
+    try:
+        index = np.where(coords == coord)[0][0]
+    except:
+        raise IndexError("Coordinate {} not in axis".format(coord))
+    return index
 
 def gen_coord_list(start, step, count):
     return np.arange(start, start + step*count, step)
