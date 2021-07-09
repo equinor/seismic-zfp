@@ -13,6 +13,7 @@ from seismic_zfp.read import SgzReader
 import seismic_zfp
 import segyio
 import pytest
+from seismic_zfp.utils import generate_fake_seismic
 
 SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
 SGY_FILE_US = 'test_data/small_us.sgy'
@@ -220,40 +221,34 @@ def test_decompress_unstructured(tmp_path):
     assert np.allclose(segyio.tools.cube(out_sgy), segy_cube, rtol=1e-2)
 
 
-def compress_numpy_and_compare_data(trace_length, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
+def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
 
     out_sgz = os.path.join(str(tmp_path), 'from-numpy.sgz')
 
-    test_trace = np.arange(trace_length, dtype=np.float32) + 1.0
-    array = np.broadcast_to(test_trace, (n_ilines, n_xlines, trace_length)).copy()
-
-    for i in range(n_ilines):
-        for x in range(n_xlines):
-            array[i,x,:] += (i*0.1 + i*x*0.001)
+    array, ilines, xlines, samples = generate_fake_seismic(n_ilines, n_xlines, n_samples,
+                                                           min_iline=min_iline, min_xline=min_xline)
 
     trace_headers = {segyio.tracefield.TraceField.INLINE_3D:
-                         np.broadcast_to(np.expand_dims(np.arange(min_iline, min_iline+n_ilines), axis=1), (n_ilines, n_xlines)),
+                         np.broadcast_to(np.expand_dims(ilines, axis=1), (n_ilines, n_xlines)),
                      segyio.tracefield.TraceField.CROSSLINE_3D:
-                         np.broadcast_to(np.arange(min_xline, min_xline+n_xlines), (n_ilines,n_xlines))}
+                         np.broadcast_to(xlines, (n_ilines,n_xlines))}
 
-    with NumpyConverter(array, ilines=np.arange(min_iline, min_iline+n_ilines),
-                               xlines=np.arange(min_xline, min_xline+n_xlines),
-                               samples=np.arange(trace_length),
-                               trace_headers=trace_headers) as converter:
+    with NumpyConverter(array, ilines=ilines, xlines=xlines, samples=samples, trace_headers=trace_headers) as converter:
         converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
     with SgzReader(out_sgz) as reader:
-        sgz_data = reader.read_volume()
-
-    assert np.allclose(sgz_data, array, rtol=rtol)
+        #print(np.max(np.abs(reader.read_volume()-array)/np.abs(array)))
+        assert np.allclose(reader.ilines, ilines, rtol=rtol)
+        assert np.allclose(reader.xlines, xlines, rtol=rtol)
+        assert np.allclose(reader.read_volume(), array, rtol=rtol)
 
 
 
 def test_compress_numpy_data(tmp_path):
-    compress_numpy_and_compare_data(16, 0, 8, 8, 12, tmp_path, 4, 1e-6)
-    compress_numpy_and_compare_data(801, 0, 8, 8, 12, tmp_path, 4, 1e-6)
-    compress_numpy_and_compare_data(512, 0, 9, 8, 12, tmp_path, 4, 1e-6)
-    compress_numpy_and_compare_data(512, 0, 8, 8, 13, tmp_path, 4, 1e-6)
+    compress_numpy_and_compare_data(16, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_numpy_and_compare_data(801, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_numpy_and_compare_data(512, 0, 9, 8, 12, tmp_path, 8, 1e-3)
+    compress_numpy_and_compare_data(512, 0, 8, 8, 13, tmp_path, 8, 1e-3)
 
-    compress_numpy_and_compare_data(17, 0, 65, 8, 65, tmp_path, 2, 1e-4, blockshape=(64, 64, 4))
-    compress_numpy_and_compare_data(801, 0, 9, 8, 13, tmp_path, 8, 1e-6, blockshape=(16, 16, 16))
+    compress_numpy_and_compare_data(17, 0, 65, 8, 65, tmp_path, 8, 1e-2, blockshape=(32, 32, 4))
+    compress_numpy_and_compare_data(801, 0, 9, 8, 13, tmp_path, 8, 1e-2, blockshape=(16, 16, 16))
