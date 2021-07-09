@@ -1,4 +1,3 @@
-from __future__ import print_function, division
 import struct
 import time
 import datetime
@@ -45,12 +44,33 @@ class InferredGeometry(Geometry):
                                                        self.min_xl, self.max_xl, self.xl_step)
 
 
+def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=0):
+    # Generate an array which looks a *bit* like an impulse-response test...
+    ilines, xlines, samples = np.arange(n_ilines), np.arange(n_xlines), np.arange(n_samples)
+    array_shape = (n_ilines, n_xlines, n_samples)
+
+    i = np.broadcast_to(np.expand_dims(np.expand_dims((ilines - n_ilines / 2), 1), 2), array_shape).astype(np.float32)
+    x = np.broadcast_to(np.expand_dims((xlines - n_xlines / 2), 1), array_shape).astype(np.float32)
+    s = np.broadcast_to(samples - n_samples / 4, array_shape).astype(np.float32)
+    array = 0.01 + (np.sin(0.1 + np.sqrt(2.0 + (i+0.01) ** 2 + x ** 2 + (s*0.75) ** 2) / 8.0) /
+                          (0.1 * np.sqrt(2.0 + (i+0.01) ** 2 + x ** 2 + (s*0.50) ** 2)))
+    return array, ilines+min_iline, xlines+min_xline, samples
+
+
 def pad(orig, multiple):
     if orig%multiple == 0:
         return orig
     else:
         return multiple * (orig//multiple + 1)
 
+def coord_to_index(coord, coords, include_stop=False):
+    try:
+        index = np.where(coords == coord)[0][0]
+    except:
+        if include_stop and (coord == coords[-1] + (coords[-1]-coords[-2])):
+            return len(coords)
+        raise IndexError("Coordinate {} not in axis".format(coord))
+    return index
 
 def gen_coord_list(start, step, count):
     return np.arange(start, start + step*count, step)

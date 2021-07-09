@@ -7,6 +7,13 @@ def test_pad():
     assert 8 == pad(5, 4)
     assert 4 == pad(4, 4)
 
+def test_coord_to_index():
+    assert 0 == coord_to_index(1, np.arange(1, 6, dtype=np.int32))
+    assert 1 == coord_to_index(2, np.arange(0, 10, 2, dtype=np.int32))
+    assert 2 == coord_to_index(120.0, np.arange(100, 200, 10, dtype=float))
+
+    with pytest.raises(IndexError):
+        coord_to_index(6, np.arange(1, 6, dtype=np.int32))
 
 def test_gen_coord_list():
     assert np.all(np.arange(0, 10, 5) == gen_coord_list(0, 5, 2))

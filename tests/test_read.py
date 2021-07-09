@@ -89,6 +89,16 @@ def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
 
+def compare_inline_number(sgz_filename, sgy_filename, line_coords, tolerance):
+    with segyio.open(sgy_filename) as segyfile:
+        for preload in [True, False]:
+            reader = SgzReader(sgz_filename, preload=preload)
+            for line_number in line_coords:
+                slice_sgz = reader.read_inline_number(line_number)
+                slice_segy = segyfile.iline[line_number]
+            assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+
+
 def compare_inline_unstructured(sgz_filename, sgy_filename, tolerance):
     reader = SgzReader(sgz_filename)
     with segyio.open(sgy_filename, ignore_geometry=True) as segyfile:
@@ -112,6 +122,7 @@ def test_read_inline():
     compare_inline(SGZ_FILE_8_8x8, SGY_FILE, 5, tolerance=1e-10)
     compare_inline(SGZ_FILE_DEC_8, SGY_FILE_DEC, 3, tolerance=1e-6)
     compare_inline_unstructured(SGZ_FILE_IRREG, SGY_FILE_IRREG, tolerance=1e-2)
+    compare_inline_number(SGZ_FILE_8, SGY_FILE, [1, 2, 3, 4, 5], tolerance=1e-10)
 
 
 def compare_crossline(sgz_filename, sgy_filename, lines, tolerance):
@@ -124,6 +135,16 @@ def compare_crossline(sgz_filename, sgy_filename, lines, tolerance):
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
 
+def compare_crossline_number(sgz_filename, sgy_filename, line_coords, tolerance):
+    with segyio.open(sgy_filename) as segyfile:
+        for preload in [True, False]:
+            reader = SgzReader(sgz_filename, preload=preload)
+            for line_number in line_coords:
+                slice_sgz = reader.read_crossline_number(line_number)
+                slice_segy = segyfile.xline[line_number]
+            assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+
+
 def test_read_crossline():
     compare_crossline(SGZ_FILE_025, SGY_FILE, 5, tolerance=1e+1)
     compare_crossline(SGZ_FILE_05, SGY_FILE, 5, tolerance=1e-1)
@@ -133,6 +154,7 @@ def test_read_crossline():
     compare_crossline(SGZ_FILE_8, SGY_FILE, 5, tolerance=1e-10)
     compare_crossline(SGZ_FILE_8_8x8, SGY_FILE, 5, tolerance=1e-10)
     compare_crossline(SGZ_FILE_DEC_8, SGY_FILE_DEC, 3, tolerance=1e-6)
+    compare_crossline_number(SGZ_FILE_8, SGY_FILE, [20, 21, 22, 23, 24], tolerance=1e-10)
 
 
 def compare_zslice(sgz_filename, tolerance):
@@ -144,6 +166,14 @@ def compare_zslice(sgz_filename, tolerance):
                 slice_segy = segyfile.depth_slice[line_number]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
+def compare_zslice_coord(sgz_filename, tolerance):
+    with segyio.open(SGY_FILE) as segyfile:
+        for preload in [True, False]:
+            reader = SgzReader(sgz_filename, preload=preload)
+            for slice_coord, slice_index in zip(range(0, 200, 4), range(50)):
+                slice_sgz = reader.read_zslice_coord(slice_coord)
+                slice_segy = segyfile.depth_slice[slice_index]
+                assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
 def test_read_zslice():
     compare_zslice(SGZ_FILE_025, tolerance=1e+1)
@@ -154,6 +184,7 @@ def test_read_zslice():
     compare_zslice(SGZ_FILE_8, tolerance=1e-10)
     compare_zslice(SGZ_FILE_8_8x8, tolerance=1e-10)
     compare_zslice(SGZ_FILE_2_64x64, tolerance=1e-4)
+    compare_zslice_coord(SGZ_FILE_8, tolerance=1e-10)
 
 
 def compare_correlated_diagonal(sgz_filename, sgy_filename):

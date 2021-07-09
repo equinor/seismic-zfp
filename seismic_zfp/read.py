@@ -1,18 +1,16 @@
-from __future__ import division
 import os
 import platform
 import random
-try:
-    from functools import lru_cache
-except ImportError:
-    from functools32 import lru_cache
+from functools import lru_cache
 import numpy as np
 import segyio
 from segyio import _segyio
 
 from .loader import SgzLoader
 from .version import SeismicZfpVersion
-from .utils import pad, bytes_to_int, bytes_to_signed_int, gen_coord_list, FileOffset, get_correlated_diagonal_length, get_anticorrelated_diagonal_length, get_chunk_cache_size
+from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
+                    coord_to_index, gen_coord_list, FileOffset,
+                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
 
@@ -111,7 +109,7 @@ class SgzReader(object):
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
-        self.segy_traceheader_template = self._decode_traceheader_template()
+        self.segy_traceheader_template, self.stored_header_keys = self._decode_traceheader_template()
         self.file_text_header = self.headerbytes[DISK_BLOCK_BYTES:
                                                  DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES]
 
@@ -236,7 +234,8 @@ class SgzReader(object):
         template = [tuple((bytes_to_signed_int(raw_template[i*12 + j:i*12 + j + 4])
                            for j in range(0, 12, 4))) for i in range(89)]
         header_dict = {}
-        header_count = 0
+        stored_header_keys = []
+
         for hv in template:
             tf = segyio.tracefield.TraceField(hv[0])
             if hv[1] != 0 or hv[2] == 0:
@@ -250,12 +249,12 @@ class SgzReader(object):
                 # This is a new header value
                 header_dict[tf] = FileOffset(DISK_BLOCK_BYTES*self.n_header_blocks +
                                              DISK_BLOCK_BYTES*self.compressed_data_diskblocks +
-                                             header_count*self.header_entry_length_bytes)
-                header_count += 1
+                                             len(stored_header_keys)*self.header_entry_length_bytes)
+                stored_header_keys.append(tf)
 
         # We should find the same number of headers arrays as have been written!
-        assert(header_count == self.n_header_arrays)
-        return header_dict
+        assert(len(stored_header_keys) == self.n_header_arrays)
+        return header_dict, stored_header_keys
 
     def read_variant_headers(self):
         if self.variant_headers is None:
@@ -270,6 +269,11 @@ class SgzReader(object):
         else:
             pass
 
+
+    def get_inline_index(self, il_no):
+        """Get inline index from inline number"""
+        return coord_to_index(il_no, self.ilines)
+
     def read_inline_number(self, il_no):
         """Reads one inline from SGZ file
 
@@ -283,7 +287,7 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
-        return self.read_inline(np.where(self.ilines == il_no)[0][0])
+        return self.read_inline(self.get_inline_index(il_no))
 
     def read_inline(self, il_id):
         """Reads one inline from SGZ file
@@ -307,6 +311,11 @@ class SgzReader(object):
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(il_id, il_id + 1, 0, self.n_xlines, 0, self.n_samples))
 
+
+    def get_crossline_index(self, xl_no):
+        """Get crossline index from crossline number"""
+        return coord_to_index(xl_no, self.xlines)
+
     def read_crossline_number(self, xl_no):
         """Reads one crossline from SGZ file
 
@@ -320,7 +329,7 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
-        return self.read_crossline(np.where(self.xlines == xl_no)[0][0])
+        return self.read_crossline(self.get_crossline_index(xl_no))
 
     def read_crossline(self, xl_id):
         """Reads one crossline from SGZ file
@@ -343,6 +352,26 @@ class SgzReader(object):
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, xl_id, xl_id + 1, 0, self.n_samples))
+
+
+    def get_zslice_index(self, zslice_no):
+        """Get zslice index from sample time/depth"""
+        return coord_to_index(zslice_no, self.zslices)
+
+    def read_zslice_coord(self, zslice_no):
+        """Reads one zslice from SGZ file (time or depth, depending on file contents)
+
+        Parameters
+        ----------
+        zslice_no : int
+            The sample time/depth to return a zslice from
+
+        Returns
+        -------
+        zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
+            The specified zslice (time or depth, depending on file contents), decompressed
+        """
+        return self.read_zslice(self.get_zslice_index(zslice_no))
 
     def read_zslice(self, zslice_id):
         """Reads one zslice from SGZ file (time or depth, depending on file contents)
@@ -374,6 +403,7 @@ class SgzReader(object):
         else:
             # Default to unoptimized general method
             return np.squeeze(self.read_subvolume(0, self.n_ilines, 0, self.n_xlines, zslice_id, zslice_id + 1))
+
 
     def read_correlated_diagonal(self, cd_id):
         """Reads one diagonal in the direction IL ~ XL
