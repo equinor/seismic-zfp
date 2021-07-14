@@ -1,9 +1,9 @@
+import struct
 import numpy as np
 
 from .read import SgzReader
 from .utils import pad, int_to_bytes, np_float_to_bytes, np_float_to_bytes_signed, coord_to_index
-from .sgzconstants import DISK_BLOCK_BYTES
-
+from .sgzconstants import DISK_BLOCK_BYTES, SEGY_TEXT_HEADER_BYTES
 
 class SgzCropper(SgzReader):
     """Creates SGZ files from subcrops of others.
@@ -75,6 +75,12 @@ class SgzCropper(SgzReader):
         header[24:28] = np_float_to_bytes(np.int32(self.ilines[iline_index_range[0]]))
         header[56:60] = int_to_bytes(compressed_data_length_diskblocks)
         header[60:64] = int_to_bytes((len_xlines * len_ilines * 32) // 8)
+
+        # We need to inform the SEG-Y binary header what has happened to the trace length, otherwise
+        # segyio will get all confused if attempting to read the cropped SGZ converted back to SEG-Y
+        header[DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES + 20:
+               DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES + 22] = struct.pack('>H', len_zslices)
+
         return header
 
     @staticmethod
