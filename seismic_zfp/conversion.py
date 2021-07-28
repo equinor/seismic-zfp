@@ -183,6 +183,11 @@ class SgzConverter(SgzReader):
     def __init__(self, file, filetype_checking=True, preload=False, chunk_cache_size=None):
         super().__init__(file, filetype_checking, preload, chunk_cache_size)
 
+    def regenerate_trace_header(self, i):
+        header = self.gen_trace_header(i)
+        header[segyio.TraceField.DelayRecordingTime] = int(self.zslices[0])
+        return header
+
     def convert_to_segy(self, out_file):
         spec = segyio.spec()
         spec.samples = self.zslices
@@ -207,7 +212,7 @@ class SgzConverter(SgzReader):
                 self.read_variant_headers()
                 # Doing this is fine now there is decent caching on the loader
                 segyfile.trace = [self.get_trace(i) for i in range(len(segyfile.trace))]
-                segyfile.header = [self.gen_trace_header(i) for i in range(len(segyfile.header))]
+                segyfile.header = [self.regenerate_trace_header(i) for i in range(len(segyfile.header))]
 
         with open(out_file, "r+b") as f:
             f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])
