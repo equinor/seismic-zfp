@@ -108,7 +108,7 @@ def test_compress_data(tmp_path):
 
 
 def test_compress_headers(tmp_path):
-    for detection_method in ["heuristic", "exhaustive"]:
+    for detection_method in ["heuristic", "thorough", "exhaustive"]:
         out_sgz = os.path.join(str(tmp_path), 'small_test_headers-{}.sgz'.format(detection_method))
 
         with SegyConverter(SGY_FILE) as converter:

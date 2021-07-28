@@ -115,7 +115,7 @@ class SegyConverter(object):
             - "thorough"   : Detect variant headers by examining contents of all of them.
                              Memory intensive for large volumes, minor compute overhead.
             - "exhaustive" : Skip detection entirely, be paranoid and take everything.
-                             Memory intensive for large volumes, likely generates larger file than necessary.
+                             Memory intensive for large volumes, likely generates considerably larger file than needed.
 
             Default: "heuristic".
         """
@@ -146,10 +146,10 @@ class SegyConverter(object):
 
             if header_detection=="heuristic":
                 header_info = HeaderwordInfo(n_traces=n_traces, segyfile=segyfile)
-            elif header_detection=="exhaustive":
+            elif header_detection in ["thorough", "exhaustive"]:
                 header_info = HeaderwordInfo(n_traces=n_traces, variant_header_list=segyio.TraceField.enums()[0:89])
             else:
-                raise NotImplementedError("Invalid header_detection method {}: only 'heuristic' and 'exhaustive' are supported".format(header_detection))
+                raise NotImplementedError("Invalid header_detection method {}: only 'heuristic', 'thorough' and 'exhaustive' are supported".format(header_detection))
 
         if inline_set_bytes > virtual_memory().total // 2:
             print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
@@ -163,6 +163,21 @@ class SegyConverter(object):
 
         run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
                             header_info, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
+
+        # Treating "thorough" mode the same until this point, where we've read the entire file (once)
+        # and can do a proper check to ensure no header values are being lost by coincidentally being
+        # the same in the first and last traces of the file.
+        if header_detection == "thorough":
+            for hw in list(header_info.headers_dict.keys()):
+                if np.all(header_info.headers_dict[hw] == header_info.headers_dict[hw][0]):
+                    header_info.update_table(hw, (header_info.headers_dict[hw][0],0))
+                    del header_info.headers_dict[hw]
+            # Update SGZ header
+            with open(self.out_filename, 'r+b') as f:
+                f.seek(64)
+                f.write(int_to_bytes(header_info.get_header_array_count()))
+                f.seek(980)
+                f.write(header_info.to_buffer())
 
         with open(self.out_filename, 'ab') as f:
             for header_array in header_info.headers_dict.values():
