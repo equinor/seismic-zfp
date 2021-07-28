@@ -1,6 +1,5 @@
 import zfpy
 import time
-import numpy as np
 import segyio
 from segyio.field import Field
 import pkg_resources
@@ -19,18 +18,18 @@ from .utils import (
     CubeWithAxes,
     InferredGeometry,
 )
-from .headers import get_headerword_infolist, get_unique_headerwords
+from .headers import HeaderwordInfo
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
 
 
-def make_header_segy(in_filename, bits_per_voxel, blockshape, geom):
+def make_header_segy(in_filename, bits_per_voxel, blockshape, geom, header_info):
     """Generate header for SGZ file from SEG-Y file"""
     with segyio.open(in_filename, mode='r', strict=False) as segyfile:
         buffer = make_header(segyfile.ilines,
                              segyfile.xlines,
                              segyfile.samples,
                              segyfile.tracecount,
-                             get_headerword_infolist(segyfile),
+                             header_info,
                              bits_per_voxel, blockshape, geom,
                              unstructured=segyfile.unstructured)
 
@@ -42,20 +41,19 @@ def make_header_segy(in_filename, bits_per_voxel, blockshape, geom):
     return buffer
 
 
-def make_header_numpy(bits_per_voxel, blockshape, source, headers_dict, geom):
+def make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom):
     """Generate header for SGZ file from numpy arrays representing axis and header values"""
 
     # Nothing clever to identify duplicated header arrays yet, just include everything we're given.
-    hw_info_list = [(hw, 0, 0) for hw in headers_dict.keys()]
     buffer = make_header(source.ilines, source.xlines, source.samples,
                          len(source.ilines)*len(source.xlines),
-                         hw_info_list, bits_per_voxel, blockshape, geom)
+                         header_info, bits_per_voxel, blockshape, geom)
     # These 4 bytes indicate the data source for the SGZ file. Use 20 to indicate numpy.
     buffer[76:80] = int_to_bytes(20)
     return buffer
 
 
-def make_header(ilines, xlines, samples, tracecount, hw_info_list, bits_per_voxel, blockshape, geom, unstructured=False):
+def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, blockshape, geom, unstructured=False):
     """Generate header for SGZ file
 
     Returns
@@ -124,18 +122,12 @@ def make_header(ilines, xlines, samples, tracecount, hw_info_list, bits_per_voxe
     buffer[60:64] = int_to_bytes(header_entry_length_bytes)
 
     # Number of trace header arrays stored after compressed seismic amplitudes
-    n_header_arrays = sum(hw[0] == hw[2] for hw in hw_info_list)
-    buffer[64:68] = int_to_bytes(n_header_arrays)
+    buffer[64:68] = int_to_bytes(hw_info.get_header_array_count())
     buffer[68:72] = int_to_bytes(tracecount)
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
-    hw_start_byte = 980    # Start here to end at 2048
-    for i, hw_info in enumerate(hw_info_list):
-        start = hw_start_byte + i*12
-        buffer[start + 0:start + 4] = signed_int_to_bytes(hw_info[0])
-        buffer[start + 4:start + 8] = signed_int_to_bytes(hw_info[1])
-        buffer[start + 8:start + 12] = signed_int_to_bytes(hw_info[2])
+    buffer[980:2048] = hw_info.to_buffer() # Start at 980 to end at 2048
 
     return buffer
 
@@ -323,11 +315,11 @@ def consumer(queue, header, out_filehandle, bits_per_voxel):
 
 
 def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
-                        headers_dict, geom, queuesize=16, reduce_iops=False):
+                        header_info, geom, queuesize=16, reduce_iops=False):
     if isinstance(source, CubeWithAxes):
-        header = make_header_numpy(bits_per_voxel, blockshape, source, headers_dict, geom)
+        header = make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom)
     else:
-        header = make_header_segy(source, bits_per_voxel, blockshape, geom)
+        header = make_header_segy(source, bits_per_voxel, blockshape, geom, header_info)
     with open(out_filename, 'wb') as out_filehandle:
         # Maxsize can be reduced for machines with little memory
         # ... or for files which are so big they might be very useful.
@@ -340,7 +332,7 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
         if isinstance(source, CubeWithAxes):
             numpy_producer(queue, source.data_array, blockshape)
         else:
-            segy_producer(queue, source, blockshape, headers_dict, geom, reduce_iops=reduce_iops)
+            segy_producer(queue, source, blockshape, header_info.headers_dict, geom, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
         queue.join()
         out_filehandle.flush()

@@ -7,7 +7,7 @@ import time
 from psutil import virtual_memory
 
 from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry
-from .headers import get_unique_headerwords
+from .headers import HeaderwordInfo
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
@@ -76,7 +76,8 @@ class SegyConverter(object):
         # Non Timetus Messor
         pass
 
-    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1), method="Stream", reduce_iops=False):
+    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1),
+            reduce_iops=False, header_detection="heuristic"):
         """General entrypoint for converting SEG-Y files to SGZ
 
         Parameters
@@ -102,33 +103,26 @@ class SegyConverter(object):
             - (4, 4, -1) - default - is good for IL/XL reading
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
 
-        method: str
-            DEPRECATED: Flag to indicate method for reading SEG-Y
-            - "InMemory" : Read whole SEG-Y cube into memory before compressing - Removed in v0.0.12
-            - "Stream" : Read 4 inlines at a time... compress, rinse, repeat
-
         reduce_iops: bool
             Flag to indicate whether compression should attempt to minimize the number
             of iops required to read the input SEG-Y file by reading whole inlines including
             headers in one go. Falls back to segyio if incorrect. Useful under Windows.
 
-        Raises
-        ------
+        header_detection: str
+            One of the following options.
+            - "heuristic"  : Detect variant headers by looking at header values in first and last traces in volume
+                             Can *technically* miss a header value, but fast.
+            - "thorough"   : Detect variant headers by examining contents of all of them.
+                             Memory intensive for large volumes, minor compute overhead.
+            - "exhaustive" : Skip detection entirely, be paranoid and take everything.
+                             Memory intensive for large volumes, likely generates considerably larger file than needed.
 
-        NotImplementedError
-            If method is not one of "InMemory" or Stream"
-
+            Default: "heuristic".
         """
         self.out_filename = out_filename
         bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
+        print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
 
-        if method == "Stream":
-            print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
-            self.convert_segy_stream(bits_per_voxel, blockshape, reduce_iops=reduce_iops)
-        else:
-            raise NotImplementedError("Invalid conversion method {}: only 'Stream' is supported".format(method))
-
-    def convert_segy_stream(self, bits_per_voxel, blockshape, reduce_iops=False):
         """Memory-efficient method of compressing SEG-Y file larger than machine memory.
         Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory"""
         t0 = time.time()
@@ -150,9 +144,12 @@ class SegyConverter(object):
             n_traces = len(self.geom.ilines) * len(self.geom.xlines)
             inline_set_bytes = blockshape[0] * (len(self.geom.xlines) * len(segyfile.samples)) * 4
 
-            headers_dict = collections.OrderedDict.fromkeys(get_unique_headerwords(segyfile))
-            for k in get_unique_headerwords(segyfile):
-                headers_dict[k] = np.zeros(n_traces, dtype=np.int32)
+            if header_detection=="heuristic":
+                header_info = HeaderwordInfo(n_traces=n_traces, segyfile=segyfile)
+            elif header_detection in ["thorough", "exhaustive"]:
+                header_info = HeaderwordInfo(n_traces=n_traces, variant_header_list=segyio.TraceField.enums()[0:89])
+            else:
+                raise NotImplementedError("Invalid header_detection method {}: only 'heuristic', 'thorough' and 'exhaustive' are supported".format(header_detection))
 
         if inline_set_bytes > virtual_memory().total // 2:
             print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
@@ -165,10 +162,25 @@ class SegyConverter(object):
                                                                                      max_queue_length))
 
         run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                            headers_dict, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
+                            header_info, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
+
+        # Treating "thorough" mode the same until this point, where we've read the entire file (once)
+        # and can do a proper check to ensure no header values are being lost by coincidentally being
+        # the same in the first and last traces of the file.
+        if header_detection == "thorough":
+            for hw in list(header_info.headers_dict.keys()):
+                if np.all(header_info.headers_dict[hw] == header_info.headers_dict[hw][0]):
+                    header_info.update_table(hw, (header_info.headers_dict[hw][0],0))
+                    del header_info.headers_dict[hw]
+            # Update SGZ header
+            with open(self.out_filename, 'r+b') as f:
+                f.seek(64)
+                f.write(int_to_bytes(header_info.get_header_array_count()))
+                f.seek(980)
+                f.write(header_info.to_buffer())
 
         with open(self.out_filename, 'ab') as f:
-            for header_array in headers_dict.values():
+            for header_array in header_info.headers_dict.values():
                 f.write(header_array.tobytes())
 
         t3 = time.time()
@@ -183,6 +195,8 @@ class SgzConverter(SgzReader):
     def __init__(self, file, filetype_checking=True, preload=False, chunk_cache_size=None):
         super().__init__(file, filetype_checking, preload, chunk_cache_size)
 
+    # If an SGZ file has been cropped vertically, then the recording start time in the headers
+    # will be wrong. May be better to correct this on cropping rather than regenerating SEG-Y...
     def regenerate_trace_header(self, i):
         header = self.gen_trace_header(i)
         header[segyio.TraceField.DelayRecordingTime] = int(self.zslices[0])
@@ -352,10 +366,7 @@ class NumpyConverter(object):
         """
         self.out_filename = out_filename
         bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
-        self.convert_numpy_stream(bits_per_voxel, blockshape)
-
-    def convert_numpy_stream(self, bits_per_voxel, blockshape):
         self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
-        run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape,
-                            self.trace_headers, self.geom)
+        header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
+        run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom)

@@ -120,13 +120,11 @@ def run_action():
                         converter.run(outfile.get(), 
                                       bits_per_voxel=2,
                                       blockshape=(64, 64, 4),
-                                      method="Stream",
                                       reduce_iops=True)
             else:
                 with SegyConverter(infile.get()) as converter:
                         converter.run(outfile.get(),
                                       bits_per_voxel=bitrate.get(), 
-                                      method='Stream',
                                       reduce_iops=True)
         else:
             update_messages('Running decompression...')
