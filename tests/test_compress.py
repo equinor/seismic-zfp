@@ -108,15 +108,16 @@ def test_compress_data(tmp_path):
 
 
 def test_compress_headers(tmp_path):
-    out_sgz = os.path.join(str(tmp_path), 'small_test_headers.sgz')
+    for detection_method in ["heuristic", "exhaustive"]:
+        out_sgz = os.path.join(str(tmp_path), 'small_test_headers-{}.sgz'.format(detection_method))
 
-    with SegyConverter(SGY_FILE) as converter:
-        converter.run(out_sgz, bits_per_voxel=8)
+        with SegyConverter(SGY_FILE) as converter:
+            converter.run(out_sgz, bits_per_voxel=8, header_detection=detection_method)
 
-    with seismic_zfp.open(out_sgz) as sgz_file:
-        with segyio.open(SGY_FILE) as sgy_file:
-            for sgz_header, sgy_header in zip(sgz_file.header, sgy_file.header):
-                assert sgz_header == sgy_header
+        with seismic_zfp.open(out_sgz) as sgz_file:
+            with segyio.open(SGY_FILE) as sgy_file:
+                for sgz_header, sgy_header in zip(sgz_file.header, sgy_file.header):
+                    assert sgz_header == sgy_header
 
 
 def test_compress_crop(tmp_path):
