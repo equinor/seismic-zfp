@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from seismic_zfp.conversion import SegyConverter, SgzConverter, NumpyConverter
+from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
 try:
     import zgy2sgz
 except ImportError:
@@ -52,6 +53,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
 
     assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
     assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
+    assert 10 == reader.get_file_source_code()
 
 @pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
 def test_compress_zgy8(tmp_path):
@@ -108,7 +110,7 @@ def test_compress_data(tmp_path):
 
 
 def test_compress_headers(tmp_path):
-    for detection_method in ["heuristic", "thorough", "exhaustive"]:
+    for detection_method in ['heuristic', 'thorough', 'exhaustive', 'strip']:
         out_sgz = os.path.join(str(tmp_path), 'small_test_headers-{}.sgz'.format(detection_method))
 
         with SegyConverter(SGY_FILE) as converter:
@@ -117,8 +119,12 @@ def test_compress_headers(tmp_path):
         with seismic_zfp.open(out_sgz) as sgz_file:
             with segyio.open(SGY_FILE) as sgy_file:
                 for sgz_header, sgy_header in zip(sgz_file.header, sgy_file.header):
-                    assert sgz_header == sgy_header
-
+                    if detection_method == 'strip':
+                        assert all([0 == value for value in sgz_header.values()])
+                    else:
+                        assert sgz_header == sgy_header
+                    assert sgz_file.get_header_detection_method_code() == HEADER_DETECTION_CODES[detection_method]
+                    assert 0 == sgz_file.get_file_source_code()
 
 def test_compress_crop(tmp_path):
     out_sgz = os.path.join(str(tmp_path), 'small_test_data.sgz')
@@ -242,7 +248,7 @@ def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n
         assert np.allclose(reader.ilines, ilines, rtol=rtol)
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
-
+        assert 20 == reader.get_file_source_code()
 
 
 def test_compress_numpy_data(tmp_path):

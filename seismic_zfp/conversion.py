@@ -116,6 +116,7 @@ class SegyConverter(object):
                              Memory intensive for large volumes, minor compute overhead.
             - "exhaustive" : Skip detection entirely, be paranoid and take everything.
                              Memory intensive for large volumes, likely generates considerably larger file than needed.
+            - "strip"      : Do not save any SEG-Y trace headers. Smallest file, fast and dangerous.
 
             Default: "heuristic".
         """
@@ -144,12 +145,22 @@ class SegyConverter(object):
             n_traces = len(self.geom.ilines) * len(self.geom.xlines)
             inline_set_bytes = blockshape[0] * (len(self.geom.xlines) * len(segyfile.samples)) * 4
 
-            if header_detection=="heuristic":
-                header_info = HeaderwordInfo(n_traces=n_traces, segyfile=segyfile)
-            elif header_detection in ["thorough", "exhaustive"]:
-                header_info = HeaderwordInfo(n_traces=n_traces, variant_header_list=segyio.TraceField.enums()[0:89])
+            if header_detection=='heuristic':
+                header_info = HeaderwordInfo(n_traces=n_traces,
+                                             segyfile=segyfile,
+                                             header_detection=header_detection)
+            elif header_detection in ['thorough', 'exhaustive']:
+                header_info = HeaderwordInfo(n_traces=n_traces,
+                                             variant_header_list=segyio.TraceField.enums()[0:89],
+                                             header_detection=header_detection)
+            elif header_detection == 'strip':
+                header_info = HeaderwordInfo(n_traces=n_traces,
+                                             variant_header_list=[],
+                                             header_detection=header_detection)
             else:
-                raise NotImplementedError("Invalid header_detection method {}: only 'heuristic', 'thorough' and 'exhaustive' are supported".format(header_detection))
+                raise NotImplementedError(
+                    "Invalid header_detection method {}: valid methods: 'heuristic', 'thorough', 'exhaustive', 'strip'"
+                        .format(header_detection))
 
         if inline_set_bytes > virtual_memory().total // 2:
             print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
@@ -167,7 +178,7 @@ class SegyConverter(object):
         # Treating "thorough" mode the same until this point, where we've read the entire file (once)
         # and can do a proper check to ensure no header values are being lost by coincidentally being
         # the same in the first and last traces of the file.
-        if header_detection == "thorough":
+        if header_detection == 'thorough':
             for hw in list(header_info.headers_dict.keys()):
                 if np.all(header_info.headers_dict[hw] == header_info.headers_dict[hw][0]):
                     header_info.update_table(hw, (header_info.headers_dict[hw][0],0))
@@ -179,9 +190,10 @@ class SegyConverter(object):
                 f.seek(980)
                 f.write(header_info.to_buffer())
 
-        with open(self.out_filename, 'ab') as f:
-            for header_array in header_info.headers_dict.values():
-                f.write(header_array.tobytes())
+        if header_detection != 'strip':
+            with open(self.out_filename, 'ab') as f:
+                for header_array in header_info.headers_dict.values():
+                    f.write(header_array.tobytes())
 
         t3 = time.time()
         print("Total conversion time: {}                     ".format(t3-t0))

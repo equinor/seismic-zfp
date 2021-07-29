@@ -187,6 +187,12 @@ class SgzReader(object):
     def get_file_version(self):
         return SeismicZfpVersion(bytes_to_int(self.headerbytes[72:76]))
 
+    def get_file_source_code(self):
+        return bytes_to_int(self.headerbytes[76:80])
+
+    def get_header_detection_method_code(self):
+        return bytes_to_int(self.headerbytes[80:84])
+
     def _parse_dimensions(self):
         n_samples = bytes_to_int(self.headerbytes[4:8])
         n_xlines = bytes_to_int(self.headerbytes[8:12])

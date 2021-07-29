@@ -8,6 +8,7 @@ from queue import Queue
 import numpy as np
 
 from .version import SeismicZfpVersion
+from .sgzconstants import HEADER_DETECTION_CODES
 from .utils import (
     pad,
     int_to_bytes,
@@ -38,6 +39,7 @@ def make_header_segy(in_filename, bits_per_voxel, blockshape, geom, header_info)
         segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
         buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
 
+    buffer[80:84] = int_to_bytes(HEADER_DETECTION_CODES[header_info.header_detection])
     return buffer
 
 
