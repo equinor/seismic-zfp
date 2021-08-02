@@ -47,7 +47,8 @@ Byte encoding is little-endian.
 |68-71 |uint32 |Number of traces (unstructured files)
 |72-75 |uint32 |Encoded version number
 |76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY, 20=numpy
-|80-979 |---  | --- Unused ---
+|80-83 |uint32 |Encoded header-detection method ***
+|84-979 |---  | --- Unused ---
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---
 |4096-7295 |[SEG-Y](https://seg.org/Portals/0/SEG/News%20and%20Resources/Technical%20Standards/seg_y_rev2_0-mar2017.pdf)  | SEG-Y First textual header
@@ -60,3 +61,7 @@ Byte encoding is little-endian.
 3. Duplicated trace header start-byte
 
 Storing whether trace header fields are duplicates of previous ones reduces the space needed to store the SGZ footer.
+
+*** SeismicZFP supports multiple methods of determining which SEG-Y trace headers are present and/or duplicated. The file maintains a record of which was used (heuristic only until v0.1.10):
+
+0=heuristic, 10=thorough, 20=exhaustive, 30=strip

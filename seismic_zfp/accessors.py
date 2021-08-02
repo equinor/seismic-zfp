@@ -82,7 +82,23 @@ class Accessor(SgzReader):
         return zip(self.keys(), self[:])
 
 
-class InlineAccessor(Accessor, Mapping):
+class SliceAccessor(Accessor):
+    def __getitem__(self, subscript):
+        if isinstance(subscript, slice):
+            # Acquiris Quodcumquae Rapis
+            start, stop, step = subscript.start, subscript.stop, subscript.step
+            if step is None:
+                step = int(self.keys_object[1] - self.keys_object[0])
+            if start is None:
+                start = int(self.keys_object[0])
+            if stop is None:
+                stop = int(self.keys_object[-1] + 1)
+            return [self.values_function(index) for index in range(start, stop, step)]
+        else:
+            return self.values_function(subscript)
+
+
+class InlineAccessor(SliceAccessor, Mapping):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_ilines
@@ -90,7 +106,7 @@ class InlineAccessor(Accessor, Mapping):
         self.values_function = self.read_inline_number
 
 
-class CrosslineAccessor(Accessor, Mapping):
+class CrosslineAccessor(SliceAccessor, Mapping):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_xlines

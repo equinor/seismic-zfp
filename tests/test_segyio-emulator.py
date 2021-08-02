@@ -19,10 +19,7 @@ def compare_inline_ordinal(sgz_filename, sgy_filename, lines_to_test, tolerance)
             for line_ordinal in lines_to_test:
                 slice_segy = segyfile.iline[segyfile.ilines[line_ordinal]]
                 slice_sgz = sgzfile.iline[sgzfile.ilines[line_ordinal]]
-                print(slice_segy)
-                print(slice_sgz)
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
-
 
 def compare_inline_number(sgz_filename, sgy_filename, lines_to_test, tolerance):
     with seismic_zfp.open(sgz_filename) as sgzfile:
@@ -32,6 +29,17 @@ def compare_inline_number(sgz_filename, sgy_filename, lines_to_test, tolerance):
                 slice_sgz = sgzfile.iline[line_number]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
+
+def compare_inline_slicing(sgz_filename):
+    slices = [slice(1, 5, 2), slice(1, 2, None), slice(1, 3, None), slice(None, 3, None), slice(3, None, None)]
+    with seismic_zfp.open(sgz_filename) as sgzfile:
+        for slice_ in slices:
+            slices_slice = np.asarray(sgzfile.iline[slice_])
+            start = slice_.start if slice_.start is not None else 1
+            stop = slice_.stop if slice_.stop is not None else 6
+            step = slice_.step if slice_.step is not None else 1
+            slices_concat = np.asarray([sgzfile.iline[i] for i in range(start, stop, step)])
+            assert np.array_equal(slices_slice, slices_concat)
 
 def test_inline_accessor():
     compare_inline_ordinal(SGZ_FILE_1, SGY_FILE, [0, 1, 2, 3, 4], tolerance=1e-2)
@@ -46,6 +54,8 @@ def test_inline_accessor():
     compare_inline_number(SGZ_FILE_8, SGY_FILE, [1, 2, 3, 4, 5], tolerance=1e-10)
     compare_inline_number(SGZ_FILE_DEC_8, SGY_FILE_DEC, [1, 3, 5], tolerance=1e-6)
 
+    compare_inline_slicing(SGZ_FILE_8)
+
 
 def compare_crossline_ordinal(sgz_filename, sgy_filename, lines_to_test, tolerance):
     with seismic_zfp.open(sgz_filename) as sgzfile:
@@ -55,7 +65,6 @@ def compare_crossline_ordinal(sgz_filename, sgy_filename, lines_to_test, toleran
                 slice_sgz = sgzfile.xline[sgzfile.xlines[line_ordinal]]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
-
 def compare_crossline_number(sgz_filename, sgy_filename, lines_to_test, tolerance):
     with seismic_zfp.open(sgz_filename) as sgzfile:
         with segyio.open(sgy_filename) as segyfile:
@@ -63,6 +72,18 @@ def compare_crossline_number(sgz_filename, sgy_filename, lines_to_test, toleranc
                 slice_segy = segyfile.xline[line_number]
                 slice_sgz = sgzfile.xline[line_number]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+
+
+def compare_crossline_slicing(sgz_filename):
+    slices = [slice(20, 21, 2), slice(21, 23, 1), slice(None, 22, None), slice(22, None, None)]
+    with seismic_zfp.open(sgz_filename) as sgzfile:
+        for slice_ in slices:
+            slices_slice = np.asarray(sgzfile.xline[slice_])
+            start = slice_.start if slice_.start is not None else 20
+            stop = slice_.stop if slice_.stop is not None else 25
+            step = slice_.step if slice_.step is not None else 1
+            slices_concat = np.asarray([sgzfile.xline[i] for i in range(start, stop, step)])
+            assert np.array_equal(slices_slice, slices_concat)
 
 
 def test_crossline_accessor():
@@ -78,6 +99,8 @@ def test_crossline_accessor():
     compare_crossline_number(SGZ_FILE_8, SGY_FILE, [20, 21, 22, 23, 24], tolerance=1e-10)
     compare_crossline_number(SGZ_FILE_DEC_8, SGY_FILE_DEC, [20, 22, 24], tolerance=1e-6)
 
+    compare_crossline_slicing(SGZ_FILE_8)
+
 
 def compare_zslice(sgz_filename, tolerance):
     with seismic_zfp.open(sgz_filename) as sgzfile:
@@ -87,12 +110,24 @@ def compare_zslice(sgz_filename, tolerance):
                 slice_segy = segyfile.depth_slice[line_number]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
 
+def compare_depthslice_slicing(sgz_filename):
+    slices = [slice(0, 5, None), slice(45, None, None), slice(None, None, 5), slice(25, None, 5), slice(None, 20, 5)]
+    with seismic_zfp.open(sgz_filename) as sgzfile:
+        for slice_ in slices:
+            slices_sgz = np.asarray(sgzfile.depth_slice[slice_])
+            start = slice_.start if slice_.start is not None else 0
+            stop = slice_.stop if slice_.stop is not None else 50
+            step = slice_.step if slice_.step is not None else 1
+            slices_concat = np.asarray([sgzfile.depth_slice[i] for i in range(start, stop, step)])
+            assert np.array_equal(slices_sgz, slices_concat)
 
 def test_zslice_accessor():
     compare_zslice(SGZ_FILE_1, tolerance=1e-2)
     compare_zslice(SGZ_FILE_2, tolerance=1e-4)
     compare_zslice(SGZ_FILE_4, tolerance=1e-6)
     compare_zslice(SGZ_FILE_8, tolerance=1e-10)
+
+    compare_depthslice_slicing(SGZ_FILE_8)
 
 
 def compare_subvolume(sgz_filename, sgy_filename, il_min, il_max, il_step, xl_min, xl_max, xl_step, z_min, z_max, z_step, tolerance):
@@ -130,24 +165,24 @@ def test_subvolume_accessor_errors():
     with seismic_zfp.open(SGZ_FILE_4) as sgzfile:
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[0:6:None, 20:21:None, 0:40:None]
+            sgzfile.subvolume[0:6:None, 20:21:None, 0:40:None]
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[0:5:None, 20:26:None, 0:40:None]
+            sgzfile.subvolume[0:5:None, 20:26:None, 0:40:None]
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[0:5:None, 20:21:None, 0:400:None]
+            sgzfile.subvolume[0:5:None, 20:21:None, 0:400:None]
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[-1:6:None, 20:21:None, 0:40:None]
+            sgzfile.subvolume[-1:6:None, 20:21:None, 0:40:None]
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[0:5:None, 20:21:None, 0:40:3]
+            sgzfile.subvolume[0:5:None, 20:21:None, 0:40:3]
 
     with seismic_zfp.open(SGZ_FILE_DEC_8) as sgzfile:
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[0:5:1, 20:21:None, 0:None:None]
+            sgzfile.subvolume[0:5:1, 20:21:None, 0:None:None]
 
         with pytest.raises(IndexError):
-            data = sgzfile.subvolume[0:5:2, 20:21:3, 0:None:None]
+            sgzfile.subvolume[0:5:2, 20:21:3, 0:None:None]

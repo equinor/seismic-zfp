@@ -17,7 +17,7 @@ class HeaderwordInfo:
 
     - variant_header_dict:   Dict of variant header fields for creating new file
     """
-    def __init__(self, n_traces, segyfile=None, variant_header_list=None, variant_header_dict=None):
+    def __init__(self, n_traces, segyfile=None, variant_header_list=None, variant_header_dict=None, header_detection=None):
         """
         Parameters
         ----------
@@ -31,6 +31,7 @@ class HeaderwordInfo:
         """
         # Check only one of the options for creating a HeaderwordInfo class is used
         assert sum([_ is not None for _ in [segyfile, variant_header_list, variant_header_dict]]) == 1
+        self.header_detection = header_detection
 
         self.table = {}
 
