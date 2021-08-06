@@ -47,13 +47,17 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
         sgz_ilines = reader.ilines
+        sgz_samples = reader.zslices
 
     with segyio.open(sgy_file) as f:
         ref_ilines = f.ilines
+        ref_samples = f.samples
+
 
     assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
     assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
     assert 10 == reader.get_file_source_code()
+    assert all(ref_samples == sgz_samples)
 
 @pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
 def test_compress_zgy8(tmp_path):
