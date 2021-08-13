@@ -186,3 +186,12 @@ def test_subvolume_accessor_errors():
 
         with pytest.raises(IndexError):
             sgzfile.subvolume[0:5:2, 20:21:3, 0:None:None]
+
+
+def compare_cube(sgz_filename, sgy_filename, tolerance):
+    vol_sgy = segyio.tools.cube(sgy_filename)
+    vol_sgz = seismic_zfp.tools.cube(sgz_filename)
+    assert np.allclose(vol_sgz, vol_sgy, rtol=tolerance)
+
+def test_cube_func():
+    compare_cube(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
