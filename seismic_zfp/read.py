@@ -263,6 +263,14 @@ class SgzReader(object):
         return header_dict, stored_header_keys
 
     def read_variant_headers(self):
+        """Reads all variant headers from SGZ file into a dictionary called variant_headers
+
+        SeismicZFP stores integer arrays of any which are not constant through the input
+        SEG-Y as a file footer. To generate trace headers it reads individual values from
+        disk and combines with a 'template' containing the constant ones. In some circumstances
+        it may be convenient to load all of this data into memory at once, which is what
+        this function does if it has not already done so.
+        """
         if self.variant_headers is None:
             variant_headers = {}
             for k, v in self.segy_traceheader_template.items():
