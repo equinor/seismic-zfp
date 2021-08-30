@@ -63,6 +63,8 @@ class Accessor(SgzReader):
             # Acquiris Quodcumquae Rapis
             start, stop, step = subscript.indices(len(self))
             return [self.values_function(index) for index in range(start, stop, step)]
+        elif subscript < 0:
+            return self.values_function(len(self)+subscript)
         else:
             return self.values_function(subscript)
 

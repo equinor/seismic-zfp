@@ -9,7 +9,7 @@ SGY_FILE = 'test_data/small.sgy'
 def test_read_trace_header():
     with seismic_zfp.open(SGZ_FILE) as sgzfile:
         with segyio.open(SGY_FILE) as sgyfile:
-            for trace_number in range(25):
+            for trace_number in range(-5, 25, 1):
                 sgz_header = sgzfile.header[trace_number]
                 sgy_header = sgyfile.header[trace_number]
                 assert sgz_header == sgy_header
