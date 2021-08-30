@@ -13,5 +13,6 @@ class SegyioEmulator(SgzReader):
         self.samples = self.zslices
         self.bin = self.get_file_binary_header()
         self.text = self.get_file_text_header()
+        self.unstructured = False
 
         self.subvolume = SubvolumeAccessor(self.file)
