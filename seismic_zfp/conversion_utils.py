@@ -23,19 +23,18 @@ from .headers import HeaderwordInfo
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
 
 
-def make_header_segy(in_filename, bits_per_voxel, blockshape, geom, header_info):
+def make_header_segy(segyfile, bits_per_voxel, blockshape, geom, header_info):
     """Generate header for SGZ file from SEG-Y file"""
-    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
-        buffer = make_header(segyfile.ilines,
-                             segyfile.xlines,
-                             segyfile.samples,
-                             segyfile.tracecount,
-                             header_info,
-                             bits_per_voxel, blockshape, geom,
-                             unstructured=segyfile.unstructured)
+    buffer = make_header(segyfile.ilines,
+                         segyfile.xlines,
+                         segyfile.samples,
+                         segyfile.tracecount,
+                         header_info,
+                         bits_per_voxel, blockshape, geom,
+                         unstructured=segyfile.unstructured)
 
     # Just copy the bytes from the SEG-Y file header
-    with open(in_filename, "rb") as f:
+    with open(segyfile._filename, "rb") as f:
         segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
         buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
 
@@ -145,20 +144,18 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
 # a SEG-Y file. This checks that for the first inline in a file both segyio and the MinimalInlineReader give
 # identical output. When using this function it is recommended that segyio is used as fallback if self_test fails
 class MinimalInlineReader:
-    def __init__(self, filename):
-        self.filename = filename
-        self.file = open(self.filename, "rb")
-        with segyio.open(filename) as segyfile:
-            self.n_il = len(segyfile.ilines)
-            self.n_xl = len(segyfile.xlines)
-            self.n_samp = len(segyfile.samples)
-            self.format = segyfile.bin[segyio.BinField.Format]
+    def __init__(self, segyfile):
+        self.segyfile = segyfile
+        self.file = open(self.segyfile._filename, "rb")
+        self.n_il = len(segyfile.ilines)
+        self.n_xl = len(segyfile.xlines)
+        self.n_samp = len(segyfile.samples)
+        self.format = segyfile.bin[segyio.BinField.Format]
 
     def self_test(self):
         headers, array = self.read_line(0)
-        with segyio.open(self.filename) as segyfile:
-            array_equal = np.array_equal(segyfile.iline[segyfile.ilines[0]], array)
-            headers_equal = all([h1 == h2 for h1, h2 in zip(headers, segyfile.header[0: self.n_xl])])
+        array_equal = np.array_equal(self.segyfile.iline[self.segyfile.ilines[0]], array)
+        headers_equal = all([h1 == h2 for h1, h2 in zip(headers, self.segyfile.header[0: self.n_xl])])
         return array_equal and headers_equal
 
     def read_line(self, i):
@@ -252,58 +249,53 @@ def numpy_producer(queue, in_array, blockshape):
                     queue.put(slice)
 
 
-def segy_producer(queue, in_filename, blockshape, headers_dict, geom,
-                  reduce_iops=True, verbose=True):
+def segy_producer(queue, segyfile, blockshape, headers_dict, geom, reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts them in the queue for writing to disk"""
-    with segyio.open(in_filename, mode='r', strict=False) as segyfile:
 
-        n_ilines = len(geom.ilines)
-        n_xlines = len(geom.xlines)
-        trace_length = len(segyfile.samples)
+    n_ilines, n_xlines, trace_length = len(geom.ilines), len(geom.xlines), len(segyfile.samples)
+    padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
 
-        padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
+    minimal_il_reader = None
+    if reduce_iops:
+        if isinstance(geom, InferredGeometry):
+            print("Cannot use MinimalInlineReader with unstructured SEG-Y")
+            raise RuntimeError("Chaos reigns within. Reflect, repent, and reboot. Order shall return.")
 
-        minimal_il_reader = None
-        if reduce_iops:
-            if isinstance(geom, InferredGeometry):
-                print("Cannot use MinimalInlineReader with unstructured SEG-Y")
-                raise RuntimeError("Chaos reigns within. Reflect, repent, and reboot. Order shall return.")
+        minimal_il_reader = MinimalInlineReader(segyfile)
+        if minimal_il_reader.self_test() and n_ilines == len(segyfile.ilines) and n_xlines == len(segyfile.xlines):
+            print("MinimalInlineReader passed self-test")
+        else:
+            print("MinimalInlineReader failed self-test, using fallback")
 
-            minimal_il_reader = MinimalInlineReader(in_filename)
-            if minimal_il_reader.self_test() and n_ilines == len(segyfile.ilines) and n_xlines == len(segyfile.xlines):
-                print("MinimalInlineReader passed self-test")
-            else:
-                print("MinimalInlineReader failed self-test, using fallback")
+    # Loop over groups of 4 inlines
+    n_plane_sets = padded_shape[0] // blockshape[0]
+    start_time = time.time()
+    for plane_set_id in range(n_plane_sets):
+        if verbose:
+            progress_printer(start_time, plane_set_id / n_plane_sets)
+        # Need to allocate at every step as this is being sent to another function
+        if (plane_set_id+1)*blockshape[0] > n_ilines:
+            planes_to_read = n_ilines % blockshape[0]
+        else:
+            planes_to_read = blockshape[0]
 
-        # Loop over groups of 4 inlines
-        n_plane_sets = padded_shape[0] // blockshape[0]
-        start_time = time.time()
-        for plane_set_id in range(n_plane_sets):
-            if verbose:
-                progress_printer(start_time, plane_set_id / n_plane_sets)
-            # Need to allocate at every step as this is being sent to another function
-            if (plane_set_id+1)*blockshape[0] > n_ilines:
-                planes_to_read = n_ilines % blockshape[0]
-            else:
-                planes_to_read = blockshape[0]
+        segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
 
-            segy_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
+        if isinstance(geom, InferredGeometry):
+            unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
+                                        segy_buffer, segyfile, trace_length)
+        else:
+            io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
+                           segy_buffer, segyfile, minimal_il_reader, trace_length)
 
-            if isinstance(geom, InferredGeometry):
-                unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
-                                            segy_buffer, segyfile, trace_length)
-            else:
-                io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
-                               segy_buffer, segyfile, minimal_il_reader, trace_length)
-
-            if blockshape[0] == 4:
-                queue.put(segy_buffer)
-            else:
-                for x in range(padded_shape[1] // blockshape[1]):
-                    for z in range(padded_shape[2] // blockshape[2]):
-                        slice = segy_buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
-                                               z * blockshape[2]: (z + 1) * blockshape[2]].copy()
-                        queue.put(slice)
+        if blockshape[0] == 4:
+            queue.put(segy_buffer)
+        else:
+            for x in range(padded_shape[1] // blockshape[1]):
+                for z in range(padded_shape[2] // blockshape[2]):
+                    slice = segy_buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
+                                           z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                    queue.put(slice)
 
 
 def consumer(queue, header, out_filehandle, bits_per_voxel):

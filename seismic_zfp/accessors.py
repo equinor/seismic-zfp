@@ -72,7 +72,7 @@ class Accessor(SgzReader):
         return key in self.keys_object
 
     def __hash__(self):
-        return hash(self.filename)
+        return hash(self._filename)
 
     def keys(self):
         return self.keys_object

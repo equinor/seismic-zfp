@@ -162,18 +162,18 @@ class SegyConverter(object):
                     "Invalid header_detection method {}: valid methods: 'heuristic', 'thorough', 'exhaustive', 'strip'"
                         .format(header_detection))
 
-        if inline_set_bytes > virtual_memory().total // 2:
-            print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
-            print("Try using fewer inlines in the blockshape, or compressing a subcube")
-            raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
+            if inline_set_bytes > virtual_memory().total // 2:
+                print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes, virtual_memory().total))
+                print("Try using fewer inlines in the blockshape, or compressing a subcube")
+                raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
 
-        max_queue_length = min(16, (virtual_memory().total // 2) // inline_set_bytes)
-        print("VirtualMemory={}MB, InlineSet={}MB : Using queue of length {}".format(virtual_memory().total/(1024*1024),
-                                                                                     inline_set_bytes/(1024*1024),
-                                                                                     max_queue_length))
+            max_queue_length = min(16, (virtual_memory().total // 2) // inline_set_bytes)
+            print("VirtualMemory={}MB, InlineSet={}MB : Using queue of length {}".format(virtual_memory().total/(1024*1024),
+                                                                                         inline_set_bytes/(1024*1024),
+                                                                                         max_queue_length))
 
-        run_conversion_loop(self.in_filename, self.out_filename, bits_per_voxel, blockshape,
-                            header_info, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
+            run_conversion_loop(segyfile, self.out_filename, bits_per_voxel, blockshape,
+                                header_info, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
 
         # Treating "thorough" mode the same until this point, where we've read the entire file (once)
         # and can do a proper check to ensure no header values are being lost by coincidentally being

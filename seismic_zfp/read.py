@@ -83,10 +83,10 @@ class SgzReader(object):
 
         # Class may be instantiated with either a file path or filehandle
         if not hasattr(file, 'read'):
-            self.filename = file
+            self._filename = file
             self.file = self.open_sgz_file()
         else:
-            self.filename = file.name
+            self._filename = file.name
             self.file = file
             # You have a file handle, go to the start!
             self.file.seek(0)
@@ -174,12 +174,12 @@ class SgzReader(object):
         self.close_sgz_file()
 
     def open_sgz_file(self):
-        if not os.path.exists(self.filename):
+        if not os.path.exists(self._filename):
             msgs = ["Rather than a beep  Or a rude error message  These words: 'File not found.'",
                     "A file that big?  It might be very useful.  But now it is gone.",
                     "Three things are certain:  Death, taxes, and lost data.  Guess which has occurred."]
-            raise FileNotFoundError("Cannot find {} ... {}".format(self.filename, random.choice(msgs)))
-        return open(self.filename, 'rb')
+            raise FileNotFoundError("Cannot find {} ... {}".format(self._filename, random.choice(msgs)))
+        return open(self._filename, 'rb')
 
     def close_sgz_file(self):
         self.file.close()
