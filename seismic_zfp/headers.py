@@ -9,7 +9,7 @@ class HeaderwordInfo:
 
     Three mutually exclusive modes of operation:
 
-    - segyfile:   Determines which header fields have constant values, what those constant values are and
+    - seismicfile:   Determines which header fields have constant values, what those constant values are and
     which non-constant fields are duplicates of others. Achieves this by reading first and last
     traces of the provided segy file. Returns encoding of this information.
 
@@ -17,32 +17,32 @@ class HeaderwordInfo:
 
     - variant_header_dict:   Dict of variant header fields for creating new file
     """
-    def __init__(self, n_traces, segyfile=None, variant_header_list=None, variant_header_dict=None, header_detection=None):
+    def __init__(self, n_traces, seismicfile=None, variant_header_list=None, variant_header_dict=None, header_detection=None):
         """
         Parameters
         ----------
         n_traces: Number of traces in output file
 
-        segyfile: segyio filehandle (optional - pick one)
+        seismicfile: segyio filehandle (optional - pick one)
 
         variant_header_list: list of headerwords which need storing (optional - pick one)
 
         variant_header_dict: dictionary of {headerword: numpy array, } (optional - pick one)
         """
         # Check only one of the options for creating a HeaderwordInfo class is used
-        assert sum([_ is not None for _ in [segyfile, variant_header_list, variant_header_dict]]) == 1
+        assert sum([_ is not None for _ in [seismicfile, variant_header_list, variant_header_dict]]) == 1
         self.header_detection = header_detection
 
         self.table = {}
 
-        if segyfile is not None:
-            self.segyfile = segyfile
+        if seismicfile is not None:
+            self.seismicfile = seismicfile
             self.unique_variant_nonzero_header_words = self._get_unique_headerwords()
             self.duplicate_header_words = self._find_duplicated_headerwords()
 
-            for hw in segyfile.header[0]:
+            for hw in seismicfile.header[0]:
                 if hw in self._get_invariant_nonzero_headerwords():
-                    default = segyfile.header[0][hw]
+                    default = seismicfile.header[0][hw]
                 else:
                     default = 0
 
@@ -77,7 +77,7 @@ class HeaderwordInfo:
             self.headers_dict = variant_header_dict
 
         else:
-            raise(RuntimeError, "Must specify at least one of segyfile and variant_header_list for constructor")
+            raise(RuntimeError, "Must specify at least one of seismicfile and variant_header_list for constructor")
 
     def __repr__(self):
         output = ""
@@ -114,10 +114,10 @@ class HeaderwordInfo:
         return segyio.tracefield.keys[str(segyio.tracefield.TraceField(hw))]
 
     def _get_first_last_headers(self):
-        return self.segyfile.header[0].items(), self.segyfile.header[-1].items()
+        return self.seismicfile.header[0].items(), self.seismicfile.header[-1].items()
 
     def _get_nonzero_headerwords(self):
-        return [k for k, v in self.segyfile.header[0].items() if v != 0]
+        return [k for k, v in self.seismicfile.header[0].items() if v != 0]
 
     def _get_invariant_headerwords(self):
         first_header, last_header = self._get_first_last_headers()
@@ -133,7 +133,7 @@ class HeaderwordInfo:
 
     def _find_duplicated_headerwords(self):
         variant_nonzero_header_words = self._get_variant_headerwords()
-        first_header, last_header = self.segyfile.header[0], self.segyfile.header[-1]
+        first_header, last_header = self.seismicfile.header[0], self.seismicfile.header[-1]
         hw_mappings = {}
 
         for i, hw in enumerate(variant_nonzero_header_words):
