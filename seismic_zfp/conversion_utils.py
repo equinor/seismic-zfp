@@ -176,21 +176,21 @@ class MinimalInlineReader:
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
 
-def io_thread_func(blockshape, headers_dict, geom,
-                   plane_set_id, planes_to_read, seismic_buffer, seismicfile, minimal_il_reader, trace_length):
+def io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
+                   seismic_buffer, seismicfile, minimal_il_reader, trace_length):
     for i in range(blockshape[0]):
         start_trace = (plane_set_id * blockshape[0] + i) * len(seismicfile.xlines) + geom.xlines[0]
         if i < planes_to_read:
             if minimal_il_reader is not None:
-                headers, data = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
+                headers, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
             else:
-                data = np.asarray(seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + i]]
-                                  )[geom.xlines[0]:geom.xlines[-1]+1, :]
+                seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(
+                    seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + i]]
+                )[geom.xlines[0]:geom.xlines[-1]+1, :]
                 headers = seismicfile.header[start_trace: start_trace + len(geom.xlines)]
 
             for t, header in enumerate(headers, start_trace):
-                t_xl = t % len(seismicfile.xlines)
-                t_il = t // len(seismicfile.xlines)
+                t_xl, t_il = t % len(seismicfile.xlines), t // len(seismicfile.xlines)
                 t_store = (t_xl - geom.xlines[0]) + (t_il - geom.ilines[0]) * len(geom.xlines)
                 for tracefield, array in headers_dict.items():
                     array[t_store] = header[tracefield]
@@ -198,14 +198,13 @@ def io_thread_func(blockshape, headers_dict, geom,
         else:
             # Repeat last plane across padding to give better compression accuracy
             if minimal_il_reader is not None:
-                _, data = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
+                _, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
             else:
-                data = np.asarray(seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1]]
+                seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1]]
                                   )[geom.xlines[0]:geom.xlines[-1]+1, :]
 
-        seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = data
         # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
-        seismic_buffer[i, len(geom.xlines):, 0:trace_length] = data[-1, :]
+        seismic_buffer[i, len(geom.xlines):, 0:trace_length] = seismic_buffer[i, len(geom.xlines) - 1, 0:trace_length]
         seismic_buffer[i, :, trace_length:] = np.expand_dims(seismic_buffer[i, :, trace_length - 1], 1)
 
 
@@ -299,12 +298,20 @@ def seismic_file_producer(queue, seismicfile, blockshape, headers_dict, geom, re
                     queue.put(slice)
 
 
-def consumer(queue, header, out_filehandle, bits_per_voxel):
-    """Fetches compressed sets of inlines (or just blocks) and writes them to disk"""
+def compressor(queue_in, queue_out, bits_per_voxel):
+    """Fetches sets of inlines and compresses them"""
+    while True:
+        buffer = queue_in.get()
+        compressed = zfpy.compress_numpy(buffer, rate=bits_per_voxel, write_header=False)
+        queue_out.put(compressed)
+        queue_in.task_done()
+
+
+def writer(queue, out_filehandle, header):
+    """Fetches sets of compressed inlines and writes them to disk"""
     out_filehandle.write(header)
     while True:
-        buffer = queue.get()
-        compressed = zfpy.compress_numpy(buffer, rate=bits_per_voxel, write_header=False)
+        compressed = queue.get()
         out_filehandle.write(compressed)
         queue.task_done()
 
@@ -318,16 +325,21 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
     with open(out_filename, 'wb') as out_filehandle:
         # Maxsize can be reduced for machines with little memory
         # ... or for files which are so big they might be very useful.
-        queue = Queue(maxsize=queuesize)
+        compression_queue = Queue(maxsize=queuesize)
+        writing_queue = Queue(maxsize=queuesize)
         # schedule the consumer
-        t = Thread(target=consumer, args=(queue, header, out_filehandle, bits_per_voxel))
-        t.daemon = True
-        t.start()
+        t_compress = Thread(target=compressor, args=(compression_queue, writing_queue, bits_per_voxel))
+        t_write = Thread(target=writer, args=(writing_queue, out_filehandle, header))
+        t_compress.daemon = True
+        t_compress.start()
+        t_write.daemon = True
+        t_write.start()
         # run the appropriate producer and wait for completion
         if isinstance(source, CubeWithAxes):
-            numpy_producer(queue, source.data_array, blockshape)
+            numpy_producer(compression_queue, source.data_array, blockshape)
         else:
-            seismic_file_producer(queue, source, blockshape, header_info.headers_dict, geom, reduce_iops=reduce_iops)
+            seismic_file_producer(compression_queue, source, blockshape, header_info.headers_dict, geom, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
-        queue.join()
+        compression_queue.join()
+        writing_queue.join()
         out_filehandle.flush()
