@@ -13,6 +13,7 @@ if _has_zgy2sgz:
 from seismic_zfp.read import SgzReader
 import seismic_zfp
 import segyio
+import zgyio
 import pytest
 from seismic_zfp.utils import generate_fake_seismic
 
@@ -42,22 +43,29 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
                                                                    bits_per_voxel))
 
     with ZgyConverter(zgy_file) as converter:
-        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+        # Turns out that small-xxbit.zgy same with CDP_X and CDP_Y in the same range, so need to be 'thorough'
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel, header_detection='thorough')
 
-    with SgzReader(out_sgz) as reader:
-        sgz_data = reader.read_volume()
-        sgz_ilines = reader.ilines
-        sgz_samples = reader.zslices
+    with seismic_zfp.open(out_sgz) as sgzfile:
+        with zgyio.open(zgy_file) as zgyfile:
+            ref_ilines = zgyfile.ilines
+            ref_samples = zgyfile.samples
 
-    with segyio.open(sgy_file) as f:
-        ref_ilines = f.ilines
-        ref_samples = f.samples
+            sgz_data = sgzfile.read_volume()
+            sgz_ilines = sgzfile.ilines
+            sgz_samples = sgzfile.zslices
 
+            for trace_number in range(25):
+                sgz_header = sgzfile.header[trace_number]
+                zgy_header = zgyfile.header[trace_number]
+                for header_pos in [115, 117, 181, 185, 189, 193]:
+                    assert sgz_header[header_pos] == zgy_header[header_pos]
 
     assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
     assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
-    assert 10 == reader.get_file_source_code()
     assert all(ref_samples == sgz_samples)
+    assert 10 == SgzReader(out_sgz).get_file_source_code()
+
 
 @pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
 def test_compress_zgy8(tmp_path):
