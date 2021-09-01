@@ -176,7 +176,7 @@ class MinimalInlineReader:
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
 
-def io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
+def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
                    seismic_buffer, seismicfile, minimal_il_reader, trace_length):
     for i in range(blockshape[0]):
         start_trace = (plane_set_id * blockshape[0] + i) * len(seismicfile.xlines) + geom.xlines[0]
@@ -187,13 +187,15 @@ def io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
                 seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(
                     seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + i]]
                 )[geom.xlines[0]:geom.xlines[-1]+1, :]
-                headers = seismicfile.header[start_trace: start_trace + len(geom.xlines)]
+                if store_headers:
+                    headers = seismicfile.header[start_trace: start_trace + len(geom.xlines)]
 
-            for t, header in enumerate(headers, start_trace):
-                t_xl, t_il = t % len(seismicfile.xlines), t // len(seismicfile.xlines)
-                t_store = (t_xl - geom.xlines[0]) + (t_il - geom.ilines[0]) * len(geom.xlines)
-                for tracefield, array in headers_dict.items():
-                    array[t_store] = header[tracefield]
+            if store_headers:
+                for t, header in enumerate(headers, start_trace):
+                    t_xl, t_il = t % len(seismicfile.xlines), t // len(seismicfile.xlines)
+                    t_store = (t_xl - geom.xlines[0]) + (t_il - geom.ilines[0]) * len(geom.xlines)
+                    for tracefield, array in headers_dict.items():
+                        array[t_store] = header[tracefield]
 
         else:
             # Repeat last plane across padding to give better compression accuracy
@@ -249,7 +251,7 @@ def numpy_producer(queue, in_array, blockshape):
                     queue.put(slice)
 
 
-def seismic_file_producer(queue, seismicfile, blockshape, headers_dict, geom, reduce_iops=True, verbose=True):
+def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers_dict, geom, reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts them in the queue for writing to disk"""
 
     n_ilines, n_xlines, trace_length = len(geom.ilines), len(geom.xlines), len(seismicfile.samples)
@@ -285,7 +287,7 @@ def seismic_file_producer(queue, seismicfile, blockshape, headers_dict, geom, re
             unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                                         seismic_buffer, seismicfile, trace_length)
         else:
-            io_thread_func(blockshape, headers_dict, geom, plane_set_id, planes_to_read,
+            io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
                            seismic_buffer, seismicfile, minimal_il_reader, trace_length)
 
         if blockshape[0] == 4:
@@ -317,7 +319,7 @@ def writer(queue, out_filehandle, header):
 
 
 def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
-                        header_info, geom, queuesize=16, reduce_iops=False):
+                        header_info, geom, queuesize=16, reduce_iops=False, store_headers=True):
     if isinstance(source, CubeWithAxes):
         header = make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom)
     else:
@@ -338,7 +340,8 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
         if isinstance(source, CubeWithAxes):
             numpy_producer(compression_queue, source.data_array, blockshape)
         else:
-            seismic_file_producer(compression_queue, source, blockshape, header_info.headers_dict, geom, reduce_iops=reduce_iops)
+            seismic_file_producer(compression_queue, source, blockshape, store_headers,
+                                  header_info.headers_dict, geom, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
         compression_queue.join()
         writing_queue.join()

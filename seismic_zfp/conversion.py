@@ -177,11 +177,12 @@ class SeismicFileConverter(object):
             bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
             self.detect_geomerty(seismic)
             header_info = self.get_blank_header_info(seismic, header_detection)
+            store_headers = not(header_detection == 'strip')
             max_queue_length = self.check_memory(inline_set_bytes = blockshape[0]
                                                                     * (len(self.geom.xlines)
                                                                     * len(seismic.samples)) * 4)
-            run_conversion_loop(seismic, self.out_filename, bits_per_voxel, blockshape,
-                                header_info, self.geom, queuesize=max_queue_length, reduce_iops=reduce_iops)
+            run_conversion_loop(seismic, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom,
+                                queuesize=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
         self.write_headers(header_detection, header_info)
 
         print("Total conversion time: {}                     ".format(time.time()-t0))
