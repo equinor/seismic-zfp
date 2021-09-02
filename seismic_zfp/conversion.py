@@ -11,7 +11,7 @@ from .headers import HeaderwordInfo
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
-from .seismicfile import SeismicFile
+from .seismicfile import SeismicFile, Filetype
 
 try:
     import zgy2sgz
@@ -178,6 +178,8 @@ class SeismicFileConverter(object):
             self.detect_geomerty(seismic)
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = not(header_detection == 'strip')
+            if seismic.filetype == Filetype.ZGY:
+                store_headers = False
             max_queue_length = self.check_memory(inline_set_bytes = blockshape[0]
                                                                     * (len(self.geom.xlines)
                                                                     * len(seismic.samples)) * 4)

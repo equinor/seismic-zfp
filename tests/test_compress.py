@@ -43,8 +43,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
                                                                    bits_per_voxel))
 
     with ZgyConverter(zgy_file) as converter:
-        # Turns out that small-xxbit.zgy same with CDP_X and CDP_Y in the same range, so need to be 'thorough'
-        converter.run(out_sgz, bits_per_voxel=bits_per_voxel, header_detection='thorough')
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
 
     with seismic_zfp.open(out_sgz) as sgzfile:
         with zgyio.open(zgy_file) as zgyfile:
