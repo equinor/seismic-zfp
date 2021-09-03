@@ -17,11 +17,15 @@ class SeismicFile:
     @staticmethod
     def open(filename, filetype=None):
         if filetype is None:
-            ext = os.path.splitext(filename)[1].lower()
-        if ext in ['.sgy', '.segy']:
+            ext = os.path.splitext(filename)[1].lower().strip('.')
+        else:
+            ext = filetype
+
+        # Assume no extension means SEG-Y
+        if ext in ['', 'sgy', 'segy']:
             handle = segyio.open(filename, mode='r', strict=False)
             handle.filetype = Filetype.SEGY
-        elif ext == '.zgy':
+        elif ext == 'zgy':
             handle = zgyio.open(filename)
             handle.filetype = Filetype.ZGY
         else:
