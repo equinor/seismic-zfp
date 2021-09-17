@@ -1,5 +1,5 @@
 import click
-from seismic_zfp.conversion import SegyConverter, ZgyConverter
+from seismic_zfp.conversion import SegyConverter, ZgyConverter, SgzConverter
 
 cropping_param_help = (
     "Cropping parameter to apply to input seismic cube. "
@@ -156,6 +156,25 @@ def zgy2sgz(
             bits_per_voxel=bits_per_voxel,
         )
 
+@cli.command("sgz2sgy", short_help="convert a SGZ file to SEG-Y")
+@click.argument(
+    "input-sgz-file",
+    required=True,
+    type=click.Path(exists=True),
+)
+@click.argument(
+    "output-sgy-file",
+    required=True,
+    type=click.Path(),
+)
+def sgz2sgy(
+    input_sgz_file=None,
+    output_sgy_file=None,
+):
+    click.echo("Converting {} to {}...".format(input_sgz_file, output_sgy_file))
+    with SgzConverter(input_sgz_file) as converter:
+        converter.convert_to_segy(output_sgy_file,
+        )
 
 if __name__ == "__main__":
     cli()

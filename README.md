@@ -121,9 +121,10 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
 ## Command Line Interface
 A simple command line interface for converting from SEGY or ZGY to SGZ is also bundled with seismic-zfp. This is available using the command `seismic-zfp`.
 
-#### Converting from SEGY to SGZ
+#### Converting from SEG-Y to SGZ and back
 ```bash
 seismic-zfp sgy2sgz <INPUT FILE PATH> <OUTPUT FILE PATH> --bits-per-voxel 4
+seismic-zfp sgz2sgy <INPUT FILE PATH> <OUTPUT FILE PATH>
 ```
 To see all options run the command `seismic-zfp sgy2sgz --help`
 
