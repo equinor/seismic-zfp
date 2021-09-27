@@ -55,7 +55,9 @@ For further explanation of the design and implementation of seismic-zfp, please 
 - Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) without zgy support: `pip install seismic-zfp`
 - Source from [Github](https://github.com/equinor/seismic-zfp): `git clone https://github.com/equinor/seismic-zfp.git`
 
-*Note that seismic-zfp depends on the Python packages [ZFPY](https://pypi.org/project/zfpy/) and [zgy2sgz](https://pypi.org/project/zgy2sgz/), which are binary distributions on PyPI built for Linux and Windows.*
+*Note that seismic-zfp depends on the Python package [ZFPY](https://pypi.org/project/zfpy/), which is a binary distribution on PyPI built for Linux and Windows.*
+
+*The optional dependency of zgy2sgz has been replaced with zgyio - a pure-Python alternative.*
 
 ## Examples ##
 

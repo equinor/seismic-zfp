@@ -4,11 +4,11 @@ from seismic_zfp.cli import cli
 import os
 import seismic_zfp
 try:
-    import zgy2sgz
+    import zgyio
 except ImportError:
-    _has_zgy2sgz = False
+    _has_zgyio = False
 else:
-    _has_zgy2sgz = True
+    _has_zgyio = True
 
 def test_sgy2sgz():
     runner = CliRunner()
@@ -77,14 +77,14 @@ def test_sgy2sgz_convert_all_params():
     assert result.exit_code == 0
 
 
-@pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
+@pytest.mark.skipif(not _has_zgyio, reason="Requires zgyio")
 def test_zgy2sgz():
     runner = CliRunner()
     result = runner.invoke(cli, ["zgy2sgz", "--help"])
     assert result.exit_code == 0
 
 
-@pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
+@pytest.mark.skipif(not _has_zgyio, reason="Requires zgyio")
 def test_zgy2sgz_convert_default():
     input_file = os.path.join("test_data", "zgy", "small-8bit.zgy")
     input_file_absolute = os.path.abspath(input_file)
@@ -97,7 +97,7 @@ def test_zgy2sgz_convert_default():
     assert result.exit_code == 0
 
 
-@pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
+@pytest.mark.skipif(not _has_zgyio, reason="Requires zgyio")
 def test_zgy2sgz_convert_bits_per_voxel():
     input_file = os.path.join("test_data", "zgy", "small-16bit.zgy")
     input_file_absolute = os.path.abspath(input_file)
@@ -112,7 +112,7 @@ def test_zgy2sgz_convert_bits_per_voxel():
     assert result.exit_code == 0
 
 
-@pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
+@pytest.mark.skipif(not _has_zgyio, reason="Requires zgyio")
 def test_zgy2sgz_convert_all_params():
     input_file = os.path.join("test_data", "zgy", "small-32bit.zgy")
     input_file_absolute = os.path.abspath(input_file)

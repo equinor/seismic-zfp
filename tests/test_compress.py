@@ -3,17 +3,16 @@ import numpy as np
 from seismic_zfp.conversion import SegyConverter, SgzConverter, NumpyConverter
 from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
 try:
-    import zgy2sgz
+    import zgyio
 except ImportError:
-    _has_zgy2sgz = False
+    _has_zgyio = False
 else:
-    _has_zgy2sgz = True
-if _has_zgy2sgz:
+    _has_zgyio = True
+if _has_zgyio:
     from seismic_zfp.conversion import ZgyConverter
 from seismic_zfp.read import SgzReader
 import seismic_zfp
 import segyio
-import zgyio
 import pytest
 from seismic_zfp.utils import generate_fake_seismic
 
@@ -66,7 +65,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol)
     assert 10 == SgzReader(out_sgz).get_file_source_code()
 
 
-@pytest.mark.skipif(not _has_zgy2sgz, reason="Requires zgy2sgz")
+@pytest.mark.skipif(not _has_zgyio, reason="Requires zgyio")
 def test_compress_zgy8(tmp_path):
     compress_and_compare_zgy(ZGY_FILE_8, SGY_FILE_8, tmp_path, 16, 1e-4)
     compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE_16, tmp_path, 16, 1e-4)
