@@ -91,9 +91,9 @@ class HeaderwordInfo:
 
     def get_zgy_header_arrays(self, seismicfile):
         iline_axis = np.linspace(seismicfile.ilines[0], seismicfile.ilines[-1],
-                                 num=len(seismicfile.ilines), dtype=int)
+                                 num=len(seismicfile.ilines), dtype=np.intc)
         xline_axis = np.linspace(seismicfile.xlines[0], seismicfile.xlines[-1],
-                                 num=len(seismicfile.xlines), dtype=int)
+                                 num=len(seismicfile.xlines), dtype=np.intc)
         xline_headers, iline_headers = np.meshgrid(xline_axis, iline_axis)
 
         iline_axis = np.linspace(0, seismicfile.n_ilines - 1, num=seismicfile.n_ilines)
@@ -107,8 +107,8 @@ class HeaderwordInfo:
         easting_inc_xl = (corners[2][0] - corners[0][0]) / (seismicfile.n_xlines - 1)
         northing_inc_xl = (corners[2][1] - corners[0][1]) / (seismicfile.n_xlines - 1)
 
-        cdp_x = np.round_(100.0 * (corners[0][0] + iline_idx * easting_inc_il + xline_idx * easting_inc_xl)).astype(int)
-        cdp_y = np.round_(100.0 * (corners[0][1] + iline_idx * northing_inc_il + xline_idx * northing_inc_xl)).astype(int)
+        cdp_x = np.round_(100.0 * (corners[0][0] + iline_idx * easting_inc_il + xline_idx * easting_inc_xl)).astype(np.intc)
+        cdp_y = np.round_(100.0 * (corners[0][1] + iline_idx * northing_inc_il + xline_idx * northing_inc_xl)).astype(np.intc)
 
         return cdp_x, cdp_y, iline_headers, xline_headers
 
