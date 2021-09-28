@@ -36,7 +36,7 @@ class HeaderwordInfo:
         self.table = {self._get_hw_code(hw): (0, 0) for hw in segyio.segy.Field(bytearray(240), kind='trace')}
 
         if seismicfile is not None:
-            if seismicfile.filetype == Filetype.SEGY:
+            if seismicfile.filetype in [Filetype.SEGY, Filetype.VDS]:
                 # This would work for ZGY too, but there's a more efficient way to do it
                 self.seismicfile = seismicfile
                 self.unique_variant_nonzero_header_words = self._get_unique_headerwords()
@@ -69,7 +69,7 @@ class HeaderwordInfo:
                 self.headers_dict = {181: cdp_x, 185: cdp_y, 189: iline_headers, 193:xline_headers}
 
             else:
-                raise (RuntimeError, "Only SEG-Y and ZGY files supported for header generation")
+                raise RuntimeError("Only SEG-Y and ZGY files supported for header generation")
 
         elif variant_header_list is not None:
             self.unique_variant_nonzero_header_words = variant_header_list
@@ -87,7 +87,7 @@ class HeaderwordInfo:
             self.headers_dict = variant_header_dict
 
         else:
-            raise(RuntimeError, "Must specify at least one of seismicfile and variant_header_list for constructor")
+            raise RuntimeError("Must specify at least one of seismicfile and variant_header_list for constructor")
 
     def get_zgy_header_arrays(self, seismicfile):
         iline_axis = np.linspace(seismicfile.ilines[0], seismicfile.ilines[-1],

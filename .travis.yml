@@ -18,7 +18,7 @@ install:
   - mkdir -p .git/refs/heads
   - echo $TRAVIS_COMMIT > .git/refs/heads/master
 
-  - pip install ".[test,zgy]"
+  - pip install ".[test,zgy,vds]"
 
 script: pytest
 

@@ -4,3 +4,4 @@ psutil
 zfpy
 click
 zgyio
+pyvds

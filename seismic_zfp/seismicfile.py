@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 
-#import pyvds
+import pyvds
 import zgyio
 import segyio
 
@@ -28,6 +28,9 @@ class SeismicFile:
         elif ext == 'zgy':
             handle = zgyio.open(filename)
             handle.filetype = Filetype.ZGY
+        elif ext == 'vds':
+            handle = pyvds.open(filename)
+            handle.filetype = Filetype.VDS
         else:
             raise ValueError("Unknown file extension: '{}'".format(ext))
 

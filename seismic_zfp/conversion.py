@@ -202,6 +202,9 @@ class SegyConverter(SeismicFileConverter):
 class ZgyConverter(SeismicFileConverter):
     pass
 
+class VdsConverter(SeismicFileConverter):
+    pass
+
 
 class SgzConverter(SgzReader):
     """Reads SGZ files and either:

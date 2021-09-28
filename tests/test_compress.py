@@ -2,6 +2,7 @@ import os
 import numpy as np
 from seismic_zfp.conversion import SegyConverter, SgzConverter, NumpyConverter
 from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
+
 try:
     import zgyio
 except ImportError:
@@ -10,6 +11,16 @@ else:
     _has_zgyio = True
 if _has_zgyio:
     from seismic_zfp.conversion import ZgyConverter
+
+try:
+    import pyvds
+except ImportError:
+    _has_pyvds = False
+else:
+    _has_pyvds = True
+if _has_pyvds:
+    from seismic_zfp.conversion import VdsConverter
+
 from seismic_zfp.read import SgzReader
 import seismic_zfp
 import segyio
@@ -32,9 +43,45 @@ ZGY_FILE_32 = 'test_data/zgy/small-32bit.zgy'
 ZGY_FILE_16 = 'test_data/zgy/small-16bit.zgy'
 ZGY_FILE_8 = 'test_data/zgy/small-8bit.zgy'
 
+VDS_FILE = 'test_data/vds/small.vds'
+
 SGY_FILE_32 = 'test_data/zgy/small-32bit.sgy'
 SGY_FILE_16 = 'test_data/zgy/small-16bit.sgy'
 SGY_FILE_8 = 'test_data/zgy/small-8bit.sgy'
+
+
+def compress_and_compare_vds(vds_file, tmp_path, bits_per_voxel, rtol):
+    out_sgz = os.path.join(str(tmp_path), 'test_{}_{}_.sgz'.format(os.path.splitext(os.path.basename(vds_file))[0],
+                                                                   bits_per_voxel))
+
+    with VdsConverter(vds_file) as converter:
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+    with seismic_zfp.open(out_sgz) as sgzfile:
+        with pyvds.open(vds_file) as vdsfile:
+            ref_ilines = vdsfile.ilines
+            ref_samples = vdsfile.samples
+
+            sgz_data = sgzfile.read_volume()
+            sgz_ilines = sgzfile.ilines
+            sgz_samples = sgzfile.zslices
+
+            for trace_number in range(25):
+                sgz_header = sgzfile.header[trace_number]
+                vds_header = vdsfile.header[trace_number]
+                assert sgz_header == vds_header
+
+                for header_pos in [115, 117, 181, 185, 189, 193]:
+                    assert sgz_header[header_pos] == vds_header[header_pos]
+
+    assert np.allclose(sgz_data, pyvds.tools.cube(vds_file), rtol=rtol)
+    assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
+    assert all(ref_samples == sgz_samples)
+    assert 30 == SgzReader(out_sgz).get_file_source_code()
+
+@pytest.mark.skipif(not _has_pyvds, reason="Requires pyvds")
+def test_compress_vds(tmp_path):
+    compress_and_compare_vds(VDS_FILE, tmp_path, 8, 1e-6)
 
 
 def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol):
