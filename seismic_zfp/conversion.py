@@ -132,7 +132,11 @@ class SeismicFileConverter(object):
 
     def check_inputfile_exists(self):
         if not os.path.exists(self.in_filename):
-            msg = "With searching comes loss,  and the presence of absence:  'My Segy' not found."
+            if self.filetype is None:
+                file_ext = 'file'
+            else:
+                file_ext = self.filetype.__repr__().split('.')[1].split(':')[0]
+            msg = "With searching comes loss,  and the presence of absence:  'My {}' not found.".format(file_ext)
             raise FileNotFoundError(msg)
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1),
