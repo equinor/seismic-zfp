@@ -6,10 +6,13 @@ def get_long_description():
     with open('README.md') as f:
         raw_readme = f.read()
     base_repo = 'https://github.com/equinor/seismic-zfp/tree/'
-    with open('.git/refs/heads/master') as f:
-        commit = f.read().rstrip()
-    substituted_readme = re.sub('\\]\\((?!https)', '](' + base_repo + commit + '/', raw_readme)
-    return substituted_readme
+    try:
+        # Travis job provides this, but don't clutter Github Actions for code coverage
+        with open('.git/refs/heads/master') as f:
+            commit = f.read().rstrip()
+        return re.sub('\\]\\((?!https)', '](' + base_repo + commit + '/', raw_readme)
+    except FileNotFoundError:
+        return raw_readme
 
 
 setuptools.setup(name='seismic-zfp',
