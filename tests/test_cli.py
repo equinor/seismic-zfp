@@ -2,7 +2,7 @@ import pytest
 from click.testing import CliRunner
 from seismic_zfp.cli import cli
 import os
-import seismic_zfp
+
 try:
     import zgyio
 except ImportError:
@@ -13,6 +13,18 @@ else:
 def test_sgy2sgz():
     runner = CliRunner()
     result = runner.invoke(cli, ["sgy2sgz", "--help"])
+    assert result.exit_code == 0
+
+
+def test_sgz2sgy_convert():
+    input_file = os.path.join("test_data", "small_4bit.sgz")
+    input_file_absolute = os.path.abspath(input_file)
+    output_file = "small.sgy"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["sgz2sgy", input_file_absolute, output_file])
+        assert os.path.exists(output_file)
+        assert os.stat(output_file).st_size > 0
     assert result.exit_code == 0
 
 
