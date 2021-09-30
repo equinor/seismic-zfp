@@ -3,4 +3,5 @@ segyio
 psutil
 zfpy
 click
-zgy2sgz
+zgyio
+pyvds

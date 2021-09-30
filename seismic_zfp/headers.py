@@ -3,13 +3,14 @@ import numpy as np
 import segyio
 
 from .utils import signed_int_to_bytes
+from .seismicfile import Filetype
 
 class HeaderwordInfo:
     """Represents the variant/invariant/unpopulated status of trace headers, and their values.
 
     Three mutually exclusive modes of operation:
 
-    - segyfile:   Determines which header fields have constant values, what those constant values are and
+    - seismicfile:   Determines which header fields have constant values, what those constant values are and
     which non-constant fields are duplicates of others. Achieves this by reading first and last
     traces of the provided segy file. Returns encoding of this information.
 
@@ -17,67 +18,99 @@ class HeaderwordInfo:
 
     - variant_header_dict:   Dict of variant header fields for creating new file
     """
-    def __init__(self, n_traces, segyfile=None, variant_header_list=None, variant_header_dict=None, header_detection=None):
+    def __init__(self, n_traces, seismicfile=None, variant_header_list=None, variant_header_dict=None, header_detection=None):
         """
         Parameters
         ----------
         n_traces: Number of traces in output file
 
-        segyfile: segyio filehandle (optional - pick one)
+        seismicfile: segyio filehandle (optional - pick one)
 
         variant_header_list: list of headerwords which need storing (optional - pick one)
 
         variant_header_dict: dictionary of {headerword: numpy array, } (optional - pick one)
         """
         # Check only one of the options for creating a HeaderwordInfo class is used
-        assert sum([_ is not None for _ in [segyfile, variant_header_list, variant_header_dict]]) == 1
+        assert sum([_ is not None for _ in [seismicfile, variant_header_list, variant_header_dict]]) == 1
         self.header_detection = header_detection
+        self.table = {self._get_hw_code(hw): (0, 0) for hw in segyio.segy.Field(bytearray(240), kind='trace')}
 
-        self.table = {}
+        if seismicfile is not None:
+            if seismicfile.filetype in [Filetype.SEGY, Filetype.VDS]:
+                # This would work for ZGY too, but there's a more efficient way to do it
+                self.seismicfile = seismicfile
+                self.unique_variant_nonzero_header_words = self._get_unique_headerwords()
+                self.duplicate_header_words = self._find_duplicated_headerwords()
 
-        if segyfile is not None:
-            self.segyfile = segyfile
-            self.unique_variant_nonzero_header_words = self._get_unique_headerwords()
-            self.duplicate_header_words = self._find_duplicated_headerwords()
+                for hw in seismicfile.header[0]:
+                    if hw in self._get_invariant_nonzero_headerwords():
+                        self.table[self._get_hw_code(hw)] = (seismicfile.header[0][hw], 0)
 
-            for hw in segyfile.header[0]:
-                if hw in self._get_invariant_nonzero_headerwords():
-                    default = segyfile.header[0][hw]
-                else:
-                    default = 0
+                    if hw in self.unique_variant_nonzero_header_words:
+                        self.table[self._get_hw_code(hw)] = (0, self._get_hw_code(hw))
+                    elif hw in self.duplicate_header_words.keys():
+                        self.table[self._get_hw_code(hw)] = (0, self._get_hw_code(self.duplicate_header_words[hw]))
 
-                if hw in self.unique_variant_nonzero_header_words:
-                    mapping = self._get_headerword_code(hw)
-                elif hw in self.duplicate_header_words.keys():
-                    mapping = self._get_headerword_code(self.duplicate_header_words[hw])
-                else:
-                    mapping = 0
-                self.table[self._get_headerword_code(hw)] = (default, mapping)
+                self.headers_dict = collections.OrderedDict.fromkeys(self.unique_variant_nonzero_header_words)
+                for k in self.unique_variant_nonzero_header_words:
+                    self.headers_dict[k] = np.zeros(n_traces, dtype=np.int32)
 
-            self.headers_dict = collections.OrderedDict.fromkeys(self.unique_variant_nonzero_header_words)
-            for k in self.unique_variant_nonzero_header_words:
-                self.headers_dict[k] = np.zeros(n_traces, dtype=np.int32)
+            elif seismicfile.filetype == Filetype.ZGY:
+                # Set up hw table with entries possible to scrape out of ZGY
+                self.table[115] = (int(seismicfile.n_samples), 0)
+                self.table[117] = (int(1000*seismicfile.zinc), 0)
+                for hw_code in [181, 185, 189, 193]:
+                    self.table[hw_code] = (0, hw_code)
 
+                # Create required numpy int arrays
+                cdp_x, cdp_y, iline_headers, xline_headers = self.get_zgy_header_arrays(seismicfile)
+
+                # Keep them in memory until file is ready for them to be written
+                self.headers_dict = {181: cdp_x, 185: cdp_y, 189: iline_headers, 193:xline_headers}
+
+            else:
+                raise RuntimeError("Only SEG-Y and ZGY files supported for header generation")
 
         elif variant_header_list is not None:
             self.unique_variant_nonzero_header_words = variant_header_list
             for hw in variant_header_list:
-                self.table[self._get_headerword_code(hw)] = (0, self._get_headerword_code(hw))
+                self.table[self._get_hw_code(hw)] = (0, self._get_hw_code(hw))
 
             self.headers_dict = collections.OrderedDict.fromkeys(self.unique_variant_nonzero_header_words)
             for k in self.unique_variant_nonzero_header_words:
                 self.headers_dict[k] = np.zeros(n_traces, dtype=np.int32)
 
-
         elif variant_header_dict is not None:
             self.unique_variant_nonzero_header_words = variant_header_dict.keys()
             for hw in variant_header_dict.keys():
-                self.table[self._get_headerword_code(hw)] = (0, 0)
-
+                self.table[self._get_hw_code(hw)] = (0, 0)
             self.headers_dict = variant_header_dict
 
         else:
-            raise(RuntimeError, "Must specify at least one of segyfile and variant_header_list for constructor")
+            raise RuntimeError("Must specify at least one of seismicfile and variant_header_list for constructor")
+
+    def get_zgy_header_arrays(self, seismicfile):
+        iline_axis = np.linspace(seismicfile.ilines[0], seismicfile.ilines[-1],
+                                 num=len(seismicfile.ilines), dtype=np.intc)
+        xline_axis = np.linspace(seismicfile.xlines[0], seismicfile.xlines[-1],
+                                 num=len(seismicfile.xlines), dtype=np.intc)
+        xline_headers, iline_headers = np.meshgrid(xline_axis, iline_axis)
+
+        iline_axis = np.linspace(0, seismicfile.n_ilines - 1, num=seismicfile.n_ilines)
+        xline_axis = np.linspace(0, seismicfile.n_xlines - 1, num=seismicfile.n_xlines)
+        xline_idx, iline_idx = np.meshgrid(xline_axis, iline_axis)
+
+        corners = seismicfile.corners
+
+        easting_inc_il = (corners[1][0] - corners[0][0]) / (seismicfile.n_ilines - 1)
+        northing_inc_il = (corners[1][1] - corners[0][1]) / (seismicfile.n_ilines - 1)
+        easting_inc_xl = (corners[2][0] - corners[0][0]) / (seismicfile.n_xlines - 1)
+        northing_inc_xl = (corners[2][1] - corners[0][1]) / (seismicfile.n_xlines - 1)
+
+        cdp_x = np.round_(100.0 * (corners[0][0] + iline_idx * easting_inc_il + xline_idx * easting_inc_xl)).astype(np.intc)
+        cdp_y = np.round_(100.0 * (corners[0][1] + iline_idx * northing_inc_il + xline_idx * northing_inc_xl)).astype(np.intc)
+
+        return cdp_x, cdp_y, iline_headers, xline_headers
 
     def __repr__(self):
         output = ""
@@ -110,14 +143,14 @@ class HeaderwordInfo:
         return sum(hw[0] == hw[2] for hw in self.to_list())
 
     @staticmethod
-    def _get_headerword_code(hw):
+    def _get_hw_code(hw):
         return segyio.tracefield.keys[str(segyio.tracefield.TraceField(hw))]
 
     def _get_first_last_headers(self):
-        return self.segyfile.header[0].items(), self.segyfile.header[-1].items()
+        return self.seismicfile.header[0].items(), self.seismicfile.header[-1].items()
 
     def _get_nonzero_headerwords(self):
-        return [k for k, v in self.segyfile.header[0].items() if v != 0]
+        return [k for k, v in self.seismicfile.header[0].items() if v != 0]
 
     def _get_invariant_headerwords(self):
         first_header, last_header = self._get_first_last_headers()
@@ -133,7 +166,7 @@ class HeaderwordInfo:
 
     def _find_duplicated_headerwords(self):
         variant_nonzero_header_words = self._get_variant_headerwords()
-        first_header, last_header = self.segyfile.header[0], self.segyfile.header[-1]
+        first_header, last_header = self.seismicfile.header[0], self.seismicfile.header[-1]
         hw_mappings = {}
 
         for i, hw in enumerate(variant_nonzero_header_words):
@@ -152,6 +185,6 @@ class HeaderwordInfo:
                 variant_header_words[i] = duplicate_header_words[hw]
 
         variant_header_words = list(set(variant_header_words))
-        variant_header_word_codes = [self._get_headerword_code(header_words) for header_words in variant_header_words]
+        variant_header_word_codes = [self._get_hw_code(header_words) for header_words in variant_header_words]
 
         return [x for _, x in sorted(zip(variant_header_word_codes, variant_header_words))]

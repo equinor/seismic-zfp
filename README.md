@@ -52,20 +52,24 @@ For further explanation of the design and implementation of seismic-zfp, please 
 #### NOTE: Previously the extension .sz was used for seismic-zfp, but has been replaced with .sgz to avoid confusion around the compression algorithm used.
 
 ## Get seismic-zfp
-- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) with zgy support: `pip install seismic-zfp[zgy]`
-- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) without zgy support: `pip install seismic-zfp`
+- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) with zgy and vds support: `pip install seismic-zfp[zgy,vds]`
+- Wheels from [PyPI](https://pypi.org/project/seismic-zfp/) without zgy or vds support: `pip install seismic-zfp`
 - Source from [Github](https://github.com/equinor/seismic-zfp): `git clone https://github.com/equinor/seismic-zfp.git`
 
-*Note that seismic-zfp depends on the Python packages [ZFPY](https://pypi.org/project/zfpy/) and [zgy2sgz](https://pypi.org/project/zgy2sgz/), which are binary distributions on PyPI built for Linux and Windows.*
+*Note that seismic-zfp depends on the Python package [ZFPY](https://pypi.org/project/zfpy/), which is a binary distribution on PyPI built for Linux and Windows.*
+
+*The optional dependency [pyvds](https://github.com/equinor/pyvds) - requires openvds package from Bluware which is **not** open-source*
+
+*The optional dependency of zgy2sgz has been replaced with [zgyio](https://github.com/equinor/zgyio) - a pure-Python alternative.*
 
 ## Examples ##
 
 Full example code is provided [here](examples), but the following reference is useful:
 
-#### Create SGZ files from SEG-Y or ZGY ####
+#### Create SGZ files from SEG-Y, ZGY or VDS ####
 
 ```python
-from seismic_zfp.conversion import SegyConverter, ZgyConverter, SgzConverter
+from seismic_zfp.conversion import SegyConverter, ZgyConverter, VdsConverter
 
 with SegyConverter("in.sgy") as converter:
     # Create a "standard" SGZ file with 8:1 compression, using in-memory method
@@ -76,6 +80,10 @@ with SegyConverter("in.sgy") as converter:
 with ZgyConverter("in_8-int.zgy") as converter:
     # 8-bit integer ZGY and 1-bit SGZ have similar quality
     converter.run("out_8bit.sgz", bits_per_voxel=1)
+
+with VdsConverter("in.vds") as converter:
+    # VDS compression is superior, but doesn't permit non-cubic bricks...
+    converter.run("out.sgz", bits_per_voxel=4, blockshape=(8, 8, 128))
 ```
 
 #### Convert SGZ files to SEG-Y ####
