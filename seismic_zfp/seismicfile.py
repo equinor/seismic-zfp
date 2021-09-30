@@ -15,23 +15,26 @@ class Filetype(Enum):
 class SeismicFile:
 
     @staticmethod
-    def open(filename, filetype=None):
-        if filetype is None:
+    def open(filename, file_type=None):
+        if file_type is None:
             ext = os.path.splitext(filename)[1].lower().strip('.')
-        else:
-            ext = filetype
+            if ext in ['', 'sgy', 'segy']:
+                # Assume no extension means SEG-Y
+                file_type = Filetype.SEGY
+            elif ext == 'zgy':
+                file_type = Filetype.ZGY
+            elif ext == 'vds':
+                file_type = Filetype.VDS
+            else:
+                raise ValueError("Unknown file extension: '{}'".format(ext))
 
-        # Assume no extension means SEG-Y
-        if ext in ['', 'sgy', 'segy']:
+        if file_type == Filetype.SEGY:
             handle = segyio.open(filename, mode='r', strict=False)
-            handle.filetype = Filetype.SEGY
-        elif ext == 'zgy':
+        elif file_type == Filetype.ZGY:
             handle = zgyio.open(filename)
-            handle.filetype = Filetype.ZGY
-        elif ext == 'vds':
+        elif file_type == Filetype.VDS:
             handle = pyvds.open(filename)
-            handle.filetype = Filetype.VDS
-        else:
-            raise ValueError("Unknown file extension: '{}'".format(ext))
+
+        handle.filetype = file_type
 
         return handle

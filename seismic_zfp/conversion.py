@@ -22,7 +22,13 @@ else:
 
 
 class SeismicFileConverter(object):
-    """Reads SEG-Y file and compresses to SGZ file(s)"""
+    """
+    Reads seismic file and compresses to SGZ file(s)
+
+    This is the base class for converters specifically named for their input filetype.
+
+    Because the SeismicFile class detects filetype based on extension this base class could be used most of the time.
+    """
 
     def __init__(self, in_filename, min_il=None, max_il=None, min_xl=None, max_xl=None):
         """
@@ -30,7 +36,7 @@ class SeismicFileConverter(object):
         ----------
 
         in_filename: str
-            The SEGY file to be converted to SGZ
+            The seismic file to be converted to SGZ
 
         min_il, max_il, min_xl, max_xl: int
             Cropping parameters to apply to input seismic cube
@@ -42,6 +48,7 @@ class SeismicFileConverter(object):
         self.geom = None
         if all([min_il, max_il, min_xl, max_xl]):
             self.geom = Geometry(min_il, max_il, min_xl, max_xl)
+        self.filetype = self.set_filetype()
 
     def __enter__(self):
         return self
@@ -49,6 +56,11 @@ class SeismicFileConverter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Non Timetus Messor
         pass
+
+    @staticmethod
+    def set_filetype():
+        """This method will be overridden by filetpye-specific subclasses"""
+        return None
 
     def get_blank_header_info(self, seismic, header_detection):
         if header_detection == 'heuristic':
@@ -124,8 +136,8 @@ class SeismicFileConverter(object):
             raise FileNotFoundError(msg)
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1),
-            reduce_iops=False, header_detection="heuristic", filetype=None):
-        """General entrypoint for converting SEG-Y files to SGZ
+            reduce_iops=False, header_detection="heuristic"):
+        """General entrypoint for converting seismic files to SGZ
 
         Parameters
         ----------
@@ -166,12 +178,6 @@ class SeismicFileConverter(object):
             - "strip"      : Do not save any SEG-Y trace headers. Smallest file, fast and dangerous.
 
             Default: "heuristic".
-
-        filetype: str
-            Override the detection by SeismicFile class.
-            May be one of the following:
-            - "segy" : Input is SEG-Y format
-            - "zgy"  : Input is Schlumberger's ZGY format
         """
         self.check_inputfile_exists()
         self.out_filename = out_filename
@@ -179,7 +185,7 @@ class SeismicFileConverter(object):
 
         t0 = time.time()
 
-        with SeismicFile.open(self.in_filename, filetype) as seismic:
+        with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
             self.detect_geomerty(seismic)
             header_info = self.get_blank_header_info(seismic, header_detection)
@@ -197,13 +203,22 @@ class SeismicFileConverter(object):
 
 
 class SegyConverter(SeismicFileConverter):
-    pass
+    """Reads SEG-Y file and compresses to SGZ file(s)"""
+    @staticmethod
+    def set_filetype():
+        return Filetype.SEGY
 
 class ZgyConverter(SeismicFileConverter):
-    pass
+    """Reads ZGY file and converts to SGZ file(s)"""
+    @staticmethod
+    def set_filetype():
+        return Filetype.ZGY
 
 class VdsConverter(SeismicFileConverter):
-    pass
+    """Reads VDS file and converts to SGZ file(s)"""
+    @staticmethod
+    def set_filetype():
+        return Filetype.VDS
 
 
 class SgzConverter(SgzReader):
