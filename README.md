@@ -60,7 +60,7 @@ For further explanation of the design and implementation of seismic-zfp, please 
 
 *The optional dependency [pyvds](https://github.com/equinor/pyvds) - requires openvds package from Bluware which is **not** open-source*
 
-*The optional dependency of zgy2sgz has been replaced with [zgyio](https://github.com/equinor/zgyio) - a pure-Python alternative.*
+*The optional dependency of zgy2sgz has been replaced with [pyzgy](https://github.com/equinor/pyzgy) - a pure-Python alternative.*
 
 ## Examples ##
 

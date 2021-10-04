@@ -4,12 +4,12 @@ from seismic_zfp.conversion import SeismicFileConverter, SegyConverter, SgzConve
 from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
 
 try:
-    import zgyio
+    import pyzgy
 except ImportError:
-    _has_zgyio = False
+    _has_pyzgy = False
 else:
-    _has_zgyio = True
-if _has_zgyio:
+    _has_pyzgy = True
+if _has_pyzgy:
     from seismic_zfp.conversion import ZgyConverter
 
 try:
@@ -68,10 +68,10 @@ def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
 
     assert np.allclose(sgz_data, reader.tools.cube(input_file), rtol=1e-6)
 
-@pytest.mark.skipif(not (_has_pyvds and _has_zgyio), reason="Requires pyvds and zgyio")
+@pytest.mark.skipif(not (_has_pyvds and _has_pyzgy), reason="Requires pyvds and pyzgy")
 def test_compress_detecting_filetypes(tmp_path):
     compress_and_compare_detecting_filetypes(SGY_FILE, segyio, tmp_path)
-    compress_and_compare_detecting_filetypes(ZGY_FILE_32, zgyio, tmp_path)
+    compress_and_compare_detecting_filetypes(ZGY_FILE_32, pyzgy, tmp_path)
     compress_and_compare_detecting_filetypes(VDS_FILE, pyvds, tmp_path)
 
 
@@ -115,7 +115,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol,
         converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
     with seismic_zfp.open(out_sgz) as sgzfile:
-        with zgyio.open(zgy_file) as zgyfile:
+        with pyzgy.open(zgy_file) as zgyfile:
             ref_ilines = zgyfile.ilines
             ref_samples = zgyfile.samples
 
@@ -135,7 +135,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol,
     assert 10 == SgzReader(out_sgz).get_file_source_code()
 
 
-@pytest.mark.skipif(not _has_zgyio, reason="Requires zgyio")
+@pytest.mark.skipif(not _has_pyzgy, reason="Requires pyzgy")
 def test_compress_zgy(tmp_path):
     compress_and_compare_zgy(ZGY_FILE_8, SGY_FILE_8, tmp_path, 16, 1e-4, blockshape=(4, 4, -1))
     compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE_16, tmp_path, 16, 1e-4, blockshape=(4, 4, -1))

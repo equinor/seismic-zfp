@@ -2,7 +2,7 @@ import os
 from enum import Enum
 
 import pyvds
-import zgyio
+import pyzgy
 import segyio
 
 
@@ -31,7 +31,7 @@ class SeismicFile:
         if file_type == Filetype.SEGY:
             handle = segyio.open(filename, mode='r', strict=False)
         elif file_type == Filetype.ZGY:
-            handle = zgyio.open(filename)
+            handle = pyzgy.open(filename)
         elif file_type == Filetype.VDS:
             handle = pyvds.open(filename)
 
