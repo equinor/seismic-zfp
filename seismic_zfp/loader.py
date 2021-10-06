@@ -50,6 +50,14 @@ class SgzLoader(object):
     def _decompress(self, buffer, shape):
         return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, rate=self.rate)
 
+    def clear_cache(self):
+        self.read_and_decompress_il_set.cache_clear()
+        self.read_and_decompress_xl_set.cache_clear()
+        self.read_and_decompress_zslice_set.cache_clear()
+        self.read_and_decompress_zslice_set_adv.cache_clear()
+        self.read_and_decompress_chunk_range.cache_clear()
+        self.read_unshuffle_and_decompress_chunk_range.cache_clear()
+
     @lru_cache(maxsize=1)
     def read_and_decompress_il_set(self, i):
         il_block_offset = ((self.chunk_bytes * self.shape_pad[1]) // 4) * (i // 4)

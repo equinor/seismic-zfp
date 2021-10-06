@@ -171,7 +171,7 @@ class SgzReader(object):
         return self
 
     def __exit__(self, type, value, traceback):
-        self.close_sgz_file()
+        self.close()
 
     def open_sgz_file(self):
         if not os.path.exists(self._filename):
@@ -183,6 +183,10 @@ class SgzReader(object):
 
     def close_sgz_file(self):
         self.file.close()
+
+    def close(self):
+        self.loader.clear_cache()
+        self.close_sgz_file()
 
     def get_file_version(self):
         return SeismicZfpVersion(bytes_to_int(self.headerbytes[72:76]))
