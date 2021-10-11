@@ -13,13 +13,6 @@ from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 from .seismicfile import SeismicFile, Filetype
 
-try:
-    import zgy2sgz
-except ImportError:
-    _has_zgy2sgz = False
-else:
-    _has_zgy2sgz = True
-
 
 class SeismicFileConverter(object):
     """

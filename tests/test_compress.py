@@ -2,30 +2,24 @@ import os
 import numpy as np
 from seismic_zfp.conversion import SeismicFileConverter, SegyConverter, SgzConverter, NumpyConverter
 from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
-
-try:
-    import pyzgy
-except ImportError:
-    _has_pyzgy = False
-else:
-    _has_pyzgy = True
-if _has_pyzgy:
-    from seismic_zfp.conversion import ZgyConverter
-
-try:
-    import pyvds
-except ImportError:
-    _has_pyvds = False
-else:
-    _has_pyvds = True
-if _has_pyvds:
-    from seismic_zfp.conversion import VdsConverter
-
 from seismic_zfp.read import SgzReader
 import seismic_zfp
 import segyio
 import pytest
 from seismic_zfp.utils import generate_fake_seismic
+
+try:
+    import pyzgy
+    from seismic_zfp.conversion import ZgyConverter
+except ImportError:
+    pyzgy = None
+
+try:
+    import pyvds
+    from seismic_zfp.conversion import VdsConverter
+except ImportError:
+    pyvds = None
+
 
 SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
 SGY_FILE_US = 'test_data/small_us.sgy'
@@ -68,7 +62,7 @@ def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
 
     assert np.allclose(sgz_data, reader.tools.cube(input_file), rtol=1e-6)
 
-@pytest.mark.skipif(not (_has_pyvds and _has_pyzgy), reason="Requires pyvds and pyzgy")
+@pytest.mark.skipif(pyvds is None or pyzgy is None, reason="Requires pyvds and pyzgy")
 def test_compress_detecting_filetypes(tmp_path):
     compress_and_compare_detecting_filetypes(SGY_FILE, segyio, tmp_path)
     compress_and_compare_detecting_filetypes(ZGY_FILE_32, pyzgy, tmp_path)
@@ -101,7 +95,7 @@ def compress_and_compare_vds(vds_file, tmp_path, bits_per_voxel, rtol, blockshap
     assert all(ref_samples == sgz_samples)
     assert 30 == SgzReader(out_sgz).get_file_source_code()
 
-@pytest.mark.skipif(not _has_pyvds, reason="Requires pyvds")
+@pytest.mark.skipif(pyvds is None, reason="Requires pyvds")
 def test_compress_vds(tmp_path):
     compress_and_compare_vds(VDS_FILE, tmp_path, 8, 1e-6, blockshape=(4, 4, -1))
     compress_and_compare_vds(VDS_FILE, tmp_path, 2, 1e-4, blockshape=(64, 64, 4))
@@ -135,7 +129,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol,
     assert 10 == SgzReader(out_sgz).get_file_source_code()
 
 
-@pytest.mark.skipif(not _has_pyzgy, reason="Requires pyzgy")
+@pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
 def test_compress_zgy(tmp_path):
     compress_and_compare_zgy(ZGY_FILE_8, SGY_FILE_8, tmp_path, 16, 1e-4, blockshape=(4, 4, -1))
     compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE_16, tmp_path, 16, 1e-4, blockshape=(4, 4, -1))
