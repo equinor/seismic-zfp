@@ -2,13 +2,9 @@ import pytest
 from click.testing import CliRunner
 from seismic_zfp.cli import cli
 import os
-import warnings
 
 try:
-    with warnings.catch_warnings():
-        # pyzgy will warn us that sdglue is not available. This is expected, and safe for our purposes.
-        warnings.filterwarnings("ignore", message="seismic store access is not available: No module named 'sdglue'")
-        import pyzgy
+    import pyzgy
 except ImportError:
     pyzgy = None
 
