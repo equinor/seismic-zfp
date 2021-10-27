@@ -2,9 +2,13 @@ import pytest
 from importlib import reload
 from unittest import mock
 from seismic_zfp import seismicfile
+import warnings
 
 try:
-    import pyzgy
+    with warnings.catch_warnings():
+        # pyzgy will warn us that sdglue is not available. This is expected, and safe for our purposes.
+        warnings.filterwarnings("ignore", message="seismic store access is not available: No module named 'sdglue'")
+        import pyzgy
 except ImportError:
     pyzgy = None
 
