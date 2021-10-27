@@ -1,6 +1,5 @@
 language: python
 python:
-  - 3.6
   - 3.7
   - 3.8
   - 3.9
@@ -18,7 +17,8 @@ install:
   - mkdir -p .git/refs/heads
   - echo $TRAVIS_COMMIT > .git/refs/heads/master
 
-  - pip install ".[test,zgy,vds]"
+  - pip install ".[zgy,vds,xr]"
+  - pip list
 
 script: pytest
 

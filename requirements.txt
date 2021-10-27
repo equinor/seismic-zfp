@@ -1,7 +1,8 @@
-numpy
+numpy>=1.20
 segyio
 psutil
 zfpy
 click
 pyzgy
 pyvds
+xarray>=0.18
