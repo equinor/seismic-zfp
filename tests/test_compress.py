@@ -7,14 +7,10 @@ import seismic_zfp
 import segyio
 import pytest
 from seismic_zfp.utils import generate_fake_seismic
-import warnings
 
 try:
-    with warnings.catch_warnings():
-        # pyzgy will warn us that sdglue is not available. This is expected, and safe for our purposes.
-        warnings.filterwarnings("ignore", message="seismic store access is not available: No module named 'sdglue'")
-        import pyzgy
-        from seismic_zfp.conversion import ZgyConverter
+    import pyzgy
+    from seismic_zfp.conversion import ZgyConverter
 except ImportError:
     pyzgy = None
 
