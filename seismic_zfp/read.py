@@ -10,9 +10,11 @@ from .loader import SgzLoader
 from .version import SeismicZfpVersion
 from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
                     coord_to_index, gen_coord_list, FileOffset,
-                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
+                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length,
+                    read_range_file, read_range_blob)
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 
+from azure.storage.blob import BlobServiceClient
 
 class SgzReader(object):
     """Reads SGZ files
@@ -81,25 +83,40 @@ class SgzReader(object):
             Number of chunks to cache when reading traces, increase for long diagonals
         """
 
-        # Class may be instantiated with either a file path or filehandle
-        if not hasattr(file, 'read'):
-            self._filename = file
-            self.file = self.open_sgz_file()
-        else:
+        # Class may be instantiated with either a file path, filehandle, URL or blobclient
+        if hasattr(file, 'read'):
+            # We have a filehandle
             self._filename = file.name
             self.file = file
             # You have a file handle, go to the start!
             self.file.seek(0)
+            self.file.read_range = read_range_file
+        elif hasattr(file, 'download_blob'):
+            # We have a blobclient
+            self._filename = file.blob_name
+            self.file = file
+            self.file.read_range = read_range_blob
+        else:
+            if isinstance(file, tuple):
+                # We have a URL
+                blob_service_client = BlobServiceClient(account_url=file[0])
+                self.file = blob_service_client.get_blob_client(container=file[1], blob=file[2])
+                self.file.read_range = read_range_blob
+            else:
+                # We have a file path
+                self._filename = file
+                self.file = self.open_sgz_file()
+                self.file.read_range = read_range_file
 
-        self.headerbytes = self.file.read(DISK_BLOCK_BYTES)
+
+        self.headerbytes = self.file.read_range(self.file, 0, DISK_BLOCK_BYTES)
         if filetype_checking and self.headerbytes[0:2] == b'\xc3\x40':
             msg = "This appears to be a SEGY file rather than an SGZ file, override with filetype_checking=False"
             raise RuntimeError(msg)
 
         self.n_header_blocks = bytes_to_int(self.headerbytes[0:4])
         if self.n_header_blocks != 1:
-            self.file.seek(0)
-            self.headerbytes = self.file.read(DISK_BLOCK_BYTES*self.n_header_blocks)
+            self.headerbytes = self.file.read_range(self.file, 0, DISK_BLOCK_BYTES*self.n_header_blocks)
 
         # Read useful info out of the SGZ header
         self.file_version = self.get_file_version()
@@ -283,8 +300,7 @@ class SgzReader(object):
             variant_headers = {}
             for k, v in self.segy_traceheader_template.items():
                 if isinstance(v, FileOffset):
-                    self.file.seek(v)
-                    buffer = self.file.read(self.header_entry_length_bytes)
+                    buffer = self.file.read_range(self.file, v, self.header_entry_length_bytes)
                     values = np.frombuffer(buffer, dtype=np.int32)
                     variant_headers[k] = values
             self.variant_headers = variant_headers
