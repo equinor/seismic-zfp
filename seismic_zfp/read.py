@@ -107,6 +107,10 @@ class SgzReader(object):
         self.zslices, self.xlines, self.ilines = self._parse_coordinates()
         self.tracecount = len(self.ilines) * len(self.xlines)
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
+        if self.file_version > SeismicZfpVersion("0.2.1"):
+            self.padded_header_entry_length_bytes = (512 + 512 * ((self.header_entry_length_bytes - 1) // 512))
+        else:
+            self.padded_header_entry_length_bytes = self.header_entry_length_bytes
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
         self.segy_traceheader_template, self.stored_header_keys = self._decode_traceheader_template()
@@ -259,7 +263,7 @@ class SgzReader(object):
                 # This is a new header value
                 header_dict[tf] = FileOffset(DISK_BLOCK_BYTES*self.n_header_blocks +
                                              DISK_BLOCK_BYTES*self.compressed_data_diskblocks +
-                                             len(stored_header_keys)*self.header_entry_length_bytes)
+                                             len(stored_header_keys)*self.padded_header_entry_length_bytes)
                 stored_header_keys.append(tf)
 
         # We should find the same number of headers arrays as have been written!
