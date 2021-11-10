@@ -6,3 +6,4 @@ click
 pyzgy
 pyvds
 xarray>=0.18
+azure-storage-blob
