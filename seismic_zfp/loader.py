@@ -1,3 +1,4 @@
+import concurrent.futures as cf
 from functools import lru_cache
 import random
 from psutil import virtual_memory
@@ -39,6 +40,11 @@ class SgzLoader(object):
         else:
             pass
 
+    def _insert_chunk_into_buffer(self, buffer, buffer_start, data_offset):
+        part = self._get_compressed_bytes(data_offset, self.chunk_bytes)
+        buffer[buffer_start : buffer_start + self.chunk_bytes] = part
+
+
     def _get_compressed_bytes(self, offset, length_bytes):
         if self.compressed_volume is not None:
             return self.compressed_volume[offset:offset+length_bytes]
@@ -67,9 +73,10 @@ class SgzLoader(object):
         xl_first_chunk_offset = x // 4 * self.chunk_bytes
         xl_chunk_increment = self.chunk_bytes * self.shape_pad[1] // 4
         buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
-        for chunk_num in range(self.shape_pad[0] // 4):
-            part = self._get_compressed_bytes(xl_first_chunk_offset + chunk_num * xl_chunk_increment, self.chunk_bytes)
-            buffer[chunk_num * self.chunk_bytes:(chunk_num + 1) * self.chunk_bytes] = part
+        with cf.ThreadPoolExecutor(max_workers=20) as executor:
+            for chunk_num in range(self.shape_pad[0] // 4):
+                executor.submit(self._insert_chunk_into_buffer, buffer, chunk_num * self.chunk_bytes,
+                                           xl_first_chunk_offset + chunk_num * xl_chunk_increment)
         return self._decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]))
 
     @lru_cache(maxsize=1)
