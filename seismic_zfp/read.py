@@ -628,8 +628,8 @@ class SgzReader(object):
                     self.read_variant_headers()
                     header[k] = self.variant_headers[k][index]
                 else:
-                    self.file.seek(v + 4*index)  # A 32-bit int is 4 bytes
-                    header[k] = np.frombuffer(self.file.read(4), dtype=np.int32)[0]
+                    buf = self.file.read_range(self.file, v + 4*index, 4) # A 32-bit int is 4 bytes
+                    header[k] = np.frombuffer(buf, dtype=np.int32)[0]
         return header
 
     def get_file_binary_header(self):
