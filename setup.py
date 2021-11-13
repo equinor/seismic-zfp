@@ -24,16 +24,16 @@ setuptools.setup(name='seismic-zfp',
                  license='LGPL-3.0',
 
                  use_scm_version=True,
-                 install_requires=['numpy>=1.16', 'numpy>=1.20; python_version>="3.9.0"',
-                                   'segyio', 'zfpy', 'psutil', 'click'],
+                 install_requires=['numpy>=1.20', 'segyio', 'zfpy', 'psutil', 'click'],
                  extras_require={
                      'zgy': ['pyzgy'],
-                     'vds': ['pyvds']
+                     'vds': ['pyvds'],
+                     'xr': ['xarray>=0.18']
                  },
                  setup_requires=['setuptools', 'setuptools_scm'],
-                 entry_points="""
-                     [console_scripts]
-                     seismic-zfp=seismic_zfp.cli:cli
-                 """,
+                 entry_points={
+                     'xarray.backends': ['sgz_engine=seismic_zfp.sgz_xarray:SeismicZfpBackendEntrypoint'],
+                     'console_scripts' : ['seismic-zfp=seismic_zfp.cli:cli']
+                 },
                  packages=['seismic_zfp']
                  )
