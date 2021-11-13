@@ -1,7 +1,7 @@
 class SeismicZfpVersion:
     def __init__(self, arg):
         if isinstance(arg, str):
-            version_numbers_tuple = tuple(part for part in arg.split("."))
+            version_numbers_tuple = tuple(part for part in arg.replace('rc', '.rc').split("."))
             self.major = int(version_numbers_tuple[0])
             self.minor = int(version_numbers_tuple[1])
             self.patch = int(version_numbers_tuple[2])
@@ -40,6 +40,9 @@ class SeismicZfpVersion:
 
     def __gt__(self, other):
         return self.encoding > other.encoding
+
+    def __eq__(self, other):
+        return self.encoding == other.encoding
 
     def __repr__(self):
         return 'Version({})'.format(self.string_version)

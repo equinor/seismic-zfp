@@ -9,6 +9,13 @@ def test_create_from_string():
     assert version.patch == 9
     assert version.changes_exist is False
 
+def test_create_from_string_changes():
+    version = SeismicZfpVersion("100.23.9rc2")
+    assert version.major == 100
+    assert version.minor == 23
+    assert version.patch == 9
+    assert version.changes_exist is True
+
 
 def test_create_from_encoding():
     version = SeismicZfpVersion(209762323)
