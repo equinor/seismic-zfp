@@ -92,7 +92,8 @@ class SeismicFileConverter(object):
         if header_detection != 'strip':
             with open(self.out_filename, 'ab') as f:
                 for header_array in header_info.headers_dict.values():
-                    f.write(header_array.tobytes())
+                    # Pad to 512-bytes for page blobs
+                    f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
 
     @staticmethod
     def check_memory(inline_set_bytes):

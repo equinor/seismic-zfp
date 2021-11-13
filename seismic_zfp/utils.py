@@ -43,6 +43,12 @@ class InferredGeometry(Geometry):
         return 'IL:[{},{},{}] -- XL:[{},{},{}]'.format(self.min_il, self.max_il, self.il_step,
                                                        self.min_xl, self.max_xl, self.xl_step)
 
+def read_range_file(file, offset, length):
+    file.seek(offset)
+    return file.read(length)
+
+def read_range_blob(file, offset, length):
+    return file.download_blob(offset=offset, length=length).readall()
 
 def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=0):
     # Generate an array which looks a *bit* like an impulse-response test...
