@@ -40,10 +40,31 @@ class SgzLoader(object):
         else:
             pass
 
-    def _insert_chunk_into_buffer(self, buffer, buffer_start, data_offset):
-        part = self._get_compressed_bytes(data_offset, self.chunk_bytes)
-        buffer[buffer_start : buffer_start + self.chunk_bytes] = part
+    def _insert_into_buffer(self, buffer, buffer_start, data_offset, length):
+        part = self._get_compressed_bytes(data_offset, length)
+        buffer[buffer_start : buffer_start + length] = part
 
+    def _insert_chunk_into_buffer(self, buffer, buffer_start, data_offset):
+        self._insert_into_buffer(buffer, buffer_start, data_offset, self.chunk_bytes)
+
+    def _insert_unit_into_buffer(self, buffer, buffer_start, data_offset):
+        self._insert_into_buffer(buffer, buffer_start, data_offset, self.unit_bytes)
+
+    def _distribute_chunk_into_buffer(self, buffer, block_id, blocks_per_dim, sub_block_size_bytes,
+                                      zslice_first_block_offset):
+        """Advanced layout - one block is not contiguous in memory in the decompression buffer"""
+        block_i = block_id // blocks_per_dim[1]
+        block_x = block_id % blocks_per_dim[1]
+        block_num = block_i * (blocks_per_dim[1]) + block_x
+        temp_buf = self._get_compressed_bytes(zslice_first_block_offset * self.block_bytes
+                                              + block_num * (self.block_bytes * (blocks_per_dim[2])),
+                                              self.block_bytes)
+        for sub_block_num in range(self.blockshape[0] // 4):
+            buf_start = block_i * self.block_bytes * (
+                blocks_per_dim[1]) + block_x * sub_block_size_bytes + sub_block_num * (
+                                (self.shape_pad[1] * 4 * 4 * self.rate) // 8)
+            buffer[buf_start:buf_start + sub_block_size_bytes] = \
+                temp_buf[sub_block_num * sub_block_size_bytes:(sub_block_num + 1) * sub_block_size_bytes]
 
     def _get_compressed_bytes(self, offset, length_bytes):
         if self.compressed_volume is not None:
@@ -83,29 +104,22 @@ class SgzLoader(object):
     def read_and_decompress_zslice_set(self, blocks_per_dim, zslice_first_block_offset, zslice_id):
         zslice_unit_in_block = (zslice_id % self.blockshape[2]) // 4
         buffer = bytearray(self.unit_bytes * (blocks_per_dim[0]) * (blocks_per_dim[1]))
-        for block_num in range((blocks_per_dim[0]) * (blocks_per_dim[1])):
-            part = self._get_compressed_bytes(zslice_first_block_offset * self.block_bytes
-                                              + zslice_unit_in_block * self.unit_bytes
-                                              + block_num * self.chunk_bytes, self.unit_bytes)
-            buffer[block_num * self.unit_bytes:(block_num + 1) * self.unit_bytes] = part
+        with cf.ThreadPoolExecutor(max_workers=20) as executor:
+            for block_num in range((blocks_per_dim[0]) * (blocks_per_dim[1])):
+                executor.submit(self._insert_unit_into_buffer, buffer, block_num * self.unit_bytes,
+                                zslice_first_block_offset * self.block_bytes
+                                + zslice_unit_in_block * self.unit_bytes
+                                + block_num * self.chunk_bytes)
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
 
     @lru_cache(maxsize=1)
     def read_and_decompress_zslice_set_adv(self, blocks_per_dim, zslice_first_block_offset):
         sub_block_size_bytes = ((4 * 4 * self.blockshape[1]) * self.rate) // 8
         buffer = bytearray(self.block_bytes * blocks_per_dim[0] * blocks_per_dim[1])
-        for block_i in range(blocks_per_dim[0]):
-            for block_x in range(blocks_per_dim[1]):
-                block_num = block_i * (blocks_per_dim[1]) + block_x
-                temp_buf = self._get_compressed_bytes(zslice_first_block_offset * self.block_bytes
-                                                      + block_num * (self.block_bytes * (blocks_per_dim[2])),
-                                                      self.block_bytes)
-                for sub_block_num in range(self.blockshape[0] // 4):
-                    buf_start = block_i * self.block_bytes * (
-                        blocks_per_dim[1]) + block_x * sub_block_size_bytes + sub_block_num * (
-                                            (self.shape_pad[1] * 4 * 4 * self.rate) // 8)
-                    buffer[buf_start:buf_start + sub_block_size_bytes] = \
-                        temp_buf[sub_block_num * sub_block_size_bytes:(sub_block_num + 1) * sub_block_size_bytes]
+        with cf.ThreadPoolExecutor(max_workers=20) as executor:
+            for block_id in range(blocks_per_dim[0]*blocks_per_dim[1]):
+                executor.submit(self._distribute_chunk_into_buffer, buffer, block_id, blocks_per_dim,
+                                                                    sub_block_size_bytes, zslice_first_block_offset)
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
 
 
