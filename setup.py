@@ -28,7 +28,7 @@ setuptools.setup(name='seismic-zfp',
                  extras_require={
                      'zgy': ['pyzgy'],
                      'vds': ['pyvds'],
-                     'xr': ['xarray==0.19'],
+                     'xr': ['xarray>=0.20.2'],
                      'azure': ['azure-storage-blob'],
                  },
                  setup_requires=['setuptools', 'setuptools_scm'],
