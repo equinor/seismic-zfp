@@ -56,16 +56,17 @@ class SeismicFileConverter(object):
         return None
 
     def get_blank_header_info(self, seismic, header_detection):
+        n_traces = seismic.tracecount if seismic.structured else 0
         if header_detection == 'heuristic':
-            return HeaderwordInfo(n_traces=seismic.tracecount,
+            return HeaderwordInfo(n_traces=n_traces,
                                   seismicfile=seismic,
                                   header_detection=header_detection)
         elif header_detection in ['thorough', 'exhaustive']:
-            return HeaderwordInfo(n_traces=seismic.tracecount,
+            return HeaderwordInfo(n_traces=n_traces,
                                   variant_header_list=segyio.TraceField.enums()[0:89],
                                   header_detection=header_detection)
         elif header_detection == 'strip':
-            return HeaderwordInfo(n_traces=seismic.tracecount,
+            return HeaderwordInfo(n_traces=n_traces,
                                   variant_header_list=[],
                                   header_detection=header_detection)
         else:

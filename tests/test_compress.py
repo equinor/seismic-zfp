@@ -239,10 +239,21 @@ def test_compress_unstructured(tmp_path):
 
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
+        reader.read_variant_headers()
+        il_header_sgz = reader.variant_headers[189].reshape((5,5))
+        xl_header_sgz = reader.variant_headers[193].reshape((5,5))
+
+    with segyio.open(SGY_FILE) as f:
+        il_header_sgy = np.array([h[189] for h in f.header]).reshape((5,5))
+        xl_header_sgy = np.array([h[193] for h in f.header]).reshape((5,5))
 
     segy_cube = segyio.tools.cube(SGY_FILE)
     segy_cube[4, 4, :] = 0
+    il_header_sgy[4,4] = 0
+    xl_header_sgy[4, 4] = 0
     assert np.allclose(sgz_data, segy_cube, rtol=1e-2)
+    assert np.array_equal(il_header_sgz, il_header_sgy)
+    assert np.array_equal(xl_header_sgz, xl_header_sgy)
 
 
 def test_compress_unstructured_reduce_iops(tmp_path):
