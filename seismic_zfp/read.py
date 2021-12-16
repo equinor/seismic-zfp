@@ -102,11 +102,13 @@ class SgzReader(object):
                 blob_service_client = BlobServiceClient(account_url=file[0])
                 self.file = blob_service_client.get_blob_client(container=file[1], blob=file[2])
                 self.file.read_range = read_range_blob
+                self.file.local = False
             else:
                 # We have a file path
                 self._filename = file
                 self.file = self.open_sgz_file()
                 self.file.read_range = read_range_file
+                self.file.local = True
 
 
         self.headerbytes = self.file.read_range(self.file, 0, DISK_BLOCK_BYTES)

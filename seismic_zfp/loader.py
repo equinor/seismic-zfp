@@ -21,6 +21,7 @@ class SgzLoader(object):
         self.block_bytes = block_bytes
         self.unit_bytes = unit_bytes
         self.rate = rate
+        self.n_workers = 1 if self.file.local else 20
 
         self.compressed_volume = None
         if preload:
@@ -94,7 +95,7 @@ class SgzLoader(object):
         xl_first_chunk_offset = x // 4 * self.chunk_bytes
         xl_chunk_increment = self.chunk_bytes * self.shape_pad[1] // 4
         buffer = bytearray(self.chunk_bytes * self.shape_pad[0] // 4)
-        with cf.ThreadPoolExecutor(max_workers=20) as executor:
+        with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
             for chunk_num in range(self.shape_pad[0] // 4):
                 executor.submit(self._insert_chunk_into_buffer, buffer, chunk_num * self.chunk_bytes,
                                            xl_first_chunk_offset + chunk_num * xl_chunk_increment)
@@ -104,7 +105,7 @@ class SgzLoader(object):
     def read_and_decompress_zslice_set(self, blocks_per_dim, zslice_first_block_offset, zslice_id):
         zslice_unit_in_block = (zslice_id % self.blockshape[2]) // 4
         buffer = bytearray(self.unit_bytes * (blocks_per_dim[0]) * (blocks_per_dim[1]))
-        with cf.ThreadPoolExecutor(max_workers=20) as executor:
+        with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
             for block_num in range((blocks_per_dim[0]) * (blocks_per_dim[1])):
                 executor.submit(self._insert_unit_into_buffer, buffer, block_num * self.unit_bytes,
                                 zslice_first_block_offset * self.block_bytes
@@ -116,7 +117,7 @@ class SgzLoader(object):
     def read_and_decompress_zslice_set_adv(self, blocks_per_dim, zslice_first_block_offset):
         sub_block_size_bytes = ((4 * 4 * self.blockshape[1]) * self.rate) // 8
         buffer = bytearray(self.block_bytes * blocks_per_dim[0] * blocks_per_dim[1])
-        with cf.ThreadPoolExecutor(max_workers=20) as executor:
+        with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
             for block_id in range(blocks_per_dim[0]*blocks_per_dim[1]):
                 executor.submit(self._distribute_chunk_into_buffer, buffer, block_id, blocks_per_dim,
                                                                     sub_block_size_bytes, zslice_first_block_offset)
