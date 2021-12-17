@@ -282,7 +282,7 @@ def test_compress_unstructured(tmp_path):
 
 
 def test_compress_unstructured_reduce_iops(tmp_path):
-    with pytest.raises(RuntimeError):
+    with pytest.warns(UserWarning):
         out_sgz = os.path.join(str(tmp_path), 'small_test_data_reduce-iops.sgz')
         with SegyConverter(SGY_FILE_IRREG) as converter:
             converter.run(out_sgz, reduce_iops=True)

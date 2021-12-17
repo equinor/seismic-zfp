@@ -6,6 +6,7 @@ import pkg_resources
 from threading import Thread
 from queue import Queue
 import numpy as np
+import warnings
 
 from .version import SeismicZfpVersion
 from .seismicfile import Filetype
@@ -262,13 +263,13 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
     if reduce_iops:
         if isinstance(geom, InferredGeometry):
             print("Cannot use MinimalInlineReader with unstructured SEG-Y")
-            raise RuntimeError("Chaos reigns within. Reflect, repent, and reboot. Order shall return.")
-
-        minimal_il_reader = MinimalInlineReader(seismicfile)
-        if minimal_il_reader.self_test() and n_ilines == len(seismicfile.ilines) and n_xlines == len(seismicfile.xlines):
-            print("MinimalInlineReader passed self-test")
+            warnings.warn("Chaos reigns within. Reflect, repent, and reboot. Order shall return.", UserWarning)
         else:
-            print("MinimalInlineReader failed self-test, using fallback")
+            minimal_il_reader = MinimalInlineReader(seismicfile)
+            if minimal_il_reader.self_test() and n_ilines == len(seismicfile.ilines) and n_xlines == len(seismicfile.xlines):
+                print("MinimalInlineReader passed self-test")
+            else:
+                print("MinimalInlineReader failed self-test, using fallback")
 
     # Loop over groups of 4 inlines
     n_plane_sets = padded_shape[0] // blockshape[0]
