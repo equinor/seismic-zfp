@@ -261,6 +261,9 @@ def test_compress_unstructured(tmp_path):
         il_header_sgy = np.array([h[189] for h in f.header])
         xl_header_sgy = np.array([h[193] for h in f.header])
         n_traces_sgy = f.tracecount
+        with seismic_zfp.open(out_sgz) as f_sgz:
+            for sgz_trace, sgy_trace in zip(f_sgz.trace, f.trace):
+                assert np.allclose(sgz_trace, sgy_trace, rtol=1e-2)
 
     with segyio.open(SGY_FILE, strict=False) as f:
         il_header_sgy_padded = np.array([h[189] for h in f.header])

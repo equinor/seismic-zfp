@@ -309,7 +309,7 @@ class SgzReader(object):
             buffer = self.file.read_range(self.file,
                                           self.segy_traceheader_template[189],
                                           self.header_entry_length_bytes)
-            self.mask = np.where(np.frombuffer(buffer, dtype=np.int32) != 0)
+            self.mask = np.frombuffer(buffer, dtype=np.int32) != 0
         else:
             pass
 
@@ -620,6 +620,10 @@ class SgzReader(object):
         trace : numpy.ndarray of float32, shape (n_samples)
             A single trace, decompressed
         """
+        if not self.structured:
+            self.get_unstructured_mask()
+            index = np.arange(self.mask.shape[0])[self.mask != 0][index]
+
         if not 0 <= index < self.n_ilines * self.n_xlines:
             if platform.system() == 'Windows':
                 print('Yesterday it worked, Today it is not working, Windows is like that')
