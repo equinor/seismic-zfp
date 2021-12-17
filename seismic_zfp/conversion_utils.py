@@ -6,6 +6,7 @@ import pkg_resources
 from threading import Thread
 from queue import Queue
 import numpy as np
+import warnings
 
 from .version import SeismicZfpVersion
 from .seismicfile import Filetype
@@ -125,7 +126,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     buffer[64:68] = int_to_bytes(hw_info.get_header_array_count())
-    buffer[68:72] = int_to_bytes(tracecount)
+    buffer[68:72] = int_to_bytes(tracecount if unstructured else n_il * n_xl)
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
@@ -210,7 +211,7 @@ def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, 
         seismic_buffer[i, :, trace_length:] = np.expand_dims(seismic_buffer[i, :, trace_length - 1], 1)
 
 
-def unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
+def unstructured_io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id,
                                 segy_buffer, segyfile, trace_length):
     for i in range(blockshape[0]):
         for xl_id, xl_num in enumerate(geom.xlines):
@@ -220,8 +221,9 @@ def unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
                 trace, header = segyfile.trace[trace_id], segyfile.header[trace_id]
                 segy_buffer[i, xl_id, 0:trace_length] = trace
                 t_store = xl_id + (plane_set_id * blockshape[0] + i) * len(geom.xlines)
-                for tracefield, array in headers_dict.items():
-                    array[t_store] = header[tracefield]
+                if store_headers:
+                    for tracefield, array in headers_dict.items():
+                        array[t_store] = header[tracefield]
 
 def numpy_producer(queue, in_array, blockshape):
     """Copies plane-sets from input array, and puts them in the queue for writing to disk"""
@@ -261,17 +263,20 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
     if reduce_iops:
         if isinstance(geom, InferredGeometry):
             print("Cannot use MinimalInlineReader with unstructured SEG-Y")
-            raise RuntimeError("Chaos reigns within. Reflect, repent, and reboot. Order shall return.")
-
-        minimal_il_reader = MinimalInlineReader(seismicfile)
-        if minimal_il_reader.self_test() and n_ilines == len(seismicfile.ilines) and n_xlines == len(seismicfile.xlines):
-            print("MinimalInlineReader passed self-test")
+            warnings.warn("Chaos reigns within. Reflect, repent, and reboot. Order shall return.", UserWarning)
         else:
-            print("MinimalInlineReader failed self-test, using fallback")
+            minimal_il_reader = MinimalInlineReader(seismicfile)
+            if minimal_il_reader.self_test() and n_ilines == len(seismicfile.ilines) and n_xlines == len(seismicfile.xlines):
+                print("MinimalInlineReader passed self-test")
+            else:
+                print("MinimalInlineReader failed self-test, using fallback")
 
     # Loop over groups of 4 inlines
     n_plane_sets = padded_shape[0] // blockshape[0]
     start_time = time.time()
+    if isinstance(geom, InferredGeometry):
+        for tracefield, array in headers_dict.items():
+            headers_dict[tracefield] = np.zeros(len(geom.ilines)*len(geom.xlines), dtype=np.int32)
     for plane_set_id in range(n_plane_sets):
         if verbose:
             progress_printer(start_time, plane_set_id / n_plane_sets)
@@ -284,7 +289,7 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
         seismic_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
 
         if isinstance(geom, InferredGeometry):
-            unstructured_io_thread_func(blockshape, headers_dict, geom, plane_set_id,
+            unstructured_io_thread_func(blockshape, store_headers,  headers_dict, geom, plane_set_id,
                                         seismic_buffer, seismicfile, trace_length)
         else:
             io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,

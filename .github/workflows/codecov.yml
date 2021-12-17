@@ -16,7 +16,7 @@ jobs:
         run:  |
           pip install -r requirements.txt
           pip install coverage pytest-cov
-          pip install ".[vds,zgy]"
+          pip install ".[vds,zgy,xr]"
       - name: Run tests and collect coverage
         run: |
           mkdir test_temp

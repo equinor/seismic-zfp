@@ -56,16 +56,17 @@ class SeismicFileConverter(object):
         return None
 
     def get_blank_header_info(self, seismic, header_detection):
+        n_traces = seismic.tracecount if seismic.structured else 0
         if header_detection == 'heuristic':
-            return HeaderwordInfo(n_traces=seismic.tracecount,
+            return HeaderwordInfo(n_traces=n_traces,
                                   seismicfile=seismic,
                                   header_detection=header_detection)
         elif header_detection in ['thorough', 'exhaustive']:
-            return HeaderwordInfo(n_traces=seismic.tracecount,
+            return HeaderwordInfo(n_traces=n_traces,
                                   variant_header_list=segyio.TraceField.enums()[0:89],
                                   header_detection=header_detection)
         elif header_detection == 'strip':
-            return HeaderwordInfo(n_traces=seismic.tracecount,
+            return HeaderwordInfo(n_traces=n_traces,
                                   variant_header_list=[],
                                   header_detection=header_detection)
         else:
@@ -92,7 +93,8 @@ class SeismicFileConverter(object):
         if header_detection != 'strip':
             with open(self.out_filename, 'ab') as f:
                 for header_array in header_info.headers_dict.values():
-                    f.write(header_array.tobytes())
+                    # Pad to 512-bytes for page blobs
+                    f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
 
     @staticmethod
     def check_memory(inline_set_bytes):
@@ -113,7 +115,7 @@ class SeismicFileConverter(object):
 
         return max_queue_length
 
-    def detect_geomerty(self, seismic):
+    def detect_geometry(self, seismic):
         if self.geom is None:
             if seismic.unstructured:
                 print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
@@ -184,7 +186,7 @@ class SeismicFileConverter(object):
 
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
-            self.detect_geomerty(seismic)
+            self.detect_geometry(seismic)
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = not(header_detection == 'strip')
             if seismic.filetype == Filetype.ZGY:

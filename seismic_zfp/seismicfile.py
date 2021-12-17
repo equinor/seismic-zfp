@@ -44,14 +44,18 @@ class SeismicFile:
 
         if file_type == Filetype.SEGY:
             handle = segyio.open(filename, mode='r', strict=False)
+            metrics = handle.xfd.cube_metrics(189, 193)
+            handle.structured = (metrics['iline_count'] * metrics['xline_count']) == handle.tracecount
         elif file_type == Filetype.ZGY:
             if pyzgy is None:
                 raise ImportError("File type requires pyzgy. Install optional dependency seismic-zfp[zgy] with pip.")
             handle = pyzgy.open(filename)
+            handle.structured = True
         elif file_type == Filetype.VDS:
             if pyvds is None:
                 raise ImportError("File type requires pyvds. Install optional dependency seismic-zfp[vds] with pip.")
             handle = pyvds.open(filename)
+            handle.structured = True
 
         handle.filetype = file_type
 
