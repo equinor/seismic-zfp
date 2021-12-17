@@ -190,6 +190,14 @@ class SgzReader(object):
                                                     self.shape_pad[1] // self.blockshape[1])
         self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
 
+    def __repr__(self):
+        return f'seismic-zfp file {self._filename}\n' \
+               f'compression ratio: {int(32/self.rate)}:1\n' \
+               f'inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
+               f'crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
+               f'samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
+               f'traces: {self.tracecount}'
+
     def __enter__(self):
         return self
 

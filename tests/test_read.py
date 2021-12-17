@@ -318,3 +318,8 @@ def test_filetype_error():
 def test_filenotfound_errors():
     with pytest.raises(FileNotFoundError):
         SgzReader('test_data/this_file_does_not_exist')
+
+def test_repr():
+    with SgzReader(SGZ_FILE_4) as reader:
+        representation = reader.__repr__()
+    assert representation == 'seismic-zfp file test_data/small_4bit.sgz\ncompression ratio: 8:1\ninlines: 5 [1, 5]\ncrosslines: 5 [20, 24]\nsamples: 50 [0.0, 196.0]\ntraces: 25'
