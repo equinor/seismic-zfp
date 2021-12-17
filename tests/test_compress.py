@@ -62,7 +62,7 @@ def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
         converter.run(out_sgz, bits_per_voxel=8)
 
     with seismic_zfp.open(out_sgz) as sgzfile:
-            sgz_data = sgzfile.read_volume()
+        sgz_data = sgzfile.read_volume()
 
     assert np.allclose(sgz_data, reader.tools.cube(input_file), rtol=1e-6)
 
@@ -88,6 +88,7 @@ def compress_and_compare_vds(vds_file, tmp_path, bits_per_voxel, rtol, blockshap
             sgz_data = sgzfile.read_volume()
             sgz_ilines = sgzfile.ilines
             sgz_samples = sgzfile.zslices
+            assert sgzfile.structured
 
             for trace_number in range(25):
                 sgz_header = sgzfile.header[trace_number]
@@ -120,6 +121,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol,
             sgz_data = sgzfile.read_volume()
             sgz_ilines = sgzfile.ilines
             sgz_samples = sgzfile.zslices
+            assert sgzfile.structured
 
             for trace_number in range(25):
                 sgz_header = sgzfile.header[trace_number]
@@ -153,6 +155,7 @@ def compress_and_compare_axes(sgy_file, unit, tmp_path):
             assert np.all(reader.xlines == f.xlines)
             assert np.all(reader.zslices == f.samples)
             assert reader.tracecount == f.tracecount
+            assert reader.structured
 
 def test_compress_axes(tmp_path):
     compress_and_compare_axes(SGY_FILE, "milliseconds", tmp_path)
@@ -170,6 +173,7 @@ def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol, blocksha
 
         with SgzReader(out_sgz) as reader:
             sgz_data = reader.read_volume()
+            assert reader.structured
 
         assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
 
@@ -214,6 +218,7 @@ def test_compress_crop(tmp_path):
 
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
+        assert reader.structured
 
     assert np.allclose(sgz_data, segyio.tools.cube(SGY_FILE)[1:4, 1:3, :], rtol=1e-8)
 
@@ -226,6 +231,7 @@ def test_compress_unstructured_decimated(tmp_path):
 
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
+        assert not reader.structured
 
     segy_cube = segyio.tools.cube(SGY_FILE)[::2, ::2, :]
     segy_cube[2, 2, :] = 0
@@ -244,6 +250,7 @@ def test_compress_unstructured(tmp_path):
         il_header_sgz = reader.variant_headers[189].reshape((5,5))
         xl_header_sgz = reader.variant_headers[193].reshape((5,5))
         n_traces_sgz = reader.tracecount
+        assert not reader.structured
 
     with segyio.open(SGY_FILE) as f:
         il_header_sgy = np.array([h[189] for h in f.header]).reshape((5,5))

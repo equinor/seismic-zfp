@@ -191,6 +191,7 @@ class SgzReader(object):
             chunk_cache_size = get_chunk_cache_size(self.shape_pad[0] // self.blockshape[0],
                                                     self.shape_pad[1] // self.blockshape[1])
         self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
+        self.structured = self.tracecount == self.n_ilines * self.n_xlines
 
     def __repr__(self):
         return f'seismic-zfp file {self._filename}\n' \
