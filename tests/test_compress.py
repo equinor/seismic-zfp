@@ -247,26 +247,35 @@ def test_compress_unstructured(tmp_path):
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
         reader.read_variant_headers()
-        il_header_sgz = reader.variant_headers[189].reshape((5,5))
-        xl_header_sgz = reader.variant_headers[193].reshape((5,5))
+        il_header_sgz = reader.variant_headers[189]
+        xl_header_sgz = reader.variant_headers[193]
         n_traces_sgz = reader.tracecount
         assert not reader.structured
 
-    with segyio.open(SGY_FILE) as f:
-        il_header_sgy = np.array([h[189] for h in f.header]).reshape((5,5))
-        xl_header_sgy = np.array([h[193] for h in f.header]).reshape((5,5))
+    with SgzReader(out_sgz) as reader:
+        reader.read_variant_headers(include_padding=True)
+        il_header_sgz_padded = reader.variant_headers[189]
+        xl_header_sgz_padded = reader.variant_headers[193]
 
     with segyio.open(SGY_FILE_IRREG, strict=False) as f:
+        il_header_sgy = np.array([h[189] for h in f.header])
+        xl_header_sgy = np.array([h[193] for h in f.header])
         n_traces_sgy = f.tracecount
+
+    with segyio.open(SGY_FILE, strict=False) as f:
+        il_header_sgy_padded = np.array([h[189] for h in f.header])
+        xl_header_sgy_padded = np.array([h[193] for h in f.header])
+    il_header_sgy_padded[-1] = 0
+    xl_header_sgy_padded[-1] = 0
 
     segy_cube = segyio.tools.cube(SGY_FILE)
     segy_cube[4, 4, :] = 0
-    il_header_sgy[4,4] = 0
-    xl_header_sgy[4, 4] = 0
     assert n_traces_sgz == n_traces_sgy
     assert np.allclose(sgz_data, segy_cube, rtol=1e-2)
     assert np.array_equal(il_header_sgz, il_header_sgy)
     assert np.array_equal(xl_header_sgz, xl_header_sgy)
+    assert np.array_equal(il_header_sgz_padded, il_header_sgy_padded)
+    assert np.array_equal(xl_header_sgz_padded, xl_header_sgy_padded)
 
 
 def test_compress_unstructured_reduce_iops(tmp_path):

@@ -191,7 +191,8 @@ class SgzReader(object):
             chunk_cache_size = get_chunk_cache_size(self.shape_pad[0] // self.blockshape[0],
                                                     self.shape_pad[1] // self.blockshape[1])
         self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
-        self.structured = self.tracecount == self.n_ilines * self.n_xlines
+        self.structured = (self.tracecount == self.n_ilines * self.n_xlines)
+        self.mask = None
 
     def __repr__(self):
         return f'seismic-zfp file {self._filename}\n' \
@@ -300,7 +301,17 @@ class SgzReader(object):
         assert(len(stored_header_keys) == self.n_header_arrays)
         return header_dict, stored_header_keys
 
-    def read_variant_headers(self):
+    def get_unstructured_mask(self):
+        if self.mask is None:
+            buffer = self.file.read_range(self.file,
+                                          self.segy_traceheader_template[189],
+                                          self.header_entry_length_bytes)
+            self.mask = np.where(np.frombuffer(buffer, dtype=np.int32) != 0)
+        else:
+            pass
+
+
+    def read_variant_headers(self, include_padding=False):
         """Reads all variant headers from SGZ file into a dictionary called variant_headers
 
         SeismicZFP stores integer arrays of any which are not constant through the input
@@ -308,14 +319,26 @@ class SgzReader(object):
         disk and combines with a 'template' containing the constant ones. In some circumstances
         it may be convenient to load all of this data into memory at once, which is what
         this function does if it has not already done so.
+
+        Parameters
+        ----------
+        include_padding : bool
+            Unstructured SGZ files have header arrays padded with zeros, by default these
+            should be filtered out when returning the header array to maintain compatibility
+            with segyio behaviour.
         """
         if self.variant_headers is None:
             variant_headers = {}
+            if not (self.structured or include_padding):
+                self.get_unstructured_mask()
             for k, v in self.segy_traceheader_template.items():
                 if isinstance(v, FileOffset):
                     buffer = self.file.read_range(self.file, v, self.header_entry_length_bytes)
                     values = np.frombuffer(buffer, dtype=np.int32)
-                    variant_headers[k] = values
+                    if self.structured or include_padding:
+                        variant_headers[k] = values
+                    else:
+                        variant_headers[k] = values[self.mask]
             self.variant_headers = variant_headers
         else:
             pass
@@ -637,7 +660,7 @@ class SgzReader(object):
 
         for k, v in header.items():
             if isinstance(v, FileOffset):
-                if load_all_headers:
+                if load_all_headers or not self.structured:
                     self.read_variant_headers()
                     header[k] = self.variant_headers[k][index]
                 else:
