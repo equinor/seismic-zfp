@@ -115,7 +115,7 @@ class SeismicFileConverter(object):
 
         return max_queue_length
 
-    def detect_geomerty(self, seismic):
+    def detect_geometry(self, seismic):
         if self.geom is None:
             if seismic.unstructured:
                 print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
@@ -186,7 +186,7 @@ class SeismicFileConverter(object):
 
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
-            self.detect_geomerty(seismic)
+            self.detect_geometry(seismic)
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = not(header_detection == 'strip')
             if seismic.filetype == Filetype.ZGY:
