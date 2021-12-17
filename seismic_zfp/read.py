@@ -124,13 +124,15 @@ class SgzReader(object):
         self.file_version = self.get_file_version()
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self._parse_dimensions()
         self.zslices, self.xlines, self.ilines = self._parse_coordinates()
-        self.tracecount = len(self.ilines) * len(self.xlines)
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
+        self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
+
         if self.file_version > SeismicZfpVersion("0.2.1"):
+            self.tracecount = bytes_to_int(self.headerbytes[68:72])
             self.padded_header_entry_length_bytes = (512 + 512 * ((self.header_entry_length_bytes - 1) // 512))
         else:
+            self.tracecount = self.n_ilines * self.n_xlines
             self.padded_header_entry_length_bytes = self.header_entry_length_bytes
-        self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
         self.segy_traceheader_template, self.stored_header_keys = self._decode_traceheader_template()
         self.file_text_header = self.headerbytes[DISK_BLOCK_BYTES:
