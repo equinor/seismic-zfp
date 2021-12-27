@@ -2,8 +2,9 @@ import collections
 import numpy as np
 import segyio
 
-from .utils import signed_int_to_bytes
+from .utils import signed_int_to_bytes, bytes_to_signed_int, FileOffset
 from .seismicfile import Filetype
+from .sgzconstants import DISK_BLOCK_BYTES
 
 class HeaderwordInfo:
     """Represents the variant/invariant/unpopulated status of trace headers, and their values.
@@ -18,7 +19,11 @@ class HeaderwordInfo:
 
     - variant_header_dict:   Dict of variant header fields for creating new file
     """
-    def __init__(self, n_traces, seismicfile=None, variant_header_list=None, variant_header_dict=None, header_detection=None):
+    def __init__(self, n_traces, seismicfile=None,
+                                 variant_header_list=None,
+                                 variant_header_dict=None,
+                                 header_detection=None,
+                                 buffer=None):
         """
         Parameters
         ----------
@@ -31,7 +36,7 @@ class HeaderwordInfo:
         variant_header_dict: dictionary of {headerword: numpy array, } (optional - pick one)
         """
         # Check only one of the options for creating a HeaderwordInfo class is used
-        assert sum([_ is not None for _ in [seismicfile, variant_header_list, variant_header_dict]]) == 1
+        assert sum([_ is not None for _ in [seismicfile, variant_header_list, variant_header_dict, buffer]]) == 1
         self.header_detection = header_detection
         self.table = {self._get_hw_code(hw): (0, 0) for hw in segyio.segy.Field(bytearray(240), kind='trace')}
 
@@ -86,8 +91,41 @@ class HeaderwordInfo:
                 self.table[self._get_hw_code(hw)] = (0, 0)
             self.headers_dict = variant_header_dict
 
+        elif buffer is not None:
+            template = [tuple((bytes_to_signed_int(buffer[i * 12 + j:i * 12 + j + 4])
+                               for j in range(0, 12, 4))) for i in range(89)]
+            for hv in template:
+                self.table[hv[0]] = (hv[1], hv[2])
+
         else:
             raise RuntimeError("Must specify at least one of seismicfile and variant_header_list for constructor")
+
+
+    def get_header_dict(self, n_header_arrays, n_header_blocks, compressed_data_diskblocks, padded_header_entry_length_bytes):
+        header_dict = {}
+        stored_header_keys = []
+
+        for k, v in self.table.items():
+            tf = segyio.tracefield.TraceField(k)
+            if v[0] != 0 or v[1] == 0:
+                # In these cases we have an invariant value
+                header_dict[tf] = v[0]
+
+            elif segyio.tracefield.TraceField(v[1]) in header_dict.keys():
+                # We have a previously discovered header value
+                header_dict[tf] = header_dict[segyio.tracefield.TraceField(v[1])]
+            else:
+                # This is a new header value
+                header_dict[tf] = FileOffset(DISK_BLOCK_BYTES * n_header_blocks +
+                                             DISK_BLOCK_BYTES * compressed_data_diskblocks +
+                                             len(stored_header_keys) * padded_header_entry_length_bytes)
+                stored_header_keys.append(tf)
+
+        # We should find the same number of headers arrays as have been written!
+        assert(len(stored_header_keys) == n_header_arrays)
+
+        return header_dict
+
 
     def get_zgy_header_arrays(self, seismicfile):
         iline_axis = np.linspace(seismicfile.ilines[0], seismicfile.ilines[-1],

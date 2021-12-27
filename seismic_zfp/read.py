@@ -13,6 +13,7 @@ from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size
                     get_correlated_diagonal_length, get_anticorrelated_diagonal_length,
                     read_range_file, read_range_blob)
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
+from .headers import HeaderwordInfo
 
 try:
     from azure.storage.blob import BlobServiceClient
@@ -139,7 +140,8 @@ class SgzReader(object):
             self.tracecount = self.n_ilines * self.n_xlines
             self.padded_header_entry_length_bytes = self.header_entry_length_bytes
 
-        self.segy_traceheader_template, self.stored_header_keys = self._decode_traceheader_template()
+        self.segy_traceheader_template = self._decode_traceheader_template()
+        self.stored_header_keys = [k for k, v in self.segy_traceheader_template.items() if isinstance(v, FileOffset)]
         self.file_text_header = self.headerbytes[DISK_BLOCK_BYTES:
                                                  DISK_BLOCK_BYTES + SEGY_TEXT_HEADER_BYTES]
 
@@ -208,7 +210,8 @@ class SgzReader(object):
                f'  inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
                f'  crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
                f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
-               f'  traces: {self.tracecount}'
+               f'  traces: {self.tracecount}\n' \
+               f'  Header arrays: {self.stored_header_keys}'
 
     def __enter__(self):
         return self
@@ -279,35 +282,15 @@ class SgzReader(object):
         compressed_data_diskblocks = bytes_to_int(self.headerbytes[56:60])
         header_entry_length_bytes = bytes_to_int(self.headerbytes[60:64])
         n_header_arrays = bytes_to_int(self.headerbytes[64:68])
-
         return compressed_data_diskblocks, header_entry_length_bytes, n_header_arrays
 
     def _decode_traceheader_template(self):
         raw_template = self.headerbytes[980:2048]
-        template = [tuple((bytes_to_signed_int(raw_template[i*12 + j:i*12 + j + 4])
-                           for j in range(0, 12, 4))) for i in range(89)]
-        header_dict = {}
-        stored_header_keys = []
-
-        for hv in template:
-            tf = segyio.tracefield.TraceField(hv[0])
-            if hv[1] != 0 or hv[2] == 0:
-                # In these cases we have an invariant value
-                header_dict[tf] = hv[1]
-
-            elif segyio.tracefield.TraceField(hv[2]) in header_dict.keys():
-                # We have a previously discovered header value
-                header_dict[tf] = header_dict[segyio.tracefield.TraceField(hv[2])]
-            else:
-                # This is a new header value
-                header_dict[tf] = FileOffset(DISK_BLOCK_BYTES*self.n_header_blocks +
-                                             DISK_BLOCK_BYTES*self.compressed_data_diskblocks +
-                                             len(stored_header_keys)*self.padded_header_entry_length_bytes)
-                stored_header_keys.append(tf)
-
-        # We should find the same number of headers arrays as have been written!
-        assert(len(stored_header_keys) == self.n_header_arrays)
-        return header_dict, stored_header_keys
+        self.hw_info = HeaderwordInfo(self.tracecount, buffer=raw_template)
+        return self.hw_info.get_header_dict(self.n_header_arrays,
+                                            self.n_header_blocks,
+                                            self.compressed_data_diskblocks,
+                                            self.padded_header_entry_length_bytes)
 
     def get_unstructured_mask(self):
         if self.mask is None:
