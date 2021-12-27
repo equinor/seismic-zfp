@@ -3,6 +3,7 @@ import numpy as np
 from seismic_zfp.conversion import SeismicFileConverter, SegyConverter, SgzConverter, NumpyConverter
 from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
 from seismic_zfp.read import SgzReader
+from seismic_zfp.headers import HeaderwordInfo
 import seismic_zfp
 import segyio
 import pytest
@@ -46,6 +47,13 @@ VDS_FILE = 'test_data/vds/small.vds'
 SGY_FILE_32 = 'test_data/zgy/small-32bit.sgy'
 SGY_FILE_16 = 'test_data/zgy/small-16bit.sgy'
 SGY_FILE_8 = 'test_data/zgy/small-8bit.sgy'
+
+
+def test_headerword_info_roundtrip():
+    with seismic_zfp.open(SGZ_FILE) as sgzfile:
+        buffer = sgzfile.hw_info.to_buffer()
+    hw_info = HeaderwordInfo(25, buffer=buffer)
+    assert hw_info.to_buffer() == buffer
 
 
 def test_compress_sgz_file_errors(tmp_path):
