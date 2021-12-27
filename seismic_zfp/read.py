@@ -15,7 +15,10 @@ from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 from .headers import HeaderwordInfo
 
-from azure.storage.blob import BlobServiceClient
+try:
+    from azure.storage.blob import BlobServiceClient
+except ImportError:
+    BlobServiceClient = None
 
 class SgzReader(object):
     """Reads SGZ files
@@ -100,6 +103,8 @@ class SgzReader(object):
         else:
             if isinstance(file, tuple):
                 # We have a URL
+                if BlobServiceClient is None:
+                    raise ImportError("File type requires azure-storage-blob. Install optional dependency seismic-zfp[azure] with pip.")
                 blob_service_client = BlobServiceClient(account_url=file[0])
                 self.file = blob_service_client.get_blob_client(container=file[1], blob=file[2])
                 self.file.read_range = read_range_blob
