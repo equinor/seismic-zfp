@@ -354,6 +354,7 @@ def test_decompress_unstructured(tmp_path):
 def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
 
     out_sgz = os.path.join(str(tmp_path), 'from-numpy.sgz')
+    out_sgz_no_headers = os.path.join(str(tmp_path), 'from-numpy_no_headers.sgz')
 
     array, ilines, xlines, samples = generate_fake_seismic(n_ilines, n_xlines, n_samples,
                                                            min_iline=min_iline, min_xline=min_xline)
@@ -372,6 +373,17 @@ def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
+
+    with NumpyConverter(array) as converter:
+        converter.run(out_sgz_no_headers, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+
+    with SgzReader(out_sgz_no_headers) as reader:
+        assert np.allclose(reader.ilines, np.arange(array.shape[0]), rtol=rtol)
+        assert np.allclose(reader.xlines, np.arange(array.shape[1]), rtol=rtol)
+        assert np.allclose(reader.read_volume(), array, rtol=rtol)
+        assert 20 == reader.get_file_source_code()
+
+
 
 
 def test_compress_numpy_data(tmp_path):
