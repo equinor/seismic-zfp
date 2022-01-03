@@ -79,6 +79,26 @@ def test_read_trace_header_preload():
             assert sgz_header == sgy_header
 
 
+def test_get_tracefield_values():
+    with SgzReader(SGZ_FILE_1) as reader:
+        with segyio.open(SGY_FILE) as sgyfile:
+             sgy_headers = np.array([h[segyio.tracefield.TraceField.INLINE_3D] for h in sgyfile.header[:]]).reshape((5, 5))
+        sgz_headers = reader.get_tracefield_values(segyio.tracefield.TraceField.INLINE_3D)
+        assert  np.array_equal(sgz_headers, sgy_headers)
+        # Also check that no other arrays got read in to memory...
+        with pytest.raises(KeyError):
+            _ = reader.variant_headers[segyio.tracefield.TraceField.CROSSLINE_3D]
+
+
+def test_read_variant_headers_padding_mismatch():
+    with SgzReader(SGZ_FILE_IRREG) as reader:
+        reader.read_variant_headers(include_padding=True)
+        with pytest.raises(AssertionError):
+            reader.read_variant_headers(include_padding=False)
+        reader.clear_variant_headers()
+        reader.read_variant_headers(include_padding=False)
+
+
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:

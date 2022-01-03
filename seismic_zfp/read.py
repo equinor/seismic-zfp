@@ -180,6 +180,7 @@ class SgzReader(object):
 
         # Placeholder. Don't read these if you're not going to use them
         self.variant_headers = None
+        self.include_padding = None
         
         self.range_error = "Index {} is out of range [{}, {}]. Try using slice ordinals instead of numbers?"
 
@@ -301,15 +302,18 @@ class SgzReader(object):
         else:
             pass
 
+    def clear_variant_headers(self):
+        self.variant_headers.clear()
+        self.include_padding = None
 
-    def read_variant_headers(self, include_padding=False):
+    def read_variant_headers(self, include_padding=False, tracefields=None):
         """Reads all variant headers from SGZ file into a dictionary called variant_headers
 
         SeismicZFP stores integer arrays of any which are not constant through the input
         SEG-Y as a file footer. To generate trace headers it reads individual values from
         disk and combines with a 'template' containing the constant ones. In some circumstances
-        it may be convenient to load all of this data into memory at once, which is what
-        this function does if it has not already done so.
+        it may be convenient to load all of this data into memory at once, which by default is
+        what this function does if it has not already done so.
 
         Parameters
         ----------
@@ -317,23 +321,33 @@ class SgzReader(object):
             Unstructured SGZ files have header arrays padded with zeros, by default these
             should be filtered out when returning the header array to maintain compatibility
             with segyio behaviour.
+
+        tracefields : list of int / segyio.tracefield.TraceField
+            It may be desirable to restrict the variant headers loaded for very large files
+            or files accessed across a network. Provide this list to do so.
+            See: get_tracefield_values()
         """
+
+        # Check that this hasn't changed
+        if self.include_padding is None:
+            self.include_padding = include_padding
+        assert self.include_padding == include_padding
+
         if self.variant_headers is None:
-            variant_headers = {}
-            if not (self.structured or include_padding):
-                self.get_unstructured_mask()
-            for k, v in self.segy_traceheader_template.items():
-                if isinstance(v, FileOffset):
-                    buffer = self.file.read_range(self.file, v, self.header_entry_length_bytes)
+            self.variant_headers = {}
+            tracefild_list = self.segy_traceheader_template if tracefields is None else tracefields
+            for k in tracefild_list:
+                # Yes, iterate through list of dictionary keys, because we might not have dict
+                offset = self.segy_traceheader_template[k]
+                if isinstance(offset, FileOffset) and k not in self.variant_headers:
+                    use_mask = not (self.structured or self.include_padding)
+                    if use_mask:
+                        self.get_unstructured_mask()
+                    buffer = self.file.read_range(self.file, offset, self.header_entry_length_bytes)
                     values = np.frombuffer(buffer, dtype=np.int32)
-                    if self.structured or include_padding:
-                        variant_headers[k] = values
-                    else:
-                        variant_headers[k] = values[self.mask]
-            self.variant_headers = variant_headers
+                    self.variant_headers[k] = values[self.mask] if use_mask else values
         else:
             pass
-
 
     def get_inline_index(self, il_no):
         """Get inline index from inline number"""
@@ -662,6 +676,23 @@ class SgzReader(object):
                     buf = self.file.read_range(self.file, v + 4*index, 4) # A 32-bit int is 4 bytes
                     header[k] = np.frombuffer(buf, dtype=np.int32)[0]
         return header
+
+    def get_tracefield_values(self, tracefield):
+        """Efficiently provides all trace header values for a given trace header field
+
+        Parameters
+        ----------
+        tracefield : int / segyio.tracefield.TraceField
+            The trace header value position, or its programmer-friendly
+            enumerated version from segyio
+
+        Returns
+        -------
+        header_array : numpy.ndarray of int32, shape (n_ilines, n_xlines)
+        """
+        self.read_variant_headers(include_padding=True, tracefields=[tracefield])
+        header_array = self.variant_headers[tracefield].reshape((self.n_ilines, self.n_xlines))
+        return header_array
 
     def get_file_binary_header(self):
         return segyio.segy.Field(self.file_binary_header, kind='binary')

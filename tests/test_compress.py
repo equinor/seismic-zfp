@@ -245,15 +245,13 @@ def test_compress_unstructured_decimated(tmp_path):
     segy_cube[2, 2, :] = 0
     assert np.allclose(sgz_data, segy_cube, atol=1e-4)
 
-
-def test_compress_unstructured(tmp_path):
-    out_sgz = os.path.join(str(tmp_path), 'small_test-irregular_data.sgz')
+def test_compress_unstructured_headers(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small_test-irregular_headers.sgz')
 
     with SegyConverter(SGY_FILE_IRREG) as converter:
         converter.run(out_sgz, bits_per_voxel=8)
 
     with SgzReader(out_sgz) as reader:
-        sgz_data = reader.read_volume()
         reader.read_variant_headers()
         il_header_sgz = reader.variant_headers[189]
         xl_header_sgz = reader.variant_headers[193]
@@ -279,14 +277,35 @@ def test_compress_unstructured(tmp_path):
     il_header_sgy_padded[-1] = 0
     xl_header_sgy_padded[-1] = 0
 
-    segy_cube = segyio.tools.cube(SGY_FILE)
-    segy_cube[4, 4, :] = 0
     assert n_traces_sgz == n_traces_sgy
-    assert np.allclose(sgz_data, segy_cube, rtol=1e-2)
     assert np.array_equal(il_header_sgz, il_header_sgy)
     assert np.array_equal(xl_header_sgz, xl_header_sgy)
     assert np.array_equal(il_header_sgz_padded, il_header_sgy_padded)
     assert np.array_equal(xl_header_sgz_padded, xl_header_sgy_padded)
+
+
+def test_compress_unstructured_data(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small_test-irregular_data.sgz')
+
+    with SegyConverter(SGY_FILE_IRREG) as converter:
+        converter.run(out_sgz, bits_per_voxel=8)
+
+    with SgzReader(out_sgz) as reader:
+        sgz_data = reader.read_volume()
+        reader.read_variant_headers()
+        assert not reader.structured
+
+    with SgzReader(out_sgz) as reader:
+        reader.read_variant_headers(include_padding=True)
+
+    with segyio.open(SGY_FILE_IRREG, strict=False) as f:
+        with seismic_zfp.open(out_sgz) as f_sgz:
+            for sgz_trace, sgy_trace in zip(f_sgz.trace, f.trace):
+                assert np.allclose(sgz_trace, sgy_trace, rtol=1e-2)
+
+    segy_cube = segyio.tools.cube(SGY_FILE)
+    segy_cube[4, 4, :] = 0
+    assert np.allclose(sgz_data, segy_cube, rtol=1e-2)
 
 
 def test_compress_unstructured_reduce_iops(tmp_path):
