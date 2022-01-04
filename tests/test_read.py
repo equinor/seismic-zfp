@@ -90,6 +90,11 @@ def test_get_tracefield_values():
             _ = reader.variant_headers[segyio.tracefield.TraceField.CROSSLINE_3D]
 
 
+def test_read_irregular_file_not_structred():
+    with SgzReader(SGZ_FILE_IRREG) as reader:
+        assert reader.structured is False
+
+
 def test_read_variant_headers_padding_mismatch():
     with SgzReader(SGZ_FILE_IRREG) as reader:
         reader.read_variant_headers(include_padding=True)

@@ -364,10 +364,10 @@ def test_decompress_unstructured(tmp_path):
     with SgzConverter(SGZ_FILE_IRREG) as converter:
         converter.convert_to_segy(out_sgy)
 
-    segy_cube = segyio.tools.cube(SGY_FILE)
-    segy_cube[4, 4, :] = 0
-
-    assert np.allclose(segyio.tools.cube(out_sgy), segy_cube, rtol=1e-2)
+    with segyio.open(SGY_FILE_IRREG, ignore_geometry=True) as sgy_file:
+        with seismic_zfp.open(SGZ_FILE_IRREG) as sgz_file:
+            for sgy_trace, sgz_trace in zip(sgy_file.trace, sgz_file.trace):
+                assert np.allclose(sgy_trace, sgz_trace, rtol=1e-2)
 
 
 def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
