@@ -344,6 +344,7 @@ def test_filenotfound_errors():
     with pytest.raises(FileNotFoundError):
         SgzReader('test_data/this_file_does_not_exist')
 
+
 def test_hw_info_repr():
     expected_table = '1 | 0 | 0\n5 | 0 | 0\n9 | 0 | 0\n13 | 0 | 0\n17 | 0 | 0\n21 | 0 | 0\n25 | 0 | 0\n29 | 0 | 0\n31 | 0 | 0\n33 | 0 | 0\n35 | 0 | 0\n37 | 1 | 0\n41 | 0 | 0\n45 | 0 | 0\n49 | 0 | 0\n53 | 0 | 0\n57 | 0 | 0\n61 | 0 | 0\n65 | 0 | 0\n69 | 0 | 0\n71 | 0 | 0\n73 | 0 | 0\n77 | 0 | 0\n81 | 0 | 0\n85 | 0 | 0\n89 | 0 | 0\n91 | 0 | 0\n93 | 0 | 0\n95 | 0 | 0\n97 | 0 | 0\n99 | 0 | 0\n101 | 0 | 0\n103 | 0 | 0\n105 | 0 | 0\n107 | 0 | 0\n109 | 0 | 0\n111 | 0 | 0\n113 | 0 | 0\n115 | 0 | 0\n117 | 0 | 0\n119 | 0 | 0\n121 | 0 | 0\n123 | 0 | 0\n125 | 0 | 0\n127 | 0 | 0\n129 | 0 | 0\n131 | 0 | 0\n133 | 0 | 0\n135 | 0 | 0\n137 | 0 | 0\n139 | 0 | 0\n141 | 0 | 0\n143 | 0 | 0\n145 | 0 | 0\n147 | 0 | 0\n149 | 0 | 0\n151 | 0 | 0\n153 | 0 | 0\n155 | 0 | 0\n157 | 0 | 0\n159 | 0 | 0\n161 | 0 | 0\n163 | 0 | 0\n165 | 0 | 0\n167 | 0 | 0\n169 | 0 | 0\n171 | 0 | 0\n173 | 0 | 0\n175 | 0 | 0\n177 | 0 | 0\n179 | 0 | 0\n181 | 0 | 0\n185 | 0 | 0\n189 | 0 | 189\n193 | 0 | 193\n197 | 0 | 0\n201 | 0 | 0\n203 | 0 | 0\n205 | 0 | 0\n209 | 0 | 0\n211 | 0 | 0\n213 | 0 | 0\n215 | 0 | 0\n217 | 0 | 0\n219 | 0 | 0\n223 | 0 | 0\n225 | 0 | 0\n229 | 0 | 0\n231 | 0 | 0\n'
     with SgzReader(SGZ_FILE_4) as reader:
@@ -355,5 +356,5 @@ def test_repr():
     with SgzReader(SGZ_FILE_4) as reader:
         representation = reader.__repr__()
         as_string = reader.__str__()
-    assert as_string == 'seismic-zfp file test_data/small_4bit.sgz:\n  compression ratio: 8:1\n  inlines: 5 [1, 5]\n  crosslines: 5 [20, 24]\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [INLINE_3D, CROSSLINE_3D]'
+    assert as_string == 'seismic-zfp file test_data/small_4bit.sgz, Version(0.0.0.dev):\n  compression ratio: 8:1\n  inlines: 5 [1, 5]\n  crosslines: 5 [20, 24]\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [INLINE_3D, CROSSLINE_3D]'
     assert representation == 'SgzReader(test_data/small_4bit.sgz)'

@@ -206,7 +206,7 @@ class SgzReader(object):
         return f'SgzReader({self._filename})'
 
     def __str__(self):
-        return f'seismic-zfp file {self._filename}:\n' \
+        return f'seismic-zfp file {self._filename}, {self.file_version}:\n' \
                f'  compression ratio: {int(32/self.rate)}:1\n' \
                f'  inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
                f'  crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
