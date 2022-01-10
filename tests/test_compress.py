@@ -29,6 +29,7 @@ except ImportError:
 SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
 SGY_FILE_US = 'test_data/small_us.sgy'
 SGY_FILE = 'test_data/small.sgy'
+SGY_FILE_2D = 'test_data/small-2d.sgy'
 SGY_FILE_NEGATIVE_SAMPLES = 'test_data/small-negative-samples.sgy'
 SGY_FILE_TRACEHEADER_SAMPLERATE = 'test_data/small-traceheader-samplerate.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
@@ -199,6 +200,22 @@ def test_compress_data(tmp_path):
 
     compress_and_compare_data(SGY_FILE, tmp_path, 2, 1e-4, blockshape=(64, 64, 4))
     compress_and_compare_data(SGY_FILE, tmp_path, 8, 1e-10, blockshape=(16, 16, 16))
+
+
+def compress_and_compare_2d_data(sgy_file, tmp_path, bits_per_voxel, rtol):
+    out_sgz = os.path.join(str(tmp_path), 'small-2d_test_data.sgz')
+
+    with SegyConverter(sgy_file) as converter:
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+    with segyio.open(sgy_file, ignore_geometry=True) as f_sgy:
+        with seismic_zfp.open(out_sgz) as f_sgz:
+            for sgz_trace, sgy_trace in zip(f_sgz.trace, f_sgy.trace):
+                assert np.allclose(sgz_trace, sgy_trace, rtol=rtol)
+
+
+def test_compress_2d_data(tmp_path):
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 8, 1.e-8)
 
 
 def test_compress_headers(tmp_path):

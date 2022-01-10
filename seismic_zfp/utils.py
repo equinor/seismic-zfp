@@ -20,13 +20,18 @@ class CubeWithAxes:
         self.xlines = xlines
         self.samples = samples
 
-
 class Geometry:
     """Lightweight place to keep track of IL/XL ranges"""
     def __init__(self, min_il, max_il, min_xl, max_xl):
         self.ilines = range(min_il, max_il)
         self.xlines = range(min_xl, max_xl)
 
+class Geometry_2d(Geometry):
+    """Subclass used to signify 2D input SEG-Y"""
+    def __init__(self, tracecount):
+        pass
+#        self.ilines = range(1)
+#        self.xlines = range(tracecount)
 
 class InferredGeometry(Geometry):
     """Subclass used to signify irregular input SEG-Y"""
@@ -111,7 +116,29 @@ def signed_int_to_bytes(bytes):
     return struct.pack('<i', bytes)
 
 
-def define_blockshape(bits_per_voxel, blockshape):
+def define_blockshape_2d(bits_per_voxel, blockshape):
+    if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
+        raise ValueError("Blockshape is underdefined")
+
+    if isinstance(bits_per_voxel, str):
+        bits_per_voxel = float(bits_per_voxel)
+
+    bits_per_voxel = 1 / -bits_per_voxel if bits_per_voxel < -1 else bits_per_voxel
+
+    if bits_per_voxel == -1:
+        bits_per_voxel = DISK_BLOCK_BYTES * 8 / (blockshape[0] * blockshape[1])
+    else:
+        if blockshape[0] == -1:
+            blockshape = (int(DISK_BLOCK_BYTES * 8 //
+                              (blockshape[1] * bits_per_voxel)), blockshape[1])
+        elif blockshape[1] == -1:
+            blockshape = (blockshape[0], int(DISK_BLOCK_BYTES * 8 // (blockshape[0] * bits_per_voxel)))
+        else:
+            assert(bits_per_voxel * blockshape[0] * blockshape[1] == DISK_BLOCK_BYTES * 8)
+    return bits_per_voxel, blockshape
+
+
+def define_blockshape_3d(bits_per_voxel, blockshape):
     if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
         raise ValueError("Blockshape is underdefined")
 

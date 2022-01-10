@@ -6,7 +6,7 @@ import segyio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry
+from .utils import pad, define_blockshape_2d, define_blockshape_3d, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry, Geometry_2d
 from .headers import HeaderwordInfo
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
@@ -118,10 +118,14 @@ class SeismicFileConverter(object):
     def detect_geometry(self, seismic):
         if self.geom is None:
             if seismic.unstructured:
-                print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
-                traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
-                self.geom = InferredGeometry(traces_ref)
-                print("... inferred geometry is:", self.geom)
+                if (seismic.header[0][189], seismic.header[0][193], seismic.header[-1][189], seismic.header[-1][193]) == (0, 0, 0, 0):
+                    # We have a 2D SEG-Y
+                    self.geom = Geometry_2d(seismic.tracecount)
+                else:
+                    # We have an irregular 3D SEG-Y
+                    print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
+                    traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
+                    self.geom = InferredGeometry(traces_ref)
             else:
                 self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
 
@@ -134,7 +138,7 @@ class SeismicFileConverter(object):
             msg = "With searching comes loss,  and the presence of absence:  'My {}' not found.".format(file_ext)
             raise FileNotFoundError(msg)
 
-    def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1),
+    def run(self, out_filename, bits_per_voxel=4, blockshape=None,
             reduce_iops=False, header_detection="heuristic"):
         """General entrypoint for converting seismic files to SGZ
 
@@ -185,8 +189,16 @@ class SeismicFileConverter(object):
         t0 = time.time()
 
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
-            bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
             self.detect_geometry(seismic)
+            if isinstance(self.geom, Geometry_2d):
+                if blockshape is None:
+                    blockshape = (16, -1)
+                bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
+            else:
+                if blockshape is None:
+                    blockshape = (4, 4, -1)
+                bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
+
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = not(header_detection == 'strip')
             if seismic.filetype == Filetype.ZGY:
@@ -398,7 +410,7 @@ class NumpyConverter(object):
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
         """
         self.out_filename = out_filename
-        bits_per_voxel, blockshape = define_blockshape(bits_per_voxel, blockshape)
+        bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
         self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
         header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
