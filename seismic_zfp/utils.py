@@ -26,12 +26,10 @@ class Geometry:
         self.ilines = range(min_il, max_il)
         self.xlines = range(min_xl, max_xl)
 
-class Geometry_2d(Geometry):
+class Geometry2d(Geometry):
     """Subclass used to signify 2D input SEG-Y"""
     def __init__(self, tracecount):
-        pass
-#        self.ilines = range(1)
-#        self.xlines = range(tracecount)
+        self.traces = range(tracecount)
 
 class InferredGeometry(Geometry):
     """Subclass used to signify irregular input SEG-Y"""

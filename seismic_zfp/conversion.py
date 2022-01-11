@@ -6,7 +6,7 @@ import segyio
 import time
 from psutil import virtual_memory
 
-from .utils import pad, define_blockshape_2d, define_blockshape_3d, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry, Geometry_2d
+from .utils import pad, define_blockshape_2d, define_blockshape_3d, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry, Geometry2d
 from .headers import HeaderwordInfo
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
@@ -52,11 +52,11 @@ class SeismicFileConverter(object):
 
     @staticmethod
     def set_filetype():
-        """This method will be overridden by filetpye-specific subclasses"""
+        """This method will be overridden by filetype-specific subclasses"""
         return None
 
     def get_blank_header_info(self, seismic, header_detection):
-        n_traces = seismic.tracecount if seismic.structured else 0
+        n_traces = seismic.tracecount if seismic.structured or seismic.header[0][segyio.tracefield.TraceField.INLINE_3D] == 0 else 0
         if header_detection == 'heuristic':
             return HeaderwordInfo(n_traces=n_traces,
                                   seismicfile=seismic,
@@ -120,7 +120,7 @@ class SeismicFileConverter(object):
             if seismic.unstructured:
                 if (seismic.header[0][189], seismic.header[0][193], seismic.header[-1][189], seismic.header[-1][193]) == (0, 0, 0, 0):
                     # We have a 2D SEG-Y
-                    self.geom = Geometry_2d(seismic.tracecount)
+                    self.geom = Geometry2d(seismic.tracecount)
                 else:
                     # We have an irregular 3D SEG-Y
                     print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
@@ -190,22 +190,22 @@ class SeismicFileConverter(object):
 
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             self.detect_geometry(seismic)
-            if isinstance(self.geom, Geometry_2d):
+            if isinstance(self.geom, Geometry2d):
                 if blockshape is None:
                     blockshape = (16, -1)
                 bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
+                inline_set_bytes = len(self.geom.traces) * len(seismic.samples) * 4
             else:
                 if blockshape is None:
                     blockshape = (4, 4, -1)
                 bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
+                inline_set_bytes = blockshape[0]*(len(self.geom.xlines)* len(seismic.samples)) * 4
 
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = not(header_detection == 'strip')
             if seismic.filetype == Filetype.ZGY:
                 store_headers = False
-            max_queue_length = self.check_memory(inline_set_bytes = blockshape[0]
-                                                                    * (len(self.geom.xlines)
-                                                                    * len(seismic.samples)) * 4)
+            max_queue_length = self.check_memory(inline_set_bytes=inline_set_bytes)
             run_conversion_loop(seismic, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom,
                                 queuesize=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
         self.write_headers(header_detection, header_info)
