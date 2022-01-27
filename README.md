@@ -132,6 +132,7 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
     subvolume = sgzfile.subvolume[IL_NO_START:IL_NO_STOP:IL_NO_STEP, 
                                   XL_NO_START:XL_NO_STOP:XL_NO_STEP,
                                   SAMP_NO_START:SAMP_NO_STOP:SAMP_NO_STEP]
+    header_arr = sgzfile.get_tracefield_values(segyio.tracefield.TraceField.NStackedTraces)
 ```
 
 ## Command Line Interface
