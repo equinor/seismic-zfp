@@ -1,5 +1,4 @@
 from collections.abc import Mapping
-import numpy as np
 from .read import SgzReader
 from .utils import coord_to_index
 
@@ -47,10 +46,7 @@ class SubvolumeAccessor(SgzReader):
             raise IndexError("{} step {} invalid. Axes are {}".format(coord_name, subscript.step, self.axes_message))
 
 
-class Accessor(SgzReader):
-
-    def __init__(self, file):
-        super(Accessor, self).__init__()
+class Accessor(SgzReader, Mapping):
 
     def __iter__(self):
         return iter(self[:])
@@ -67,21 +63,6 @@ class Accessor(SgzReader):
             return self.values_function(len(self)+subscript)
         else:
             return self.values_function(subscript)
-
-    def __contains__(self, key):
-        return key in self.keys_object
-
-    def __hash__(self):
-        return hash(self._filename)
-
-    def keys(self):
-        return self.keys_object
-
-    def values(self):
-        return self[:]
-
-    def items(self):
-        return zip(self.keys(), self[:])
 
 
 class SliceAccessor(Accessor):
@@ -100,7 +81,7 @@ class SliceAccessor(Accessor):
             return self.values_function(subscript)
 
 
-class InlineAccessor(SliceAccessor, Mapping):
+class InlineAccessor(SliceAccessor):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_ilines
@@ -108,7 +89,7 @@ class InlineAccessor(SliceAccessor, Mapping):
         self.values_function = self.read_inline_number
 
 
-class CrosslineAccessor(SliceAccessor, Mapping):
+class CrosslineAccessor(SliceAccessor):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_xlines
@@ -116,7 +97,7 @@ class CrosslineAccessor(SliceAccessor, Mapping):
         self.values_function = self.read_crossline_number
 
 
-class ZsliceAccessor(Accessor, Mapping):
+class ZsliceAccessor(Accessor):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_samples
@@ -124,7 +105,7 @@ class ZsliceAccessor(Accessor, Mapping):
         self.values_function = self.read_zslice
 
 
-class HeaderAccessor(Accessor, Mapping):
+class HeaderAccessor(Accessor):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.tracecount
@@ -132,7 +113,7 @@ class HeaderAccessor(Accessor, Mapping):
         self.values_function = self.gen_trace_header
 
 
-class TraceAccessor(Accessor, Mapping):
+class TraceAccessor(Accessor):
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.tracecount

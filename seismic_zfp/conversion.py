@@ -270,8 +270,8 @@ class SgzConverter(SgzReader):
             with segyio.create(out_file, spec) as segyfile:
                 self.read_variant_headers()
                 # Doing this is fine now there is decent caching on the loader
-                segyfile.trace = [self.get_trace(i) for i in range(len(segyfile.trace))]
-                segyfile.header = [self.regenerate_trace_header(i) for i in range(len(segyfile.header))]
+                segyfile.trace = [self.get_trace(i) for i in range(self.tracecount)]
+                segyfile.header = [self.regenerate_trace_header(i) for i in range(self.tracecount)]
 
         with open(out_file, "r+b") as f:
             f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])

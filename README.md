@@ -118,13 +118,21 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
     binary_file_header = sgzfile.bin
     text_file_header = sgzfile.text[0]
 ```
+Including equivalents to segyio.tools
+```python
+with seismic_zfp.open("in.sgz") as sgz_file:
+    dt_sgz = seismic_zfp.tools.dt(sgz_file)
+
+cube_sgz = seismic_zfp.tools.cube("in.sgz")
+```
+
 Plus some extended utility functionality:
 ```python
-import seismic_zfp
 with seismic_zfp.open("in.sgz")) as sgzfile:
     subvolume = sgzfile.subvolume[IL_NO_START:IL_NO_STOP:IL_NO_STEP, 
                                   XL_NO_START:XL_NO_STOP:XL_NO_STEP,
                                   SAMP_NO_START:SAMP_NO_STOP:SAMP_NO_STEP]
+    header_arr = sgzfile.get_tracefield_values(segyio.tracefield.TraceField.NStackedTraces)
 ```
 
 ## Command Line Interface
