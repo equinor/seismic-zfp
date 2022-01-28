@@ -7,7 +7,7 @@ import seismic_zfp
 import segyio
 import pytest
 
-def generate_data_crop_and_compare(tmp_path, n_samples, min_iline, n_ilines, min_xline, n_xlines, crop_min_il, crop_il_size, crop_min_xl, crop_xl_size,
+def generate_data_crop_and_compare(tmp_path, coords, n_samples, min_iline, n_ilines, min_xline, n_xlines, crop_min_il, crop_il_size, crop_min_xl, crop_xl_size,
                                    bits_per_voxel, blockshape=(4, 4, -1)):
     gen_sgz = os.path.join(str(tmp_path), 'generated.sgz')
     crop_sgz = os.path.join(str(tmp_path), 'cropped.sgz')
@@ -23,15 +23,28 @@ def generate_data_crop_and_compare(tmp_path, n_samples, min_iline, n_ilines, min
     with NumpyConverter(array, ilines=ilines, xlines=xlines, samples=samples, trace_headers=trace_headers) as converter:
         converter.run(gen_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
-    iline_coords_range = (crop_min_il,crop_min_il+crop_il_size)
-    xline_coords_range = (crop_min_xl,crop_min_xl+crop_xl_size)
+    if crop_min_il is not None:
+        iline_coords_range = (crop_min_il,crop_min_il+crop_il_size)
+    else:
+        iline_coords_range = (None, None)
+
+    if crop_min_xl is not None:
+        xline_coords_range = (crop_min_xl,crop_min_xl+crop_xl_size)
+    else:
+        xline_coords_range = (None, None)
+
     zslice_coords_range = None
 
     # Crop input file
     cropper = SgzCropper(gen_sgz)
-    cropper.write_cropped_file_by_coords(crop_sgz, iline_coords_range,
-                                                   xline_coords_range,
-                                                   zslice_coords_range)
+    if coords:
+        cropper.write_cropped_file_by_coords(crop_sgz, iline_coords_range,
+                                                       xline_coords_range,
+                                                       zslice_coords_range)
+    else:
+        cropper.write_cropped_file_by_indexes(crop_sgz, iline_coords_range,
+                                                       xline_coords_range,
+                                                       zslice_coords_range)
 
     # Check cropping results
     with seismic_zfp.open(crop_sgz) as crop_file:
@@ -48,14 +61,23 @@ def generate_data_crop_and_compare(tmp_path, n_samples, min_iline, n_ilines, min
     assert np.allclose(subvol_orig, subvol_crop, rtol=1e-12)
 
 def test_crop_file(tmp_path):
-    generate_data_crop_and_compare(tmp_path, 101, 8, 12, 9985, 16, 8, 4, 9989, 4, 4, blockshape=(4, 4, -1))
-    generate_data_crop_and_compare(tmp_path, 101, 8, 12, 9985, 16, 9, 4, 9989, 4, 4, blockshape=(4, 4, -1))
-    generate_data_crop_and_compare(tmp_path, 101, 8, 12, 9985, 16, 8, 4, 9989, 4, 8, blockshape=(4, 4, -1))
-    generate_data_crop_and_compare(tmp_path, 17, 64, 201, 1, 64, 64, 128, 1, 64, 2, blockshape=(64, 64, 4))
+    generate_data_crop_and_compare(tmp_path, True, 101, 8, 12, 9985, 16, 8, 4, 9989, 4, 4, blockshape=(4, 4, -1))
+    generate_data_crop_and_compare(tmp_path, True, 101, 8, 12, 9985, 16, 9, 4, 9989, 4, 4, blockshape=(4, 4, -1))
+    generate_data_crop_and_compare(tmp_path, True, 101, 8, 12, 9985, 16, 8, 4, 9989, 4, 8, blockshape=(4, 4, -1))
+    generate_data_crop_and_compare(tmp_path, True, 17, 64, 201, 1, 64, 64, 128, 1, 64, 2, blockshape=(64, 64, 4))
 
 def test_crop_errors(tmp_path):
     with pytest.raises(IndexError):
-        generate_data_crop_and_compare(tmp_path, 101, 8, 12, 9985, 16, 8, 4, 9984, 4, 4, blockshape=(4, 4, -1))
+        generate_data_crop_and_compare(tmp_path, False, 101, 0, 4, 21, 25, 0, 6, 21, 25, 4, blockshape=(4, 4, -1))
 
     with pytest.raises(IndexError):
-        generate_data_crop_and_compare(tmp_path, 101, 8, 12, 9985, 16, 8, 13, 9985, 4, 4, blockshape=(4, 4, -1))
+        generate_data_crop_and_compare(tmp_path, False, 101, 0, 4, 21, 25, 0, 4, 20, 25, 4, blockshape=(4, 4, -1))
+
+    with pytest.raises(IndexError):
+        generate_data_crop_and_compare(tmp_path, True, 101, 8, 12, 9985, 16, 8, 4, 9984, 4, 4, blockshape=(4, 4, -1))
+
+    with pytest.raises(IndexError):
+        generate_data_crop_and_compare(tmp_path, True, 101, 8, 12, 9985, 16, 8, 13, 9985, 4, 4, blockshape=(4, 4, -1))
+
+    with pytest.raises(IndexError):
+        generate_data_crop_and_compare(tmp_path, True, 101, 8, 12, 9985, 16, None, None, None, None, 4, blockshape=(4, 4, -1))
