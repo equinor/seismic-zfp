@@ -369,6 +369,13 @@ class NumpyConverter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
+    def write_headers(self, header_info):
+         with open(self.out_filename, 'ab') as f:
+            for header_array in header_info.headers_dict.values():
+                # Pad to 512-bytes for page blobs
+                f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
+
+
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
         """General entrypoint for converting numpy arrays to SGZ files
 
@@ -401,3 +408,4 @@ class NumpyConverter(object):
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
         header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
         run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom)
+        self.write_headers(header_info)

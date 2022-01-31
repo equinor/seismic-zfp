@@ -320,6 +320,9 @@ def test_compresss_non_existent_file(tmp_path):
     with pytest.raises(FileNotFoundError):
         with SegyConverter('./non-existent-file.sgy') as converter:
             converter.run(out_sgz)
+    with pytest.raises(FileNotFoundError):
+        with SegyConverter('./non-existent-file') as converter:
+            converter.run(out_sgz)
 
 
 def test_convert_to_adv_from_compressed(tmp_path):

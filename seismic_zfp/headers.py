@@ -88,7 +88,7 @@ class HeaderwordInfo:
         elif variant_header_dict is not None:
             self.unique_variant_nonzero_header_words = variant_header_dict.keys()
             for hw in variant_header_dict.keys():
-                self.table[self._get_hw_code(hw)] = (0, 0)
+                self.table[self._get_hw_code(hw)] = (0, self._get_hw_code(hw))
             self.headers_dict = variant_header_dict
 
         elif buffer is not None:

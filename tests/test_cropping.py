@@ -23,15 +23,19 @@ def generate_data_crop_and_compare(tmp_path, coords, n_samples, min_iline, n_ili
     with NumpyConverter(array, ilines=ilines, xlines=xlines, samples=samples, trace_headers=trace_headers) as converter:
         converter.run(gen_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
-    if crop_min_il is not None:
-        iline_coords_range = (crop_min_il,crop_min_il+crop_il_size)
+    if crop_min_il is None and crop_min_xl is None:
+        iline_coords_range = None
+        xline_coords_range = None
     else:
-        iline_coords_range = (None, None)
+        if crop_min_il is not None:
+            iline_coords_range = (crop_min_il,crop_min_il+crop_il_size)
+        else:
+            iline_coords_range = (None, None)
 
-    if crop_min_xl is not None:
-        xline_coords_range = (crop_min_xl,crop_min_xl+crop_xl_size)
-    else:
-        xline_coords_range = (None, None)
+        if crop_min_xl is not None:
+            xline_coords_range = (crop_min_xl,crop_min_xl+crop_xl_size)
+        else:
+            xline_coords_range = (None, None)
 
     zslice_coords_range = None
 
