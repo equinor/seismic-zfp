@@ -165,27 +165,27 @@ def test_subvolume_accessor_errors():
     with seismic_zfp.open(SGZ_FILE_4) as sgzfile:
 
         with pytest.raises(IndexError):
+            sgzfile.subvolume[1:7:None, 20:21:None, 0:40:None]
+
+        with pytest.raises(IndexError):
+            sgzfile.subvolume[1:6:None, 20:26:None, 0:40:None]
+
+        with pytest.raises(IndexError):
+            sgzfile.subvolume[1:6:None, 20:21:None, 0:400:None]
+
+        with pytest.raises(IndexError):
             sgzfile.subvolume[0:6:None, 20:21:None, 0:40:None]
 
         with pytest.raises(IndexError):
-            sgzfile.subvolume[0:5:None, 20:26:None, 0:40:None]
-
-        with pytest.raises(IndexError):
-            sgzfile.subvolume[0:5:None, 20:21:None, 0:400:None]
-
-        with pytest.raises(IndexError):
-            sgzfile.subvolume[-1:6:None, 20:21:None, 0:40:None]
-
-        with pytest.raises(IndexError):
-            sgzfile.subvolume[0:5:None, 20:21:None, 0:40:3]
+            sgzfile.subvolume[1:6:None, 20:21:None, 0:40:3]
 
     with seismic_zfp.open(SGZ_FILE_DEC_8) as sgzfile:
 
         with pytest.raises(IndexError):
-            sgzfile.subvolume[0:5:1, 20:21:None, 0:None:None]
+            sgzfile.subvolume[1:6:1, 20:21:None, 0:None:None]
 
         with pytest.raises(IndexError):
-            sgzfile.subvolume[0:5:2, 20:21:3, 0:None:None]
+            sgzfile.subvolume[1:6:2, 20:21:3, 0:None:None]
 
 
 def compare_cube(sgz_filename, sgy_filename, tolerance):
