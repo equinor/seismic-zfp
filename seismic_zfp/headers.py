@@ -36,7 +36,9 @@ class HeaderwordInfo:
         variant_header_dict: dictionary of {headerword: numpy array, } (optional - pick one)
         """
         # Check only one of the options for creating a HeaderwordInfo class is used
-        assert sum([_ is not None for _ in [seismicfile, variant_header_list, variant_header_dict, buffer]]) == 1
+        if sum([_ is not None for _ in [seismicfile, variant_header_list, variant_header_dict, buffer]]) != 1:
+            raise RuntimeError("Must specify at least one of seismicfile and variant_header_list for constructor")
+
         self.header_detection = header_detection
         self.table = {self._get_hw_code(hw): (0, 0) for hw in segyio.segy.Field(bytearray(240), kind='trace')}
 
@@ -96,9 +98,6 @@ class HeaderwordInfo:
                                for j in range(0, 12, 4))) for i in range(89)]
             for hv in template:
                 self.table[hv[0]] = (hv[1], hv[2])
-
-        else:
-            raise RuntimeError("Must specify at least one of seismicfile and variant_header_list for constructor")
 
 
     def get_header_dict(self, n_header_arrays, n_header_blocks, compressed_data_diskblocks, padded_header_entry_length_bytes):

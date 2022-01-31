@@ -8,6 +8,7 @@ import seismic_zfp
 import segyio
 import pytest
 from seismic_zfp.utils import generate_fake_seismic
+from seismic_zfp.seismicfile import SeismicFile
 import warnings
 
 try:
@@ -56,8 +57,17 @@ def test_headerword_info_roundtrip():
     assert hw_info.to_buffer() == buffer
 
 
+def test_headerword_info_errors():
+    with pytest.raises(RuntimeError):
+        hw_info = HeaderwordInfo(25)
+
+    with pytest.raises(RuntimeError):
+        with SeismicFile.open(SGZ_FILE) as sgzfile:
+            hw_info = HeaderwordInfo(25, seismicfile=sgzfile)
+
+
 def test_compress_sgz_file_errors(tmp_path):
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         out_sgz = os.path.join(str(tmp_path), 'test_compress_sgz_file_errors.sgz')
         with SeismicFileConverter(SGZ_FILE) as converter:
             converter.run(out_sgz, bits_per_voxel=8)

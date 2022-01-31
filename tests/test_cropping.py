@@ -18,7 +18,10 @@ def generate_data_crop_and_compare(tmp_path, coords, n_samples, min_iline, n_ili
     trace_headers = {segyio.tracefield.TraceField.INLINE_3D:
                          np.broadcast_to(np.expand_dims(ilines, axis=1), (n_ilines, n_xlines)),
                      segyio.tracefield.TraceField.CROSSLINE_3D:
-                         np.broadcast_to(xlines, (n_ilines,n_xlines))}
+                         np.broadcast_to(xlines, (n_ilines,n_xlines)),
+                     segyio.tracefield.TraceField.SourceX:
+                         np.broadcast_to(np.expand_dims(ilines, axis=1), (n_ilines, n_xlines))
+                     }
 
     with NumpyConverter(array, ilines=ilines, xlines=xlines, samples=samples, trace_headers=trace_headers) as converter:
         converter.run(gen_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
