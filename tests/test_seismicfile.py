@@ -40,9 +40,14 @@ def test_raises_import_error_if_missing_pyvds():
     reload(seismicfile) 
 
 
-def test_raises_value_error_if_file_type_unknown():
+def test_raises_value_error_if_file_type_wrong_type():
         with pytest.raises(ValueError):
-            seismicfile.SeismicFile.open("", "unknown")
+            seismicfile.SeismicFile.open("", "wrong_type")
+
+
+def test_raises_value_error_if_file_type_unknown():
+    with pytest.raises(ValueError):
+        seismicfile.SeismicFile.open("seismic.unknown", None)
 
 
 @pytest.mark.skipif(pyvds is None, reason="Requires pyvds")

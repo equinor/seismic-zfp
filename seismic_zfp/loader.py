@@ -22,17 +22,17 @@ class SgzLoader(object):
         self.unit_bytes = unit_bytes
         self.rate = rate
         self.n_workers = 1 if self.file.local else 20
+        self.oom_msgs = ['Out of memory.  We wish to hold the whole sky,  But we never will.',
+                         'The code was willing, It considered your request, But the chips were weak.',
+                         'To have no errors, Would be life without meaning. No struggle, no joy.']
 
         self.compressed_volume = None
         if preload:
             uncompressed_buf_size = self.compressed_data_diskblocks * DISK_BLOCK_BYTES * (32 / self.rate)
             if uncompressed_buf_size > virtual_memory().total:
-                msg = "Uncompressed volume is {}MB, machine memory is {}MB, try using 'preload=False'"
-                print(msg.format(uncompressed_buf_size//(1024*1024), virtual_memory().total//(1024*1024)))
-                msgs = ["Out of memory.  We wish to hold the whole sky,  But we never will.",
-                        "The code was willing, It considered your request, But the chips were weak.",
-                        "To have no errors, Would be life without meaning. No struggle, no joy."]
-                raise RuntimeError(random.choice(msgs))
+                print(f'Uncompressed volume is {uncompressed_buf_size//(1024*1024)}MB' \
+                      f'machine memory is {virtual_memory().total//(1024*1024)}MB, try using "preload=False"')
+                raise RuntimeError(random.choice(self.oom_msgs))
             self.load_compressed_volume()
 
     def load_compressed_volume(self):
