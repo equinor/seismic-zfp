@@ -10,6 +10,8 @@ import pytest
 from seismic_zfp.utils import generate_fake_seismic
 from seismic_zfp.seismicfile import SeismicFile
 import warnings
+from seismic_zfp.sgzconstants import DISK_BLOCK_BYTES
+from seismic_zfp.utils import int_to_bytes
 
 try:
     with warnings.catch_warnings():
@@ -228,6 +230,14 @@ def test_compress_headers(tmp_path):
                     assert sgz_file.get_header_detection_method_code() == HEADER_DETECTION_CODES[detection_method]
                     assert 0 == sgz_file.get_file_source_code()
 
+
+def test_compress_headers_errors(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small_test_headers_errors.sgz')
+    with pytest.raises(NotImplementedError):
+        with SegyConverter(SGY_FILE) as converter:
+            converter.run(out_sgz, bits_per_voxel=8, header_detection='fake-method')
+
+
 def test_compress_crop(tmp_path):
     out_sgz = os.path.join(str(tmp_path), 'small_test_data.sgz')
 
@@ -331,7 +341,7 @@ def test_compresss_non_existent_file(tmp_path):
         with SegyConverter('./non-existent-file.sgy') as converter:
             converter.run(out_sgz)
     with pytest.raises(FileNotFoundError):
-        with SegyConverter('./non-existent-file') as converter:
+        with SeismicFileConverter('./non-existent-file') as converter:
             converter.run(out_sgz)
 
 
@@ -354,6 +364,18 @@ def test_decompress_data(tmp_path):
     out_sgy = os.path.join(str(tmp_path), 'small_test_data.sgy')
 
     with SgzConverter(SGZ_FILE) as converter:
+        converter.convert_to_segy(out_sgy)
+
+    assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
+
+
+def test_decompress_data_erroneous_format(tmp_path):
+    out_sgy = os.path.join(str(tmp_path), 'small_test_data.sgy')
+
+    with SgzConverter(SGZ_FILE) as converter:
+        new_headerbytes = bytearray(converter.headerbytes)
+        new_headerbytes[DISK_BLOCK_BYTES + 3225: DISK_BLOCK_BYTES + 3227]= int_to_bytes(42)
+        converter.headerbytes = bytes(new_headerbytes)
         converter.convert_to_segy(out_sgy)
 
     assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)

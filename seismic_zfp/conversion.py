@@ -242,13 +242,16 @@ class SgzConverter(SgzReader):
         spec.sorting = 2
 
         # seimcic-zfp stores the binary header from the source SEG-Y file.
-        # In case someone forgot to do this, give them IEEE
+        # In case someone forgot to do this, give them IBM float
         data_sample_format_code = bytes_to_int(
             self.headerbytes[DISK_BLOCK_BYTES+3225: DISK_BLOCK_BYTES+3227])
         if data_sample_format_code in [1, 5]:
             spec.format = data_sample_format_code
         else:
-            spec.format = 5
+            new_headerbytes = bytearray(self.headerbytes)
+            new_headerbytes[DISK_BLOCK_BYTES + 3225: DISK_BLOCK_BYTES + 3227] = int_to_bytes(1)
+            self.headerbytes = bytes(new_headerbytes)
+            spec.format = 1
 
         with warnings.catch_warnings():
             # segyio will warn us that out padded cube is not contiguous. This is expected, and safe.
