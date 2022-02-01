@@ -52,8 +52,14 @@ class SgzReader(object):
     read_volume(min_il, max_il, min_xl, max_xl, min_z, max_z)
         Decompresses and returns full cube from SGZ file as 3D numpy array
 
-    get_trace(index)
-        Decompress and return a single trace from SGZ file as 1D numpy array
+    get_trace(index, min_sample_id=None, max_sample_id=None)
+        Decompress, optionally crop, and return a single trace from SGZ file as 1D numpy array
+
+    get_trace_by_coord(index, min_sample_no=None, max_sample_no=None)
+        Decompress, crop by coordinates, and return a single trace from SGZ file as 1D numpy array
+
+    get_tracefield_values(tracefield):
+        Efficiently provides all trace header values for a given trace header field
 
     gen_trace_header(index)
         Create and return dictionary of headerword-value pairs for specified trace
