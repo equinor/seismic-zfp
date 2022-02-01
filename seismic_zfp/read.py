@@ -434,7 +434,7 @@ class SgzReader(object):
             return np.squeeze(self.read_subvolume(0, self.n_ilines, 0, self.n_xlines, zslice_id, zslice_id + 1))
 
 
-    def read_correlated_diagonal(self, cd_id):
+    def read_correlated_diagonal(self, cd_id, min_cd_idx=None, max_cd_idx=None, min_sample_idx=None, max_sample_idx=None):
         """Reads one diagonal in the direction IL ~ XL
 
         Parameters
@@ -443,25 +443,56 @@ class SgzReader(object):
             - The ordinal number of the correlated diagonal in the file,
             - Range [ -max(XL), +max(IL) ]
 
+        min_cd_idx : int
+            - Start trace index, relative to start of full diagonal. Range as cd_id.
+
+        max_cd_idx : int
+            - Stop trace index, relative to start of full diagonal. Range as cd_id.
+
+        min_sample_idx : int
+            - Start sample index in trace
+
+        max_sample_idx : int
+            - Stop sample index in trace
+
         Returns
         -------
-        cd_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
+        cd_slice : numpy.ndarray of float32
+            - Shape (n_diagonal_traces OR max_cd_idx-min_cd_idx, n_samples OR max_sample_idx-min_sample_idx)
             The specified cd_slice, decompressed.
         """
         if not -self.n_xlines < cd_id < self.n_ilines:
             raise IndexError(self.range_error.format(cd_id, -self.n_xlines, self.n_ilines))
 
-        cd_len = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
-        cd = np.zeros((cd_len, self.n_samples))
-        if cd_id >= 0:
-            for d in range(cd_len):
-                cd[d, :] = self.get_trace((d + cd_id) * self.n_xlines + d)
+        max_cd_len = get_correlated_diagonal_length(cd_id, self.n_ilines, self.n_xlines)
+        if min_cd_idx is None or max_cd_idx is None:
+            cd_len = max_cd_len
+            min_cd_idx = 0
         else:
-            for d in range(cd_len):
-                cd[d, :] = self.get_trace(d * self.n_xlines+ d - cd_id)
+            if not 0 <= min_cd_idx < max_cd_len:
+                raise IndexError(self.range_error.format(min_cd_idx, 0, max_cd_len-1))
+            if not 0 < max_cd_idx <= max_cd_len:
+                raise IndexError(self.range_error.format(max_cd_idx, 1, max_cd_len))
+            cd_len = max_cd_idx - min_cd_idx
+
+        if min_sample_idx is None or max_sample_idx is None:
+            cd = np.zeros((cd_len, self.n_samples))
+        else:
+            cd = np.zeros((cd_len, max_sample_idx - min_sample_idx))
+
+        if cd_id >= 0:
+            for d in range(min_cd_idx, cd_len + min_cd_idx):
+                cd[d - min_cd_idx, :] = self.get_trace((d + cd_id) * self.n_xlines + d,
+                                                       min_sample_id=min_sample_idx,
+                                                       max_sample_id=max_sample_idx)
+        else:
+            for d in range(min_cd_idx, cd_len + min_cd_idx):
+                cd[d - min_cd_idx, :] = self.get_trace(d * self.n_xlines + d - cd_id,
+                                                       min_sample_id=min_sample_idx,
+                                                       max_sample_id=max_sample_idx)
         return cd
 
-    def read_anticorrelated_diagonal(self, ad_id):
+    def read_anticorrelated_diagonal(self, ad_id, min_ad_idx=None, max_ad_idx=None, min_sample_idx=None, max_sample_idx=None):
         """Reads one diagonal in the direction IL ~ -XL
 
         Parameters
@@ -470,23 +501,53 @@ class SgzReader(object):
             - The ordinal number of the correlated diagonal in the file,
             - Range [0, max(XL)+max(IL) )
 
+        min_ad_idx : int
+            - Start trace index, relative to start of full diagonal. Range as cd_id.
+
+        max_ad_idx : int
+            - Stop trace index, relative to start of full diagonal. Range as cd_id.
+
+        min_sample_idx : int
+            - Start sample index in trace
+
+        max_sample_idx : int
+            - Stop sample index in trace
+
         Returns
         -------
-        ad_slice : numpy.ndarray of float32, shape (n_diagonal_traces, n_samples)
+        ad_slice : numpy.ndarray of float32
+            - Shape (n_diagonal_traces OR max_ad_idx-min_ad_idx, n_samples OR max_sample_idx-min_sample_idx)
             The specified ad_slice, decompressed.
         """
         if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
             raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 2))
 
-        ad_len = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
-        ad = np.zeros((ad_len, self.n_samples))
-        if ad_id < self.n_xlines:
-            for d in range(ad_len):
-                ad[d, :] = self.get_trace(ad_id + d*(self.n_xlines - 1))
+        max_ad_len = get_anticorrelated_diagonal_length(ad_id, self.n_ilines, self.n_xlines)
+        if min_ad_idx is None or max_ad_idx is None:
+            ad_len = max_ad_len
+            min_ad_idx = 0
         else:
-            for d in range(ad_len):
-                ad[d, :] = self.get_trace((ad_id - self.n_xlines + 1 + d) * self.n_xlines
-                                                  + (self.n_xlines - d - 1))
+            if not 0 <= min_ad_idx < max_ad_len:
+                raise IndexError(self.range_error.format(min_ad_idx, 0, max_ad_len-1))
+            if not 0 < max_ad_idx <= max_ad_len:
+                raise IndexError(self.range_error.format(max_ad_idx, 1, max_ad_len))
+            ad_len = max_ad_idx - min_ad_idx
+
+        if min_sample_idx is None or max_sample_idx is None:
+            ad = np.zeros((ad_len, self.n_samples))
+        else:
+            ad = np.zeros((ad_len, max_sample_idx - min_sample_idx))
+
+        if ad_id < self.n_xlines:
+            for d in range(min_ad_idx, ad_len + min_ad_idx):
+                ad[d - min_ad_idx, :] = self.get_trace(ad_id + d * (self.n_xlines - 1),
+                                                       min_sample_id=min_sample_idx,
+                                                       max_sample_id=max_sample_idx)
+        else:
+            for d in range(min_ad_idx, ad_len + min_ad_idx):
+                ad[d - min_ad_idx, :] = self.get_trace((ad_id - self.n_xlines + 1 + d) * self.n_xlines + (self.n_xlines - d - 1),
+                                                       min_sample_id=min_sample_idx,
+                                                       max_sample_id=max_sample_idx)
         return ad
 
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
