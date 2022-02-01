@@ -104,6 +104,33 @@ def test_read_variant_headers_padding_mismatch():
         reader.read_variant_headers(include_padding=False)
 
 
+def compare_trace_coord(sgz_filename, sgy_filename, tolerance):
+    with segyio.open(sgy_filename) as sgyfile:
+        reader = SgzReader(sgz_filename)
+        for start, stop in [(20.0, 60.0), (4.0, 84.0), (None, 16.0), (32.0, None)]:
+            for i, trace_sgy in enumerate(sgyfile.trace):
+                trace_sgz = reader.get_trace_by_coord(i, start, stop)
+                sgy_start = np.where(sgyfile.samples == start)[0][0] if start is not None else None
+                sgy_stop = np.where(sgyfile.samples == stop)[0][0] if stop is not None else None
+                trace_sgy_compare = trace_sgy[sgy_start:sgy_stop]
+                assert np.allclose(trace_sgz, trace_sgy_compare, rtol=tolerance)
+
+
+def compare_trace_index(sgz_filename, sgy_filename, tolerance):
+    with segyio.open(sgy_filename) as sgyfile:
+        reader = SgzReader(sgz_filename)
+        for start, stop in [(5,15), (1, 21), (None, 4), (8, None)]:
+            for i, trace_sgy in enumerate(sgyfile.trace):
+                trace_sgz = reader.get_trace(i, start, stop)
+                assert np.allclose(trace_sgz, trace_sgy[start:stop], rtol=tolerance)
+
+def test_get_trace():
+    compare_trace_index(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
+    compare_trace_index(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
+    compare_trace_coord(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
+    compare_trace_coord(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
+
+
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:

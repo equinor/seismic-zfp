@@ -377,9 +377,9 @@ class SgzReader(object):
             return np.squeeze(self.read_subvolume(0, self.n_ilines, xl_id, xl_id + 1, 0, self.n_samples))
 
 
-    def get_zslice_index(self, zslice_no):
+    def get_zslice_index(self, zslice_no, include_stop=False):
         """Get zslice index from sample time/depth"""
-        return coord_to_index(zslice_no, self.zslices)
+        return coord_to_index(zslice_no, self.zslices, include_stop=include_stop)
 
     def read_zslice_coord(self, zslice_no):
         """Reads one zslice from SGZ file (time or depth, depending on file contents)
@@ -553,7 +553,32 @@ class SgzReader(object):
                                    0, self.n_xlines,
                                    0, self.n_samples)
 
-    def get_trace(self, index):
+    def get_trace_by_coord(self, index, min_sample_no=None, max_sample_no=None):
+        """Reads one zslice from SGZ file (time or depth, depending on file contents)
+
+        Parameters
+        ----------
+         index : int
+            The ordinal number of the trace in the file
+
+        min_sample_no : int
+            The sample time/depth of the beginning of the range for a cropped trace
+            Defaults to beginning of trace
+
+         max_sample_no : int
+            The sample time/depth of the end (exclusive) of the range for a cropped trace
+            Defaults to include end of trace
+
+        Returns
+        -------
+        trace : numpy.ndarray of float32, shape (n_samples) or (max_sample_id - min_sample_id)
+            A single trace, decompressed
+        """
+        min_sample_no = self.zslices[0] if min_sample_no is None else min_sample_no
+        max_sample_no = self.zslices[-1] + self.zslices[1] - self.zslices[0] if max_sample_no is None else max_sample_no
+        return self.get_trace(index, self.get_zslice_index(min_sample_no), self.get_zslice_index(max_sample_no, include_stop=True))
+
+    def get_trace(self, index, min_sample_id=None, max_sample_id=None):
         """Reads one trace from SGZ file
 
         Parameters
@@ -561,9 +586,17 @@ class SgzReader(object):
         index : int
             The ordinal number of the trace in the file
 
+        min_sample_id : int
+            The index of the beginning of the range for a cropped trace
+            Defaults to beginning of trace
+
+         max_sample_id : int
+            The index of the end (exclusive) of the range for a cropped trace
+            Defaults to include end of trace
+
         Returns
         -------
-        trace : numpy.ndarray of float32, shape (n_samples)
+        trace : numpy.ndarray of float32, shape (n_samples) or (max_sample_id - min_sample_id)
             A single trace, decompressed
         """
         if not self.structured:
@@ -578,16 +611,24 @@ class SgzReader(object):
         il, xl = index // self.n_xlines, index % self.n_xlines
         min_il = self.blockshape[0] * (il // self.blockshape[0])
         min_xl = self.blockshape[1] * (xl // self.blockshape[1])
-        chunk = self._read_containing_chunk_cached(min_il, min_xl)
-        trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
+        min_sample_id = 0 if min_sample_id is None else min_sample_id
+        max_sample_id = self.n_samples if max_sample_id is None else max_sample_id
+
+        min_z = self.blockshape[2] * (min_sample_id // self.blockshape[2])
+        max_z = self.blockshape[2] * ((max_sample_id + self.blockshape[2] - 1) // self.blockshape[2])
+
+        chunk = self._read_containing_chunk_cached(min_il, min_xl, min_z, max_z)
+        trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], min_sample_id-min_z:max_sample_id-min_z]
         return np.squeeze(trace)
 
-    def _read_containing_chunk(self, ref_il, ref_xl):
+    def _read_containing_chunk(self, ref_il, ref_xl, min_z, max_z):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0
+        assert min_z % self.blockshape[2] == 0
+        assert max_z % self.blockshape[2] == 0
         return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
                                    ref_xl, ref_xl + self.blockshape[1],
-                                   0, self.n_samples, access_padding=True)
+                                   min_z, max_z, access_padding=True)
 
 
     def get_unstructured_mask(self):
