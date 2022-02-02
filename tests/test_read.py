@@ -4,6 +4,10 @@ from seismic_zfp.read import *
 from seismic_zfp.utils import get_correlated_diagonal_length, get_anticorrelated_diagonal_length, InferredGeometry
 import itertools
 
+import mock
+import psutil
+
+
 SGZ_FILE_025 = 'test_data/small_025bit.sgz'
 SGZ_FILE_05 = 'test_data/small_05bit.sgz'
 SGZ_FILE_1 = 'test_data/small_1bit.sgz'
@@ -343,6 +347,13 @@ def test_filetype_error():
 def test_filenotfound_errors():
     with pytest.raises(FileNotFoundError):
         SgzReader('test_data/this_file_does_not_exist')
+
+
+@mock.patch('psutil.virtual_memory')
+def test_oom_error(mocked_virtual_memory):
+    psutil.virtual_memory().total = 1024
+    with pytest.raises(RuntimeError):
+        SgzReader(SGZ_FILE_8, preload=True)
 
 
 def test_hw_info_repr():

@@ -13,6 +13,9 @@ import warnings
 from seismic_zfp.sgzconstants import DISK_BLOCK_BYTES
 from seismic_zfp.utils import int_to_bytes
 
+import mock
+import psutil
+
 try:
     with warnings.catch_warnings():
         # pyzgy will warn us that sdglue is not available. This is expected, and safe for our purposes.
@@ -73,6 +76,15 @@ def test_compress_sgz_file_errors(tmp_path):
         out_sgz = os.path.join(str(tmp_path), 'test_compress_sgz_file_errors.sgz')
         with SeismicFileConverter(SGZ_FILE) as converter:
             converter.run(out_sgz, bits_per_voxel=8)
+
+
+@mock.patch('psutil.virtual_memory')
+def test_compress_oom_error(mocked_virtual_memory, tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'oom.sgz')
+    psutil.virtual_memory().total = 1024
+    with pytest.raises(RuntimeError):
+        with SeismicFileConverter(SGY_FILE) as converter:
+            converter.run(out_sgz)
 
 
 def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
