@@ -267,9 +267,9 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
         else:
             minimal_il_reader = MinimalInlineReader(seismicfile)
             if minimal_il_reader.self_test() and n_ilines == len(seismicfile.ilines) and n_xlines == len(seismicfile.xlines):
-                print("MinimalInlineReader passed self-test")
+                pass
             else:
-                print("MinimalInlineReader failed self-test, using fallback")
+                warnings.warn("MinimalInlineReader failed self-test, using fallback", UserWarning)
 
     # Loop over groups of 4 inlines
     n_plane_sets = padded_shape[0] // blockshape[0]
