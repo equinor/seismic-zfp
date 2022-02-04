@@ -37,6 +37,7 @@ SGY_FILE_US = 'test_data/small_us.sgy'
 SGY_FILE = 'test_data/small.sgy'
 SGY_FILE_NEGATIVE_SAMPLES = 'test_data/small-negative-samples.sgy'
 SGY_FILE_TRACEHEADER_SAMPLERATE = 'test_data/small-traceheader-samplerate.sgy'
+SGY_FILE_DUPLICATE_TRACEHEADERS = 'test_data/small-duplicate-traceheaders.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
 SGZ_FILE_2 = 'test_data/small_2bit.sgz'
 
@@ -225,22 +226,27 @@ def test_compress_data(tmp_path):
     compress_and_compare_data(SGY_FILE, tmp_path, 8, 1e-10, blockshape=(16, 16, 16))
 
 
-def test_compress_headers(tmp_path):
+def compress_compare_headers(sgy_file, tmp_path):
     for detection_method in ['heuristic', 'thorough', 'exhaustive', 'strip']:
-        out_sgz = os.path.join(str(tmp_path), 'small_test_headers-{}.sgz'.format(detection_method))
+        out_sgz = os.path.join(str(tmp_path), f'{os.path.basename(sgy_file)}_test_headers-{detection_method}.sgz')
 
-        with SegyConverter(SGY_FILE) as converter:
+        with SegyConverter(sgy_file) as converter:
             converter.run(out_sgz, bits_per_voxel=8, header_detection=detection_method)
 
         with seismic_zfp.open(out_sgz) as sgz_file:
-            with segyio.open(SGY_FILE) as sgy_file:
-                for sgz_header, sgy_header in zip(sgz_file.header, sgy_file.header):
+            with segyio.open(sgy_file) as f:
+                for sgz_header, sgy_header in zip(sgz_file.header, f.header):
                     if detection_method == 'strip':
                         assert all([0 == value for value in sgz_header.values()])
                     else:
                         assert sgz_header == sgy_header
                     assert sgz_file.get_header_detection_method_code() == HEADER_DETECTION_CODES[detection_method]
                     assert 0 == sgz_file.get_file_source_code()
+
+
+def test_compress_headers(tmp_path):
+    compress_compare_headers(SGY_FILE, tmp_path)
+    compress_compare_headers(SGY_FILE_DUPLICATE_TRACEHEADERS, tmp_path)
 
 
 def test_compress_headers_errors(tmp_path):
