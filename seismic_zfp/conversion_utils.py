@@ -118,11 +118,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
-    if geom is None:
-        header_entry_length_bytes = (len(xlines) * len(ilines) * 32) // 8
-    else:
-        header_entry_length_bytes = (len(geom.xlines) * len(geom.ilines) * 32) // 8
-    buffer[60:64] = int_to_bytes(header_entry_length_bytes)
+    buffer[60:64] = int_to_bytes((len(geom.xlines) * len(geom.ilines) * 32) // 8)
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     buffer[64:68] = int_to_bytes(hw_info.get_header_array_count())
