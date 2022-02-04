@@ -21,3 +21,12 @@ def test_minimal_inline_reader_defaults(tmp_path):
         with pytest.warns(UserWarning):
             with SegyConverter(SGY_FILE) as converter:
                 converter.run(out_sgz, reduce_iops=True)
+
+
+def test_minimal_inline_reader_wrong_format(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'test_minimal_il_reader_wrong_format.sgz')
+    with mock.patch('seismic_zfp.conversion_utils.MinimalInlineReader.get_format_code') as mocked_self_test_format_code:
+        mocked_self_test_format_code.return_value = 2
+        with pytest.raises(RuntimeError):
+            with SegyConverter(SGY_FILE) as converter:
+                converter.run(out_sgz, reduce_iops=True)

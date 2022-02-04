@@ -152,7 +152,9 @@ class MinimalInlineReader:
         self.n_il = len(segyfile.ilines)
         self.n_xl = len(segyfile.xlines)
         self.n_samp = len(segyfile.samples)
-        self.format = segyfile.bin[segyio.BinField.Format]
+
+    def get_format_code(self):
+        return self.segyfile.bin[segyio.BinField.Format]
 
     def self_test(self):
         headers, array = self.read_line(0)
@@ -168,9 +170,9 @@ class MinimalInlineReader:
         headers = [Field(buf[h*(SEGY_TRACE_HEADER_BYTES+self.n_samp*4):
                              h*(SEGY_TRACE_HEADER_BYTES+self.n_samp*4) + SEGY_TRACE_HEADER_BYTES], kind='trace')
                    for h in range(self.n_xl)]
-        if self.format == 1:
+        if self.get_format_code() == 1:
             return headers, segyio.tools.native(array)
-        elif self.format == 5:
+        elif self.get_format_code() == 5:
             return headers, array
         else:
             print("SEGY format code not in [1, 5]")
