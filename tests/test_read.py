@@ -104,6 +104,33 @@ def test_read_variant_headers_padding_mismatch():
         reader.read_variant_headers(include_padding=False)
 
 
+def compare_trace_coord(sgz_filename, sgy_filename, tolerance):
+    with segyio.open(sgy_filename) as sgyfile:
+        reader = SgzReader(sgz_filename)
+        for start, stop in [(20.0, 60.0), (4.0, 84.0), (None, 16.0), (32.0, None)]:
+            for i, trace_sgy in enumerate(sgyfile.trace):
+                trace_sgz = reader.get_trace_by_coord(i, start, stop)
+                sgy_start = np.where(sgyfile.samples == start)[0][0] if start is not None else None
+                sgy_stop = np.where(sgyfile.samples == stop)[0][0] if stop is not None else None
+                trace_sgy_compare = trace_sgy[sgy_start:sgy_stop]
+                assert np.allclose(trace_sgz, trace_sgy_compare, rtol=tolerance)
+
+
+def compare_trace_index(sgz_filename, sgy_filename, tolerance):
+    with segyio.open(sgy_filename) as sgyfile:
+        reader = SgzReader(sgz_filename)
+        for start, stop in [(5,15), (1, 21), (None, 4), (8, None)]:
+            for i, trace_sgy in enumerate(sgyfile.trace):
+                trace_sgz = reader.get_trace(i, start, stop)
+                assert np.allclose(trace_sgz, trace_sgy[start:stop], rtol=tolerance)
+
+def test_get_trace():
+    compare_trace_index(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
+    compare_trace_index(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
+    compare_trace_coord(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
+    compare_trace_coord(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
+
+
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:
@@ -212,6 +239,41 @@ def test_read_zslice():
     compare_zslice_coord(SGZ_FILE_8, tolerance=1e-10)
 
 
+def compare_correlated_diagonal_cropped(sgz_filename, min_cd_idx, max_cd_idx, min_trace_idx, max_trace_idx):
+    reader = SgzReader(sgz_filename)
+    for line_number in [-1, 0, 1]:
+
+        slice_sgz = reader.read_correlated_diagonal(line_number)[min_cd_idx:max_cd_idx, min_trace_idx:max_trace_idx]
+        slice_sgz_crop = reader.read_correlated_diagonal(line_number,
+                                                         min_cd_idx=min_cd_idx, max_cd_idx=max_cd_idx,
+                                                         min_sample_idx=min_trace_idx, max_sample_idx=max_trace_idx)
+        assert np.array_equal(slice_sgz, slice_sgz_crop)
+
+
+def test_read_correlated_diagonal_cropped():
+    compare_correlated_diagonal_cropped(SGZ_FILE_8, 1, 3, 5, 48)
+    compare_correlated_diagonal_cropped(SGZ_FILE_8_8x8, 0, 2, None, None)
+    compare_correlated_diagonal_cropped(SGZ_FILE_2_64x64, 1, 3, 7, 40)
+
+
+def compare_anticorrelated_diagonal_cropped(sgz_filename, min_ad_idx, max_ad_idx, min_trace_idx, max_trace_idx):
+    reader = SgzReader(sgz_filename)
+    for line_number in [3, 4, 5]:
+
+        slice_sgz = reader.read_anticorrelated_diagonal(line_number)[min_ad_idx:max_ad_idx, min_trace_idx:max_trace_idx]
+        slice_sgz_crop = reader.read_anticorrelated_diagonal(line_number,
+                                                             min_ad_idx=min_ad_idx, max_ad_idx=max_ad_idx,
+                                                             min_sample_idx=min_trace_idx, max_sample_idx=max_trace_idx)
+        assert np.array_equal(slice_sgz, slice_sgz_crop)
+
+
+def test_read_anticorrelated_diagonal_cropped():
+    compare_anticorrelated_diagonal_cropped(SGZ_FILE_8, 1, 3, 5, 48)
+    compare_anticorrelated_diagonal_cropped(SGZ_FILE_8_8x8, 0, 2, None, None)
+    compare_anticorrelated_diagonal_cropped(SGZ_FILE_2_64x64, 1, 3, 7, 40)
+
+
+
 def compare_correlated_diagonal(sgz_filename, sgy_filename):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:
@@ -308,10 +370,22 @@ def test_index_errors():
         reader.read_correlated_diagonal(5)
 
     with pytest.raises(IndexError):
+        reader.read_correlated_diagonal(1, min_cd_idx=1, max_cd_idx=9)
+
+    with pytest.raises(IndexError):
+        reader.read_correlated_diagonal(4, min_cd_idx=-1, max_cd_idx=2)
+
+    with pytest.raises(IndexError):
         reader.read_anticorrelated_diagonal(-1)
 
     with pytest.raises(IndexError):
         reader.read_anticorrelated_diagonal(9)
+
+    with pytest.raises(IndexError):
+        reader.read_anticorrelated_diagonal(4, min_ad_idx=1, max_ad_idx=9)
+
+    with pytest.raises(IndexError):
+        reader.read_anticorrelated_diagonal(5, min_ad_idx=-1, max_ad_idx=2)
 
     with pytest.raises(IndexError):
         reader.read_subvolume(0, 10, 0, 1, 0, 10)
