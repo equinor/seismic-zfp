@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 import segyio
 import time
-from psutil import virtual_memory
+import psutil
 
 from .utils import pad, define_blockshape, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry
 from .headers import HeaderwordInfo
@@ -42,6 +42,7 @@ class SeismicFileConverter(object):
         if all([min_il, max_il, min_xl, max_xl]):
             self.geom = Geometry(min_il, max_il, min_xl, max_xl)
         self.filetype = self.set_filetype()
+        self.mem_limit = psutil.virtual_memory().total
 
     def __enter__(self):
         return self
@@ -96,19 +97,19 @@ class SeismicFileConverter(object):
                     # Pad to 512-bytes for page blobs
                     f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
 
-    @staticmethod
-    def check_memory(inline_set_bytes):
+
+    def check_memory(self, inline_set_bytes):
         """Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory,
         check this before doing anything inelegant.
         """
-        if inline_set_bytes > virtual_memory().total // 2:
+        if inline_set_bytes > self.mem_limit // 2:
             print(f'One inline set is {inline_set_bytes} bytes,' \
-                  f'machine memory is {virtual_memory().total} bytes \n' \
+                  f'machine memory is {self.mem_limit} bytes \n' \
                   f'Try using fewer inlines in the blockshape, or compressing a subcube')
             raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
 
-        max_queue_length = min(16, (virtual_memory().total // 2) // inline_set_bytes)
-        print(f'VirtualMemory={virtual_memory().total / (1024 * 1024)}MB, ' \
+        max_queue_length = min(16, (self.mem_limit // 2) // inline_set_bytes)
+        print(f'VirtualMemory={self.mem_limit / (1024 * 1024)}MB, ' \
               f'InlineSet={inline_set_bytes / (1024 * 1024)}MB : Using queue of length {max_queue_length}')
 
         return max_queue_length

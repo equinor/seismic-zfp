@@ -22,7 +22,7 @@ jobs:
 before_install:
   - python --version
   - pip install -U pip
-  - pip install -U pytest
+  - pip install -U pytest mock
 
 install:
   # Enable setuptools to access git commit hash in order to point PyPI link to correct version's docs.

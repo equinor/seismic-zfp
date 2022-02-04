@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run:  |
           pip install -r requirements.txt
-          pip install coverage pytest-cov
+          pip install pytest mock coverage pytest-cov
           pip install ".[vds,zgy,xr]"
       - name: Run tests and collect coverage
         run: |

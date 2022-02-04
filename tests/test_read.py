@@ -1,8 +1,13 @@
 import numpy as np
 import pytest
+import seismic_zfp
 from seismic_zfp.read import *
-from seismic_zfp.utils import get_correlated_diagonal_length, get_anticorrelated_diagonal_length, InferredGeometry
+from seismic_zfp import utils
 import itertools
+
+import mock
+import psutil
+
 
 SGZ_FILE_025 = 'test_data/small_025bit.sgz'
 SGZ_FILE_05 = 'test_data/small_05bit.sgz'
@@ -139,6 +144,7 @@ def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
                 slice_sgz = reader.read_inline(line_number)
                 slice_segy = segyfile.iline[segyfile.ilines[line_number]]
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert reader.local == True
 
 
 def compare_inline_number(sgz_filename, sgy_filename, line_coords, tolerance):
@@ -149,12 +155,13 @@ def compare_inline_number(sgz_filename, sgy_filename, line_coords, tolerance):
                 slice_sgz = reader.read_inline_number(line_number)
                 slice_segy = segyfile.iline[line_number]
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert reader.local == True
 
 
 def compare_inline_unstructured(sgz_filename, sgy_filename, tolerance):
     reader = SgzReader(sgz_filename)
     with segyio.open(sgy_filename, ignore_geometry=True) as segyfile:
-        geom = InferredGeometry({(h[189], h[193]): i for i, h in enumerate(segyfile.header)})
+        geom = utils.InferredGeometry({(h[189], h[193]): i for i, h in enumerate(segyfile.header)})
         for line_number in geom.ilines:
             slice_sgz = reader.read_inline_number(line_number)
             slice_segy = np.zeros((len(geom.xlines), len(segyfile.samples)))
@@ -162,6 +169,7 @@ def compare_inline_unstructured(sgz_filename, sgy_filename, tolerance):
                 if header[189] == line_number:
                     slice_segy[header[193] - geom.min_xl, :] = trace
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert reader.local == True
 
 
 def test_read_inline():
@@ -185,6 +193,7 @@ def compare_crossline(sgz_filename, sgy_filename, lines, tolerance):
                 slice_sgz = reader.read_crossline(line_number)
                 slice_segy = segyfile.xline[segyfile.xlines[line_number]]
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert reader.local == True
 
 
 def compare_crossline_number(sgz_filename, sgy_filename, line_coords, tolerance):
@@ -195,6 +204,7 @@ def compare_crossline_number(sgz_filename, sgy_filename, line_coords, tolerance)
                 slice_sgz = reader.read_crossline_number(line_number)
                 slice_segy = segyfile.xline[line_number]
             assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+            assert reader.local == True
 
 
 def test_read_crossline():
@@ -217,6 +227,7 @@ def compare_zslice(sgz_filename, tolerance):
                 slice_sgz = reader.read_zslice(line_number)
                 slice_segy = segyfile.depth_slice[line_number]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+                assert reader.local == True
 
 def compare_zslice_coord(sgz_filename, tolerance):
     with segyio.open(SGY_FILE) as segyfile:
@@ -226,6 +237,7 @@ def compare_zslice_coord(sgz_filename, tolerance):
                 slice_sgz = reader.read_zslice_coord(slice_coord)
                 slice_segy = segyfile.depth_slice[slice_index]
                 assert np.allclose(slice_sgz, slice_segy, rtol=tolerance)
+                assert reader.local == True
 
 def test_read_zslice():
     compare_zslice(SGZ_FILE_025, tolerance=1e+1)
@@ -280,7 +292,7 @@ def compare_correlated_diagonal(sgz_filename, sgy_filename):
             reader = SgzReader(sgz_filename, preload=preload)
             for line_number in range(-reader.n_xlines+1, reader.n_ilines - 1):
                 slice_sgz = reader.read_correlated_diagonal(line_number)
-                diagonal_length = get_correlated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
+                diagonal_length = utils.get_correlated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
                 slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
                 if line_number >= 0:
                     for d in range(diagonal_length):
@@ -302,7 +314,7 @@ def compare_anticorrelated_diagonal(sgz_filename, sgy_filename):
             reader = SgzReader(sgz_filename, preload=preload)
             for line_number in range(reader.n_ilines + reader.n_xlines - 1):
                 slice_sgz = reader.read_anticorrelated_diagonal(line_number)
-                diagonal_length = get_anticorrelated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
+                diagonal_length = utils.get_anticorrelated_diagonal_length(line_number, len(segyfile.ilines), len(segyfile.xlines))
                 slice_segy = np.zeros((diagonal_length, len(segyfile.samples)))
                 if line_number < len(segyfile.xlines):
                     for d in range(diagonal_length):
@@ -417,6 +429,13 @@ def test_filetype_error():
 def test_filenotfound_errors():
     with pytest.raises(FileNotFoundError):
         SgzReader('test_data/this_file_does_not_exist')
+
+
+@mock.patch('psutil.virtual_memory')
+def test_oom_error(mocked_virtual_memory):
+    psutil.virtual_memory().total = 1024
+    with pytest.raises(RuntimeError):
+        SgzReader(SGZ_FILE_8, preload=True)
 
 
 def test_hw_info_repr():
