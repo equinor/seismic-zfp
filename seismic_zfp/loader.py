@@ -10,8 +10,9 @@ from .sgzconstants import DISK_BLOCK_BYTES
 
 class SgzLoader(object):
     def __init__(self, file, data_start_bytes, compressed_data_diskblocks, shape_pad, blockshape,
-                 chunk_bytes, block_bytes, unit_bytes, rate, preload=False):
+                 chunk_bytes, block_bytes, unit_bytes, rate, local, preload=False):
         self.file = file
+        self.local = local
         self.data_start_bytes = data_start_bytes
         self.compressed_data_diskblocks = compressed_data_diskblocks
         self.shape_pad = shape_pad
@@ -21,7 +22,7 @@ class SgzLoader(object):
         self.block_bytes = block_bytes
         self.unit_bytes = unit_bytes
         self.rate = rate
-        self.n_workers = 1 if self.file.local else 20
+        self.n_workers = 1 if self.local else 20
         self.oom_msgs = ['Out of memory.  We wish to hold the whole sky,  But we never will.',
                          'The code was willing, It considered your request, But the chips were weak.',
                          'To have no errors, Would be life without meaning. No struggle, no joy.']

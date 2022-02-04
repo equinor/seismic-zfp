@@ -10,8 +10,8 @@ from .loader import SgzLoader
 from .version import SeismicZfpVersion
 from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
                     coord_to_index, gen_coord_list, FileOffset,
-                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length,
-                    read_range_file, read_range_blob)
+                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
+import seismic_zfp
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 from .headers import HeaderwordInfo
 
@@ -88,18 +88,20 @@ class SgzReader(object):
         """
 
         # Class may be instantiated with either a file path, filehandle, URL or blobclient
-        if hasattr(file, 'read'):
+        if hasattr(file, 'download_blob'):
+            # We have a blobclient
+            self._filename = file.blob_name
+            self.file = file
+            self.file.read_range = seismic_zfp.utils.read_range_blob
+            self.local = False
+        elif hasattr(file, 'read'):
             # We have a filehandle
             self._filename = file.name
             self.file = file
             # You have a file handle, go to the start!
             self.file.seek(0)
-            self.file.read_range = read_range_file
-        elif hasattr(file, 'download_blob'):
-            # We have a blobclient
-            self._filename = file.blob_name
-            self.file = file
-            self.file.read_range = read_range_blob
+            self.file.read_range = seismic_zfp.utils.read_range_file
+            self.local = True
         else:
             if isinstance(file, tuple):
                 # We have a URL
@@ -107,14 +109,14 @@ class SgzReader(object):
                     raise ImportError("File type requires azure-storage-blob. Install optional dependency seismic-zfp[azure] with pip.")
                 blob_service_client = BlobServiceClient(account_url=file[0])
                 self.file = blob_service_client.get_blob_client(container=file[1], blob=file[2])
-                self.file.read_range = read_range_blob
-                self.file.local = False
+                self.file.read_range = seismic_zfp.utils.read_range_blob
+                self.local = False
             else:
                 # We have a file path
                 self._filename = file
                 self.file = self.open_sgz_file()
-                self.file.read_range = read_range_file
-                self.file.local = True
+                self.file.read_range = seismic_zfp.utils.read_range_file
+                self.local = True
 
 
         self.headerbytes = self.file.read_range(self.file, 0, DISK_BLOCK_BYTES)
@@ -185,8 +187,9 @@ class SgzReader(object):
         self.range_error = "Index {} is out of range [{}, {}]. Try using slice ordinals instead of numbers?"
 
         # Split out responsibility for I/O and decompression
-        self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
-                               self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
+        self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks,
+                                self.shape_pad, self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes,
+                                self.rate, self.local, preload)
 
         # Using default cache of 2048 chunks implies:
         #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
