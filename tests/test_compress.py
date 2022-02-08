@@ -215,7 +215,9 @@ def compress_and_compare_2d_data(sgy_file, tmp_path, bits_per_voxel, rtol):
 
 
 def test_compress_2d_data(tmp_path):
-    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 8, 1.e-8)
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 4, 2.e-2)
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 8, 1.e-3)
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5)
 
 
 def test_compress_headers(tmp_path):

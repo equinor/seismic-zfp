@@ -6,7 +6,7 @@ import numpy as np
 import segyio
 from segyio import _segyio
 
-from .loader import SgzLoader
+from .loader import SgzLoader2d, SgzLoader3d
 from .version import SeismicZfpVersion
 from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
                     coord_to_index, gen_coord_list, FileOffset,
@@ -129,7 +129,20 @@ class SgzReader(object):
         # Read useful info out of the SGZ header
         self.file_version = self.get_file_version()
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self._parse_dimensions()
-        self.zslices, self.xlines, self.ilines = self._parse_coordinates()
+
+        self.is_2d = self.blockshape[2] == 0
+        self.is_3d = not self.is_2d
+
+        if self.is_3d:
+            self.zslices, self.xlines, self.ilines = self._parse_coordinates()
+        else:
+            # 2d file is certainly > v0.1.6
+            sample_rate_ms = bytes_to_int(self.headerbytes[28:32]) / 1000
+            self.zslices = gen_coord_list(bytes_to_signed_int(self.headerbytes[16:20]),
+                                          sample_rate_ms,
+                                          bytes_to_int(self.headerbytes[4:8])).astype('float')
+
+
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
@@ -149,33 +162,45 @@ class SgzReader(object):
                                                    DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES]
 
         # Blockshape for original files
-        if self.blockshape[0] == 0 or self.blockshape[1] == 0 or self.blockshape[2] == 0:
+        if (self.blockshape[0] == 0 or self.blockshape[1] == 0) and self.blockshape[2] == 0:
             self.blockshape = (4, 4, 2048//self.rate)
 
-        self.shape_pad = (pad(self.n_ilines, self.blockshape[0]),
-                          pad(self.n_xlines, self.blockshape[1]),
-                          pad(self.n_samples, self.blockshape[2]))
+        if self.is_2d:
+            self.shape_pad = (pad(self.tracecount, self.blockshape[0]),
+                              pad(self.n_samples, self.blockshape[1]))
+        elif self.is_3d:
+            self.shape_pad = (pad(self.n_ilines, self.blockshape[0]),
+                              pad(self.n_xlines, self.blockshape[1]),
+                              pad(self.n_samples, self.blockshape[2]))
 
         # These are useful units of measurement for SGZ files:
 
         # A 'compression unit' is the smallest decompressable piece of the SGZ file.
         # It is always 4-samples x 4-xlines x 4-ilines in physical dimensions, but its size
         # on disk will vary according to compression ratio.
-        self.unit_bytes = int((4*4*4) * self.rate) // 8
+        if self.is_2d:
+            self.unit_bytes = int((4*4) * self.rate) // 8
+        else:
+            self.unit_bytes = int((4*4*4) * self.rate) // 8
 
         # A 'block' is a group of 'compression units' equal in size to a hardware disk block.
         # The 'compression units' may be arranged in any cuboid which matches the size of a disk block.
         # At the time of coding, standard commodity hardware uses 4kB disk blocks so check that
         # file has been written in using this convention.
-        self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+        if self.is_2d:
+            self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.rate) // 8
+        else:
+            self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
 
         assert self.block_bytes % self.unit_bytes == 0
-        assert self.block_bytes == DISK_BLOCK_BYTES, "self.block_bytes={}, should be {}".format(self.block_bytes,
-                                                                                                DISK_BLOCK_BYTES)
+        assert self.block_bytes == DISK_BLOCK_BYTES, f"block_bytes={self.block_bytes}, should be {DISK_BLOCK_BYTES}"
 
         # A 'chunk' is a group of one or more 'blocks' which span a complete set of traces.
         # This will follow the xline and iline shape of a 'block'
-        self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
+        if self.is_2d:
+            self.chunk_bytes = self.block_bytes * (self.shape_pad[1] // self.blockshape[1])
+        else:
+            self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
         assert self.chunk_bytes % self.block_bytes == 0
 
         # Placeholder. Don't read these if you're not going to use them
@@ -185,8 +210,12 @@ class SgzReader(object):
         self.range_error = "Index {} is out of range [{}, {}]. Try using slice ordinals instead of numbers?"
 
         # Split out responsibility for I/O and decompression
-        self.loader = SgzLoader(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
-                               self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
+        if self.blockshape[2] == 0:
+            self.loader = SgzLoader2d(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
+                                      self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
+        else:
+            self.loader = SgzLoader3d(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
+                                      self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, preload)
 
         # Using default cache of 2048 chunks implies:
         #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
@@ -199,20 +228,31 @@ class SgzReader(object):
             chunk_cache_size = get_chunk_cache_size(self.shape_pad[0] // self.blockshape[0],
                                                     self.shape_pad[1] // self.blockshape[1])
         self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
-        self.structured = (self.tracecount == self.n_ilines * self.n_xlines)
+        if self.is_2d:
+            self.structured = False
+        else:
+            self.structured = (self.tracecount == self.n_ilines * self.n_xlines)
+
         self.mask = None
 
     def __repr__(self):
         return f'SgzReader({self._filename})'
 
     def __str__(self):
-        return f'seismic-zfp file {self._filename}, {self.file_version}:\n' \
-               f'  compression ratio: {int(32/self.rate)}:1\n' \
-               f'  inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
-               f'  crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
-               f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
-               f'  traces: {self.tracecount}\n' \
-               f'  Header arrays: {self.stored_header_keys}'
+        if self.is_3d:
+            return f'seismic-zfp 3d file {self._filename}, {self.file_version}:\n' \
+                   f'  compression ratio: {int(32/self.rate)}:1\n' \
+                   f'  inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
+                   f'  crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
+                   f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
+                   f'  traces: {self.tracecount}\n' \
+                   f'  Header arrays: {self.stored_header_keys}'
+        else:
+            return f'seismic-zfp 2d file {self._filename}, {self.file_version}:\n' \
+                   f'  compression ratio: {int(32/self.rate)}:1\n' \
+                   f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
+                   f'  traces: {self.tracecount}\n' \
+                   f'  Header arrays: {self.stored_header_keys}'
 
     def __enter__(self):
         return self
@@ -566,21 +606,28 @@ class SgzReader(object):
         trace : numpy.ndarray of float32, shape (n_samples)
             A single trace, decompressed
         """
-        if not self.structured:
-            self.get_unstructured_mask()
-            index = np.arange(self.mask.shape[0])[self.mask != 0][index]
+        if self.is_2d:
+            min_trace = self.blockshape[0] * (index // self.blockshape[0])
+            chunk = self.loader.read_and_decompress_trace_range(min_trace, min_trace+self.blockshape[0])
+            trace = chunk[index % self.blockshape[0], 0:self.n_samples]
+            return np.squeeze(trace)
 
-        if not 0 <= index < self.n_ilines * self.n_xlines:
-            if platform.system() == 'Windows':
-                print('Yesterday it worked, Today it is not working, Windows is like that')
-            raise IndexError(self.range_error.format(index, 0, self.tracecount))
+        else:
+            if not self.structured:
+                self.get_unstructured_mask()
+                index = np.arange(self.mask.shape[0])[self.mask != 0][index]
 
-        il, xl = index // self.n_xlines, index % self.n_xlines
-        min_il = self.blockshape[0] * (il // self.blockshape[0])
-        min_xl = self.blockshape[1] * (xl // self.blockshape[1])
-        chunk = self._read_containing_chunk_cached(min_il, min_xl)
-        trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
-        return np.squeeze(trace)
+            if not 0 <= index < self.n_ilines * self.n_xlines:
+                if platform.system() == 'Windows':
+                    print('Yesterday it worked, Today it is not working, Windows is like that')
+                raise IndexError(self.range_error.format(index, 0, self.tracecount))
+
+            il, xl = index // self.n_xlines, index % self.n_xlines
+            min_il = self.blockshape[0] * (il // self.blockshape[0])
+            min_xl = self.blockshape[1] * (xl // self.blockshape[1])
+            chunk = self._read_containing_chunk_cached(min_il, min_xl)
+            trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], :]
+            return np.squeeze(trace)
 
     def _read_containing_chunk(self, ref_il, ref_xl):
         assert ref_il % self.blockshape[0] == 0
@@ -678,7 +725,7 @@ class SgzReader(object):
         header : dict
             A single header as a dictionary of headerword-value pairs
         """
-        if not 0 <= index < self.n_ilines * self.n_xlines:
+        if self.is_3d and not 0 <= index < self.n_ilines * self.n_xlines:
             raise IndexError(self.range_error.format(index, 0, self.tracecount))
 
         header = self.segy_traceheader_template.copy()

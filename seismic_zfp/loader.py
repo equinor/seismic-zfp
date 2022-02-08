@@ -41,6 +41,30 @@ class SgzLoader(object):
         else:
             pass
 
+    def _get_compressed_bytes(self, offset, length_bytes):
+        if self.compressed_volume is not None:
+            return self.compressed_volume[offset:offset+length_bytes]
+        else:
+            return self.file.read_range(self.file, self.data_start_bytes + offset, length_bytes)
+
+    def _decompress(self, buffer, shape):
+        return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, rate=self.rate)
+
+
+class SgzLoader2d(SgzLoader):
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_trace_range(self, min_id, max_id):
+        block_offset = self.chunk_bytes * (min_id // self.blockshape[0])
+        buffer = self._get_compressed_bytes(block_offset, self.chunk_bytes * ((max_id + self.blockshape[0] - 1) // self.blockshape[0]))
+        return self._decompress(buffer, (self.blockshape[0], self.shape_pad[1]))
+
+    def clear_cache(self):
+        self.read_and_decompress_trace_range.cache_clear()
+
+
+class SgzLoader3d(SgzLoader):
+
     def _insert_into_buffer(self, buffer, buffer_start, data_offset, length):
         part = self._get_compressed_bytes(data_offset, length)
         buffer[buffer_start : buffer_start + length] = part
@@ -66,15 +90,6 @@ class SgzLoader(object):
                                 (self.shape_pad[1] * 4 * 4 * self.rate) // 8)
             buffer[buf_start:buf_start + sub_block_size_bytes] = \
                 temp_buf[sub_block_num * sub_block_size_bytes:(sub_block_num + 1) * sub_block_size_bytes]
-
-    def _get_compressed_bytes(self, offset, length_bytes):
-        if self.compressed_volume is not None:
-            return self.compressed_volume[offset:offset+length_bytes]
-        else:
-            return self.file.read_range(self.file, self.data_start_bytes + offset, length_bytes)
-
-    def _decompress(self, buffer, shape):
-        return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, rate=self.rate)
 
     def clear_cache(self):
         self.read_and_decompress_il_set.cache_clear()

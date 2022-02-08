@@ -356,5 +356,5 @@ def test_repr():
     with SgzReader(SGZ_FILE_4) as reader:
         representation = reader.__repr__()
         as_string = reader.__str__()
-    assert as_string == 'seismic-zfp file test_data/small_4bit.sgz, Version(0.0.0.dev):\n  compression ratio: 8:1\n  inlines: 5 [1, 5]\n  crosslines: 5 [20, 24]\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [INLINE_3D, CROSSLINE_3D]'
+    assert as_string == 'seismic-zfp 3d file test_data/small_4bit.sgz, Version(0.0.0.dev):\n  compression ratio: 8:1\n  inlines: 5 [1, 5]\n  crosslines: 5 [20, 24]\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [INLINE_3D, CROSSLINE_3D]'
     assert representation == 'SgzReader(test_data/small_4bit.sgz)'

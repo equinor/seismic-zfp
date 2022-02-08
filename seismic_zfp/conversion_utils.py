@@ -199,6 +199,8 @@ def io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
             # Repeat last plane across padding to give better compression accuracy
             seismic_buffer[i, 0:trace_length] = np.asarray(seismicfile.trace[-1])
 
+        seismic_buffer[i, trace_length:] = np.expand_dims(seismic_buffer[i, trace_length - 1], 0)
+
 
 def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
                    seismic_buffer, seismicfile, minimal_il_reader, trace_length):
