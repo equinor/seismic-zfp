@@ -505,10 +505,10 @@ class SgzReader(object):
             - Range [0, max(XL)+max(IL) )
 
         min_ad_idx : int
-            - Start trace index, relative to start of full diagonal. Range as cd_id.
+            - Start trace index, relative to start of full diagonal. Range as ad_id.
 
         max_ad_idx : int
-            - Stop trace index, relative to start of full diagonal. Range as cd_id.
+            - Stop trace index, relative to start of full diagonal. Range as ad_id.
 
         min_sample_idx : int
             - Start sample index in trace
