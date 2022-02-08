@@ -1,8 +1,9 @@
 import os
 from enum import Enum
+import warnings
 
 import segyio
-import warnings
+import seismic_zfp
 
 try:
     with warnings.catch_warnings():
@@ -22,6 +23,7 @@ class Filetype(Enum):
     SEGY = 0
     ZGY = 10
     VDS = 30
+    SGZ = 100
 
 
 class SeismicFile:
@@ -37,6 +39,8 @@ class SeismicFile:
                 file_type = Filetype.ZGY
             elif ext == 'vds':
                 file_type = Filetype.VDS
+            elif ext == 'sgz':
+                file_type = Filetype.SGZ
             else:
                 raise ValueError("Unknown file extension: '{}'".format(ext))
         elif not isinstance(file_type, Filetype):
@@ -58,6 +62,9 @@ class SeismicFile:
             if pyvds is None:
                 raise ImportError("File type requires pyvds. Install optional dependency seismic-zfp[vds] with pip.")
             handle = pyvds.open(filename)
+            handle.structured = True
+        elif file_type == Filetype.SGZ:
+            handle = seismic_zfp.open(filename)
             handle.structured = True
 
         handle.filetype = file_type

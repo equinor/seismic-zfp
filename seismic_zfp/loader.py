@@ -1,7 +1,7 @@
 import concurrent.futures as cf
 from functools import lru_cache
 import random
-from psutil import virtual_memory
+import psutil
 from operator import floordiv
 import numpy as np
 import zfpy
@@ -10,8 +10,9 @@ from .sgzconstants import DISK_BLOCK_BYTES
 
 class SgzLoader(object):
     def __init__(self, file, data_start_bytes, compressed_data_diskblocks, shape_pad, blockshape,
-                 chunk_bytes, block_bytes, unit_bytes, rate, preload=False):
+                 chunk_bytes, block_bytes, unit_bytes, rate, local, preload=False):
         self.file = file
+        self.local = local
         self.data_start_bytes = data_start_bytes
         self.compressed_data_diskblocks = compressed_data_diskblocks
         self.shape_pad = shape_pad
@@ -21,18 +22,19 @@ class SgzLoader(object):
         self.block_bytes = block_bytes
         self.unit_bytes = unit_bytes
         self.rate = rate
-        self.n_workers = 1 if self.file.local else 20
+        self.n_workers = 1 if self.local else 20
+        self.oom_msgs = ['Out of memory.  We wish to hold the whole sky,  But we never will.',
+                         'The code was willing, It considered your request, But the chips were weak.',
+                         'To have no errors, Would be life without meaning. No struggle, no joy.']
+        self.mem_limit = psutil.virtual_memory().total
 
         self.compressed_volume = None
         if preload:
             uncompressed_buf_size = self.compressed_data_diskblocks * DISK_BLOCK_BYTES * (32 / self.rate)
-            if uncompressed_buf_size > virtual_memory().total:
-                msg = "Uncompressed volume is {}MB, machine memory is {}MB, try using 'preload=False'"
-                print(msg.format(uncompressed_buf_size//(1024*1024), virtual_memory().total//(1024*1024)))
-                msgs = ["Out of memory.  We wish to hold the whole sky,  But we never will.",
-                        "The code was willing, It considered your request, But the chips were weak.",
-                        "To have no errors, Would be life without meaning. No struggle, no joy."]
-                raise RuntimeError(random.choice(msgs))
+            if uncompressed_buf_size > self.mem_limit:
+                print(f'Uncompressed volume is {uncompressed_buf_size//(1024*1024)}MB' \
+                      f'machine memory is {self.mem_limit//(1024*1024)}MB, try using "preload=False"')
+                raise RuntimeError(random.choice(self.oom_msgs))
             self.load_compressed_volume()
 
     def load_compressed_volume(self):

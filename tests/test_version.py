@@ -9,6 +9,7 @@ def test_create_from_string():
     assert version.patch == 9
     assert version.changes_exist is False
 
+
 def test_create_from_string_changes():
     version = SeismicZfpVersion("100.23.9rc2")
     assert version.major == 100
@@ -40,13 +41,21 @@ def test_create_from_tuple():
     assert version.patch == 9
     assert version.changes_exist is True
 
-def test_to_tuple():
+
+def test_to_tuple_dev():
     version = SeismicZfpVersion("100.23.9rc2")
     assert version.to_tuple() == (100, 23, 9, ".dev")
+
+
+def test_to_tuple():
+    version = SeismicZfpVersion("100.23.9")
+    assert version.to_tuple() == (100, 23, 9)
+
 
 def test_repr():
     version = SeismicZfpVersion(209762322)
     assert version.__repr__() == "Version(100.23.9.dev)"
+
 
 def test_compare():
     version1 = SeismicZfpVersion(33550336)

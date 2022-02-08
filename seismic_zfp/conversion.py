@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 import segyio
 import time
-from psutil import virtual_memory
+import psutil
 
 from .utils import pad, define_blockshape_2d, define_blockshape_3d, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry, Geometry2d
 from .headers import HeaderwordInfo
@@ -42,6 +42,7 @@ class SeismicFileConverter(object):
         if all([min_il, max_il, min_xl, max_xl]):
             self.geom = Geometry(min_il, max_il, min_xl, max_xl)
         self.filetype = self.set_filetype()
+        self.mem_limit = psutil.virtual_memory().total
 
     def __enter__(self):
         return self
@@ -96,22 +97,20 @@ class SeismicFileConverter(object):
                     # Pad to 512-bytes for page blobs
                     f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
 
-    @staticmethod
-    def check_memory(inline_set_bytes):
+
+    def check_memory(self, inline_set_bytes):
         """Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory,
         check this before doing anything inelegant.
         """
-        if inline_set_bytes > virtual_memory().total // 2:
-            print("One inline set is {} bytes, machine memory is {} bytes".format(inline_set_bytes,
-                                                                                  virtual_memory().total))
-            print("Try using fewer inlines in the blockshape, or compressing a subcube")
+        if inline_set_bytes > self.mem_limit // 2:
+            print(f'One inline set is {inline_set_bytes} bytes,' \
+                  f'machine memory is {self.mem_limit} bytes \n' \
+                  f'Try using fewer inlines in the blockshape, or compressing a subcube')
             raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
 
-        max_queue_length = min(16, (virtual_memory().total // 2) // inline_set_bytes)
-        print("VirtualMemory={}MB, InlineSet={}MB : Using queue of length {}".format(
-            virtual_memory().total / (1024 * 1024),
-            inline_set_bytes / (1024 * 1024),
-            max_queue_length))
+        max_queue_length = min(16, (self.mem_limit // 2) // inline_set_bytes)
+        print(f'VirtualMemory={self.mem_limit / (1024 * 1024)}MB, ' \
+              f'InlineSet={inline_set_bytes / (1024 * 1024)}MB : Using queue of length {max_queue_length}')
 
         return max_queue_length
 
@@ -256,13 +255,16 @@ class SgzConverter(SgzReader):
         spec.sorting = 2
 
         # seimcic-zfp stores the binary header from the source SEG-Y file.
-        # In case someone forgot to do this, give them IEEE
+        # In case someone forgot to do this, give them IBM float
         data_sample_format_code = bytes_to_int(
             self.headerbytes[DISK_BLOCK_BYTES+3225: DISK_BLOCK_BYTES+3227])
         if data_sample_format_code in [1, 5]:
             spec.format = data_sample_format_code
         else:
-            spec.format = 5
+            new_headerbytes = bytearray(self.headerbytes)
+            new_headerbytes[DISK_BLOCK_BYTES + 3225: DISK_BLOCK_BYTES + 3227] = int_to_bytes(1)
+            self.headerbytes = bytes(new_headerbytes)
+            spec.format = 1
 
         with warnings.catch_warnings():
             # segyio will warn us that out padded cube is not contiguous. This is expected, and safe.
@@ -383,6 +385,13 @@ class NumpyConverter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
+    def write_headers(self, header_info):
+         with open(self.out_filename, 'ab') as f:
+            for header_array in header_info.headers_dict.values():
+                # Pad to 512-bytes for page blobs
+                f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
+
+
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
         """General entrypoint for converting numpy arrays to SGZ files
 
@@ -415,3 +424,4 @@ class NumpyConverter(object):
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
         header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
         run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom)
+        self.write_headers(header_info)

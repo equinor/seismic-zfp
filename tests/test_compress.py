@@ -8,7 +8,13 @@ import seismic_zfp
 import segyio
 import pytest
 from seismic_zfp.utils import generate_fake_seismic
+from seismic_zfp.seismicfile import SeismicFile
 import warnings
+from seismic_zfp.sgzconstants import DISK_BLOCK_BYTES
+from seismic_zfp.utils import int_to_bytes
+
+import mock
+import psutil
 
 try:
     with warnings.catch_warnings():
@@ -32,6 +38,7 @@ SGY_FILE = 'test_data/small.sgy'
 SGY_FILE_2D = 'test_data/small-2d.sgy'
 SGY_FILE_NEGATIVE_SAMPLES = 'test_data/small-negative-samples.sgy'
 SGY_FILE_TRACEHEADER_SAMPLERATE = 'test_data/small-traceheader-samplerate.sgy'
+SGY_FILE_DUPLICATE_TRACEHEADERS = 'test_data/small-duplicate-traceheaders.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
 SGZ_FILE_2 = 'test_data/small_2bit.sgz'
 
@@ -57,11 +64,29 @@ def test_headerword_info_roundtrip():
     assert hw_info.to_buffer() == buffer
 
 
+def test_headerword_info_errors():
+    with pytest.raises(RuntimeError):
+        hw_info = HeaderwordInfo(25)
+
+    with pytest.raises(RuntimeError):
+        with SeismicFile.open(SGZ_FILE) as sgzfile:
+            hw_info = HeaderwordInfo(25, seismicfile=sgzfile)
+
+
 def test_compress_sgz_file_errors(tmp_path):
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         out_sgz = os.path.join(str(tmp_path), 'test_compress_sgz_file_errors.sgz')
         with SeismicFileConverter(SGZ_FILE) as converter:
             converter.run(out_sgz, bits_per_voxel=8)
+
+
+@mock.patch('psutil.virtual_memory')
+def test_compress_oom_error(mocked_virtual_memory, tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'oom.sgz')
+    psutil.virtual_memory().total = 1024
+    with pytest.raises(RuntimeError):
+        with SeismicFileConverter(SGY_FILE) as converter:
+            converter.run(out_sgz)
 
 
 def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
@@ -202,6 +227,7 @@ def test_compress_data(tmp_path):
     compress_and_compare_data(SGY_FILE, tmp_path, 8, 1e-10, blockshape=(16, 16, 16))
 
 
+
 def compress_and_compare_2d_data(sgy_file, tmp_path, bits_per_voxel, rtol):
     out_sgz = os.path.join(str(tmp_path), 'small-2d_test_data.sgz')
 
@@ -220,22 +246,35 @@ def test_compress_2d_data(tmp_path):
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5)
 
 
-def test_compress_headers(tmp_path):
+def compress_compare_headers(sgy_file, tmp_path):
     for detection_method in ['heuristic', 'thorough', 'exhaustive', 'strip']:
-        out_sgz = os.path.join(str(tmp_path), 'small_test_headers-{}.sgz'.format(detection_method))
+        out_sgz = os.path.join(str(tmp_path), f'{os.path.basename(sgy_file)}_test_headers-{detection_method}.sgz')
 
-        with SegyConverter(SGY_FILE) as converter:
+        with SegyConverter(sgy_file) as converter:
             converter.run(out_sgz, bits_per_voxel=8, header_detection=detection_method)
 
         with seismic_zfp.open(out_sgz) as sgz_file:
-            with segyio.open(SGY_FILE) as sgy_file:
-                for sgz_header, sgy_header in zip(sgz_file.header, sgy_file.header):
+            with segyio.open(sgy_file) as f:
+                for sgz_header, sgy_header in zip(sgz_file.header, f.header):
                     if detection_method == 'strip':
                         assert all([0 == value for value in sgz_header.values()])
                     else:
                         assert sgz_header == sgy_header
                     assert sgz_file.get_header_detection_method_code() == HEADER_DETECTION_CODES[detection_method]
                     assert 0 == sgz_file.get_file_source_code()
+
+
+def test_compress_headers(tmp_path):
+    compress_compare_headers(SGY_FILE, tmp_path)
+    compress_compare_headers(SGY_FILE_DUPLICATE_TRACEHEADERS, tmp_path)
+
+
+def test_compress_headers_errors(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small_test_headers_errors.sgz')
+    with pytest.raises(NotImplementedError):
+        with SegyConverter(SGY_FILE) as converter:
+            converter.run(out_sgz, bits_per_voxel=8, header_detection='fake-method')
+
 
 def test_compress_crop(tmp_path):
     out_sgz = os.path.join(str(tmp_path), 'small_test_data.sgz')
@@ -339,6 +378,9 @@ def test_compresss_non_existent_file(tmp_path):
     with pytest.raises(FileNotFoundError):
         with SegyConverter('./non-existent-file.sgy') as converter:
             converter.run(out_sgz)
+    with pytest.raises(FileNotFoundError):
+        with SeismicFileConverter('./non-existent-file') as converter:
+            converter.run(out_sgz)
 
 
 def test_convert_to_adv_from_compressed(tmp_path):
@@ -360,6 +402,18 @@ def test_decompress_data(tmp_path):
     out_sgy = os.path.join(str(tmp_path), 'small_test_data.sgy')
 
     with SgzConverter(SGZ_FILE) as converter:
+        converter.convert_to_segy(out_sgy)
+
+    assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
+
+
+def test_decompress_data_erroneous_format(tmp_path):
+    out_sgy = os.path.join(str(tmp_path), 'small_test_data.sgy')
+
+    with SgzConverter(SGZ_FILE) as converter:
+        new_headerbytes = bytearray(converter.headerbytes)
+        new_headerbytes[DISK_BLOCK_BYTES + 3225: DISK_BLOCK_BYTES + 3227]= int_to_bytes(42)
+        converter.headerbytes = bytes(new_headerbytes)
         converter.convert_to_segy(out_sgy)
 
     assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
