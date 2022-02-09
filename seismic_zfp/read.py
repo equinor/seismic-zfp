@@ -138,7 +138,7 @@ class SgzReader(object):
         self.file_version = self.get_file_version()
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self._parse_dimensions()
 
-        self.is_2d = self.blockshape[2] == 0
+        self.is_2d = self.blockshape[0] == 1
         self.is_3d = not self.is_2d
 
         if self.is_3d:
@@ -174,8 +174,9 @@ class SgzReader(object):
             self.blockshape = (4, 4, 2048//self.rate)
 
         if self.is_2d:
-            self.shape_pad = (pad(self.tracecount, self.blockshape[0]),
-                              pad(self.n_samples, self.blockshape[1]))
+            self.shape_pad = (1,
+                              pad(self.tracecount, self.blockshape[1]),
+                              pad(self.n_samples, self.blockshape[2]))
         elif self.is_3d:
             self.shape_pad = (pad(self.n_ilines, self.blockshape[0]),
                               pad(self.n_xlines, self.blockshape[1]),
@@ -195,20 +196,14 @@ class SgzReader(object):
         # The 'compression units' may be arranged in any cuboid which matches the size of a disk block.
         # At the time of coding, standard commodity hardware uses 4kB disk blocks so check that
         # file has been written in using this convention.
-        if self.is_2d:
-            self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.rate) // 8
-        else:
-            self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+        self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
 
         assert self.block_bytes % self.unit_bytes == 0
         assert self.block_bytes == DISK_BLOCK_BYTES, f"block_bytes={self.block_bytes}, should be {DISK_BLOCK_BYTES}"
 
         # A 'chunk' is a group of one or more 'blocks' which span a complete set of traces.
         # This will follow the xline and iline shape of a 'block'
-        if self.is_2d:
-            self.chunk_bytes = self.block_bytes * (self.shape_pad[1] // self.blockshape[1])
-        else:
-            self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
+        self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
         assert self.chunk_bytes % self.block_bytes == 0
 
         # Placeholder. Don't read these if you're not going to use them
@@ -218,7 +213,7 @@ class SgzReader(object):
         self.range_error = "Index {} is out of range [{}, {}]. Try using slice ordinals instead of numbers?"
 
         # Split out responsibility for I/O and decompression
-        if self.blockshape[2] == 0:
+        if self.is_2d:
             self.loader = SgzLoader2d(self.file, self.data_start_bytes, self.compressed_data_diskblocks, self.shape_pad,
                                       self.blockshape, self.chunk_bytes, self.block_bytes, self.unit_bytes, self.rate, self.local, preload)
         else:
@@ -709,9 +704,9 @@ class SgzReader(object):
             A single trace, decompressed
         """
         if self.is_2d:
-            min_trace = self.blockshape[0] * (index // self.blockshape[0])
-            chunk = self.loader.read_and_decompress_trace_range(min_trace, min_trace+self.blockshape[0])
-            trace = chunk[index % self.blockshape[0], 0:self.n_samples]
+            min_trace = self.blockshape[1] * (index // self.blockshape[1])
+            chunk = self.loader.read_and_decompress_trace_range(min_trace, min_trace+self.blockshape[1])
+            trace = chunk[index % self.blockshape[1], 0:self.n_samples]
             return np.squeeze(trace)
 
         else:

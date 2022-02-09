@@ -59,17 +59,20 @@ def test_signed_int_to_bytes():
 
 
 def test_define_blockshape_2d():
-    assert (4, (16, 512)) == define_blockshape_2d(4, (16, 512))
-    assert (4, (16, 512)) == define_blockshape_2d(4, (16, -1))
-    assert (4, (16, 512)) == define_blockshape_2d(4, (-1, 512))
-    assert (4, (16, 512)) == define_blockshape_2d(-1, (16, 512))
-    assert (4, (16, 512)) == define_blockshape_2d("4", (16, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(4, (1, 16, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(4, (1, 16, -1))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(4, (1, -1, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(-1, (1, 16, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d("4", (1, 16, 512))
 
     with pytest.raises(ValueError):
-        define_blockshape_2d(4, (-1, -1))
+        define_blockshape_2d(4, (1, -1, -1))
 
     with pytest.raises(AssertionError):
-        define_blockshape_2d(4, (16, 16))
+        define_blockshape_2d(4, (1, 16, 16))
+
+    with pytest.raises(AssertionError):
+        define_blockshape_2d(4, (4, 4, -1))
 
 
 def test_define_blockshape_3d():

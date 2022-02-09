@@ -43,6 +43,10 @@ class SeismicFileConverter(object):
             self.geom = Geometry(min_il, max_il, min_xl, max_xl)
         self.filetype = self.set_filetype()
         self.mem_limit = psutil.virtual_memory().total
+        if self.geom is None:
+            with SeismicFile.open(self.in_filename, self.filetype) as seismic:
+                self.detect_geometry(seismic)
+
 
     def __enter__(self):
         return self
@@ -115,18 +119,20 @@ class SeismicFileConverter(object):
         return max_queue_length
 
     def detect_geometry(self, seismic):
-        if self.geom is None:
-            if seismic.unstructured:
-                if (seismic.header[0][189], seismic.header[0][193], seismic.header[-1][189], seismic.header[-1][193]) == (0, 0, 0, 0):
-                    # We have a 2D SEG-Y
-                    self.geom = Geometry2d(seismic.tracecount)
-                else:
-                    # We have an irregular 3D SEG-Y
-                    print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
-                    traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
-                    self.geom = InferredGeometry(traces_ref)
+        if seismic.unstructured:
+            if (seismic.header[0][189], seismic.header[0][193], seismic.header[-1][189], seismic.header[-1][193]) == (0, 0, 0, 0):
+                # We have a 2D SEG-Y
+                self.geom = Geometry2d(seismic.tracecount)
             else:
-                self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
+                # We have an irregular 3D SEG-Y
+                print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
+                self.geom = None
+        else:
+            self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
+
+    def infer_geometry(self, seismic):
+        traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
+        self.geom = InferredGeometry(traces_ref)
 
     def check_inputfile_exists(self):
         if not os.path.exists(self.in_filename):
@@ -188,10 +194,11 @@ class SeismicFileConverter(object):
         t0 = time.time()
 
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
-            self.detect_geometry(seismic)
+            if self.geom is None:
+                self.infer_geometry(seismic)
             if isinstance(self.geom, Geometry2d):
                 if blockshape is None:
-                    blockshape = (16, -1)
+                    blockshape = (1, 16, -1)
                 bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
                 inline_set_bytes = len(self.geom.traces) * len(seismic.samples) * 4
             else:

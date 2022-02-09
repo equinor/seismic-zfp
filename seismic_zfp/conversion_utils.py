@@ -111,14 +111,13 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     
     buffer[44:48] = int_to_bytes(blockshape[0])
     buffer[48:52] = int_to_bytes(blockshape[1])
-    if not isinstance(geom, Geometry2d):
-        buffer[52:56] = int_to_bytes(blockshape[2])
+    buffer[52:56] = int_to_bytes(blockshape[2])
 
     # Length of the seismic amplitudes cube after compression
     if isinstance(geom, Geometry2d):
         compressed_data_length_diskblocks = int(((bits_per_voxel *
-                                                  pad(len(samples), blockshape[1]) *
-                                                  pad(tracecount, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
+                                                  pad(len(samples), blockshape[2]) *
+                                                  pad(tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
     else:
         compressed_data_length_diskblocks = int(((bits_per_voxel *
                                                   pad(len(samples), blockshape[2]) *
@@ -189,9 +188,9 @@ class MinimalInlineReader:
 
 def io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
                       traces_to_read, seismic_buffer, seismicfile, trace_length):
-    for i in range(blockshape[0]):
+    for i in range(blockshape[1]):
         if i < traces_to_read:
-            trace_id = (trace_group_id * blockshape[0] + i)
+            trace_id = (trace_group_id * blockshape[1] + i)
             seismic_buffer[i, 0:trace_length] = np.asarray(seismicfile.trace[trace_id])
             if store_headers:
                 for tracefield, array in headers_dict.items():
@@ -281,21 +280,21 @@ def numpy_producer(queue, in_array, blockshape):
 
 def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, headers_dict, geom, verbose=True):
     n_traces, trace_length = len(geom.traces), len(seismicfile.samples)
-    padded_shape = (pad(n_traces, blockshape[0]), pad(trace_length, blockshape[1]))
+    padded_shape = (pad(n_traces, blockshape[1]), pad(trace_length, blockshape[2]))
 
     # Loop over groups of blockshape[0] traces
-    n_trace_groups = padded_shape[0] // blockshape[0]
+    n_trace_groups = padded_shape[0] // blockshape[1]
     start_time = time.time()
     for trace_group_id in range(n_trace_groups):
         if verbose:
             progress_printer(start_time, trace_group_id / n_trace_groups)
     # Need to allocate at every step as this is being sent to another function
-        if (trace_group_id+1)*blockshape[0] > n_traces:
-            traces_to_read = n_traces % blockshape[0]
+        if (trace_group_id+1)*blockshape[1] > n_traces:
+            traces_to_read = n_traces % blockshape[1]
         else:
-            traces_to_read = blockshape[0]
+            traces_to_read = blockshape[1]
 
-        seismic_buffer = np.zeros((blockshape[0], padded_shape[1]), dtype=np.float32)
+        seismic_buffer = np.zeros((blockshape[1], padded_shape[1]), dtype=np.float32)
 
         io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
                           traces_to_read, seismic_buffer, seismicfile, trace_length)

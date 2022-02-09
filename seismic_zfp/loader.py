@@ -57,9 +57,9 @@ class SgzLoader2d(SgzLoader):
 
     @lru_cache(maxsize=1)
     def read_and_decompress_trace_range(self, min_id, max_id):
-        block_offset = self.chunk_bytes * (min_id // self.blockshape[0])
-        buffer = self._get_compressed_bytes(block_offset, self.chunk_bytes * ((max_id + self.blockshape[0] - 1) // self.blockshape[0]))
-        return self._decompress(buffer, (self.blockshape[0], self.shape_pad[1]))
+        block_offset = self.chunk_bytes * (min_id // self.blockshape[1])
+        buffer = self._get_compressed_bytes(block_offset, self.chunk_bytes * ((max_id + self.blockshape[1] - 1) // self.blockshape[1]))
+        return self._decompress(buffer, (self.blockshape[1], self.shape_pad[2]))
 
     def clear_cache(self):
         self.read_and_decompress_trace_range.cache_clear()
