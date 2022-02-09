@@ -19,6 +19,10 @@ SGZ_FILE_2_64x64 = 'test_data/small_2bit-64x64.sgz'
 SGZ_FILE_8_8x8 = 'test_data/small_8bit-8x8.sgz'
 SGY_FILE = 'test_data/small.sgy'
 
+SGY_FILE_2D = 'test_data/small-2d.sgy'
+SGZ_FILE_2D = 'test_data/small-2d.sgz'
+
+
 SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
 
@@ -69,6 +73,15 @@ def test_read_samples_datatype():
 def test_read_trace_header():
     reader = SgzReader(SGZ_FILE_1)
     with segyio.open(SGY_FILE) as sgyfile:
+        for trace_number in range(25):
+            sgz_header = reader.gen_trace_header(trace_number)
+            sgy_header = sgyfile.header[trace_number]
+            assert sgz_header == sgy_header
+
+
+def test_read_trace_header_2d():
+    reader = SgzReader(SGZ_FILE_2D)
+    with segyio.open(SGY_FILE_2D, strict=False) as sgyfile:
         for trace_number in range(25):
             sgz_header = reader.gen_trace_header(trace_number)
             sgy_header = sgyfile.header[trace_number]
@@ -129,7 +142,17 @@ def compare_trace_index(sgz_filename, sgy_filename, tolerance):
                 trace_sgz = reader.get_trace(i, start, stop)
                 assert np.allclose(trace_sgz, trace_sgy[start:stop], rtol=tolerance)
 
+
+def compare_trace_index_2d(sgz_filename, sgy_filename, tolerance):
+    with segyio.open(sgy_filename, ignore_geometry=True) as sgyfile:
+        reader = SgzReader(sgz_filename)
+        for i, trace_sgy in enumerate(sgyfile.trace):
+            trace_sgz = reader.get_trace(i)
+            assert np.allclose(trace_sgz, trace_sgy, rtol=tolerance)
+
+
 def test_get_trace():
+    compare_trace_index_2d(SGZ_FILE_2D, SGY_FILE_2D, tolerance=1.e-3)
     compare_trace_index(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
     compare_trace_index(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
     compare_trace_coord(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)

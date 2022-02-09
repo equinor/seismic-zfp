@@ -246,7 +246,7 @@ def test_compress_2d_data(tmp_path):
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5)
 
 
-def compress_compare_headers(sgy_file, tmp_path):
+def compress_compare_headers(sgy_file, tmp_path, strict=True):
     for detection_method in ['heuristic', 'thorough', 'exhaustive', 'strip']:
         out_sgz = os.path.join(str(tmp_path), f'{os.path.basename(sgy_file)}_test_headers-{detection_method}.sgz')
 
@@ -254,7 +254,7 @@ def compress_compare_headers(sgy_file, tmp_path):
             converter.run(out_sgz, bits_per_voxel=8, header_detection=detection_method)
 
         with seismic_zfp.open(out_sgz) as sgz_file:
-            with segyio.open(sgy_file) as f:
+            with segyio.open(sgy_file, strict=strict) as f:
                 for sgz_header, sgy_header in zip(sgz_file.header, f.header):
                     if detection_method == 'strip':
                         assert all([0 == value for value in sgz_header.values()])
@@ -267,6 +267,7 @@ def compress_compare_headers(sgy_file, tmp_path):
 def test_compress_headers(tmp_path):
     compress_compare_headers(SGY_FILE, tmp_path)
     compress_compare_headers(SGY_FILE_DUPLICATE_TRACEHEADERS, tmp_path)
+    compress_compare_headers(SGY_FILE_2D, tmp_path, strict=False)
 
 
 def test_compress_headers_errors(tmp_path):

@@ -795,7 +795,7 @@ class SgzReader(object):
             if k not in self.variant_headers:
                 offset = self.segy_traceheader_template[k]
                 if isinstance(offset, FileOffset) and k not in self.variant_headers:
-                    use_mask = not (self.structured or self.include_padding)
+                    use_mask = self.is_3d and not (self.structured or self.include_padding)
                     if use_mask:
                         self.get_unstructured_mask()
                     buffer = self.file.read_range(self.file, offset, self.header_entry_length_bytes)
