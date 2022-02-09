@@ -42,6 +42,18 @@ def test_sgy2sgz_convert_default():
     assert result.exit_code == 0
 
 
+def test_sgy2sgz_convert_2d_default():
+    input_file = os.path.join("test_data", "small-2d.sgy")
+    input_file_absolute = os.path.abspath(input_file)
+    output_file = "small-2d_4bit_converted.sgz"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["sgy2sgz", input_file_absolute, output_file])
+        assert os.path.exists(output_file)
+        assert os.stat(output_file).st_size > 0
+    assert result.exit_code == 0
+
+
 def test_sgy2sgz_convert_bits_per_voxel():
     input_file = os.path.join("test_data", "small.sgy")
     input_file_absolute = os.path.abspath(input_file)

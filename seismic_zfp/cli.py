@@ -42,11 +42,12 @@ sgz_options = [
     click.option(
         "--blockshape",
         type=click.Tuple([click.INT] * 3),
-        default=(4, 4, -1),
+        default=None,
         help=(
             "The physical shape of voxels compressed to one disk block. "
             "Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, "
             "4th is redundant."
+            "(4, 4, -1) is default for 3D SEG-Y and (1, 16, -1) for 2D SEG-Y"
         ),
         show_default=True,
     ),

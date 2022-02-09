@@ -46,6 +46,7 @@ class SeismicFileConverter(object):
         if self.geom is None:
             with SeismicFile.open(self.in_filename, self.filetype) as seismic:
                 self.detect_geometry(seismic)
+        self.is_2d = isinstance(self.geom, Geometry2d)
 
 
     def __enter__(self):
@@ -196,7 +197,7 @@ class SeismicFileConverter(object):
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             if self.geom is None:
                 self.infer_geometry(seismic)
-            if isinstance(self.geom, Geometry2d):
+            if self.is_2d:
                 if blockshape is None:
                     blockshape = (1, 16, -1)
                 bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
