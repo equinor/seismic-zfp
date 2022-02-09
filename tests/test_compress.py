@@ -228,11 +228,11 @@ def test_compress_data(tmp_path):
 
 
 
-def compress_and_compare_2d_data(sgy_file, tmp_path, bits_per_voxel, rtol):
+def compress_and_compare_2d_data(sgy_file, tmp_path, bits_per_voxel, rtol, blockshape=(16, -1)):
     out_sgz = os.path.join(str(tmp_path), 'small-2d_test_data.sgz')
 
     with SegyConverter(sgy_file) as converter:
-        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
     with segyio.open(sgy_file, ignore_geometry=True) as f_sgy:
         with seismic_zfp.open(out_sgz) as f_sgz:
@@ -244,6 +244,13 @@ def test_compress_2d_data(tmp_path):
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 4, 2.e-2)
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 8, 1.e-3)
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5)
+
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 4, 2.e-2, blockshape=(16, 512))
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5, blockshape=(16, 128))
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5, blockshape=(4, 512))
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5, blockshape=(128, 16))
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5, blockshape=(512, 4))
+    compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 8, 1.e-3, blockshape=(64, 64))
 
 
 def compress_compare_headers(sgy_file, tmp_path, strict=True):
