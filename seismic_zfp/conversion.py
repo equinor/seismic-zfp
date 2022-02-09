@@ -38,15 +38,17 @@ class SeismicFileConverter(object):
         # Quia Ego Sic Dico
         self.in_filename = in_filename
         self.out_filename = None
+        self.filetype = self.set_filetype()
+        self.check_inputfile_exists()
+
         self.geom = None
         if all([min_il, max_il, min_xl, max_xl]):
             self.geom = Geometry(min_il, max_il, min_xl, max_xl)
-        self.filetype = self.set_filetype()
-        self.mem_limit = psutil.virtual_memory().total
         if self.geom is None:
             with SeismicFile.open(self.in_filename, self.filetype) as seismic:
                 self.detect_geometry(seismic)
         self.is_2d = isinstance(self.geom, Geometry2d)
+        self.mem_limit = psutil.virtual_memory().total
 
 
     def __enter__(self):
@@ -188,7 +190,6 @@ class SeismicFileConverter(object):
 
             Default: "heuristic".
         """
-        self.check_inputfile_exists()
         self.out_filename = out_filename
         print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
 
