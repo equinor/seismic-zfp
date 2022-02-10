@@ -354,6 +354,20 @@ def test_read_anticorrelated_diagonal():
         compare_anticorrelated_diagonal(sgz_file, sgyfile)
 
 
+def compare_subplane(sgz_filename, min_trace, max_trace, min_z, max_z):
+    with seismic_zfp.open(sgz_filename) as sgz_file:
+        sgz_subplane = sgz_file.read_subplane(min_trace=min_trace, max_trace=max_trace, min_z=min_z, max_z=max_z)
+        sgz_cropped_traces = np.stack([t for t in sgz_file.trace[min_trace:max_trace]])[:,min_z:max_z]
+
+    assert np.array_equal(sgz_subplane, sgz_cropped_traces)
+
+
+def test_read_subplane():
+    compare_subplane(SGZ_FILE_2D, 3, 21, 10, 20)
+    compare_subplane(SGZ_FILE_2D, 24, 25, 0, 50)
+    compare_subplane(SGZ_FILE_2D, 1, 17, 1, 17)
+
+
 def compare_subvolume(sgz_filename, tolerance):
     for preload in [True, False]:
         min_il, max_il = 2,  3
@@ -379,6 +393,7 @@ def test_read_subvolume():
 def test_index_errors():
     # Quis custodiet custard?
     reader = SgzReader(SGZ_FILE_4)
+    reader_2d = SgzReader(SGZ_FILE_2D)
 
     with pytest.raises(IndexError):
         reader.read_inline(-1)
@@ -430,6 +445,12 @@ def test_index_errors():
 
     with pytest.raises(IndexError):
         reader.read_subvolume(0, 1, 0, 1, 0, 100)
+
+    with pytest.raises(IndexError):
+        reader_2d.read_subplane(0, 1, 0, 100)
+
+    with pytest.raises(IndexError):
+        reader_2d.read_subplane(0, 26, 0, 16)
 
     with pytest.raises(IndexError):
         reader.get_trace(-1)

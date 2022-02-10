@@ -61,8 +61,25 @@ class SgzLoader2d(SgzLoader):
         buffer = self._get_compressed_bytes(block_offset, self.chunk_bytes * ((max_id + self.blockshape[1] - 1) // self.blockshape[1]))
         return self._decompress(buffer, (self.blockshape[1], self.shape_pad[2]))
 
+    @lru_cache(maxsize=1)
+    def read_unshuffle_and_decompress_chunk_range(self, max_id, max_z, min_id, min_z):
+        z_blocks = (max_z + self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
+        xl_blocks = (max_id + self.blockshape[1]) // self.blockshape[1] - min_id // self.blockshape[1]
+        decompressed = np.zeros((xl_blocks * self.blockshape[1], z_blocks  * self.blockshape[2]), dtype=np.float32)
+
+        for nx, x in enumerate(range(min_id // self.blockshape[1], min_id // self.blockshape[1] + xl_blocks)):
+            for nz, z in enumerate(range(min_z // self.blockshape[2], min_z // self.blockshape[2] + z_blocks)):
+                bytes_start = self.block_bytes * (self.block_dims[2] * x + z)
+                buffer = self._get_compressed_bytes(bytes_start, self.block_bytes)
+                # Fill decompressed buffer brick by brick
+                decompressed[nx * self.blockshape[1]:(nx + 1) * self.blockshape[1],
+                             nz * self.blockshape[2]:(nz + 1) * self.blockshape[2]] \
+                    = self._decompress(buffer, (self.blockshape[1], self.blockshape[2]))
+        return decompressed
+
     def clear_cache(self):
         self.read_and_decompress_trace_range.cache_clear()
+        self.read_unshuffle_and_decompress_chunk_range.cache_clear()
 
 
 class SgzLoader3d(SgzLoader):

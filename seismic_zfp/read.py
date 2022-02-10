@@ -587,6 +587,41 @@ class SgzReader(object):
                                                        max_sample_id=max_sample_idx)
         return ad
 
+    def read_subplane(self, min_trace, max_trace, min_z, max_z):
+        """Reads a sub-plane from 2D SGZ file
+
+        Parameters
+        ----------
+        min_trace : int
+            Index of the first trace to get from the file. Use 0 to for the first trace of the cube
+        max_trace : int
+            Index of the last trace to get, non inclusive. To get one trace, use max_trace = min_trace + 1
+
+        min_z : int
+            The index of the first time sample to get from the cube. Use 0 for the first time sample in the cube
+        max_z : int
+            The index of the last time sample to get, non inclusive. To get one time sample, use max_z = min_z + 1
+
+        Returns
+        -------
+        subplane : numpy.ndarray of float32, shape (max_trace - min_trace, max_z - min_z)
+            The specified subplane, decompressed
+        """
+
+        if not (0 <= min_trace < self.tracecount and 0 < max_trace <= self.tracecount and max_trace > min_trace):
+            raise IndexError(self.range_error.format(min_trace, max_trace, 0, self.tracecount - 1))
+
+        if not (0 <= min_z < self.n_samples and 0 < max_z <= self.n_samples and max_z > min_z):
+            raise IndexError(self.range_error.format(min_z, max_z, 0, self.n_samples - 1))
+
+        decompressed = self.loader.read_unshuffle_and_decompress_chunk_range(self.blockshape[1] * ((max_trace + self.blockshape[1] - 1) // self.blockshape[1]),
+                                                                             self.blockshape[2] * ((max_z + self.blockshape[2] - 1) // self.blockshape[2]),
+                                                                             self.blockshape[1] * (min_trace // self.blockshape[1]),
+                                                                             self.blockshape[2] * (min_z // self.blockshape[2]))
+
+        return decompressed[min_trace % self.blockshape[1]:(min_trace % self.blockshape[1]) + max_trace - min_trace,
+                            min_z % self.blockshape[2]:(min_z % self.blockshape[2]) + max_z - min_z]
+
     def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
         """Reads a sub-volume from SGZ file
 
