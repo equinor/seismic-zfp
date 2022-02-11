@@ -136,6 +136,7 @@ class SeismicFileConverter(object):
     def infer_geometry(self, seismic):
         traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
         self.geom = InferredGeometry(traces_ref)
+        print("... inferred geometry is:", self.geom)
 
     def check_inputfile_exists(self):
         if not os.path.exists(self.in_filename):

@@ -299,7 +299,7 @@ def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, head
         io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
                           traces_to_read, seismic_buffer, seismicfile, trace_length)
 
-        if blockshape[0] == 4:
+        if blockshape[1] == 4:
             queue.put(seismic_buffer)
         else:
             for z in range(padded_shape[2] // blockshape[2]):
