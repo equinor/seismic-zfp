@@ -9,7 +9,7 @@ from segyio import _segyio
 from .loader import SgzLoader2d, SgzLoader3d
 from .version import SeismicZfpVersion
 from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
-                    coord_to_index, gen_coord_list, FileOffset,
+                    coord_to_index, gen_coord_list, FileOffset, WrongDimensionalityError,
                     get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
 import seismic_zfp
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
@@ -368,6 +368,8 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
+        if self.is_2d:
+            raise WrongDimensionalityError("Trying to read inlines from 2D file")
         if not 0 <= il_id < self.n_ilines:
             raise IndexError(self.range_error.format(il_id, 0, self.n_ilines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
@@ -410,6 +412,8 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
+        if self.is_2d:
+            raise WrongDimensionalityError("Trying to read crosslines from 2D file")
         if not 0 <= xl_id < self.n_xlines:
             raise IndexError(self.range_error.format(xl_id, 0, self.n_xlines - 1))
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
@@ -452,6 +456,8 @@ class SgzReader(object):
         zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
             The specified zslice (time or depth, depending on file contents), decompressed
         """
+        if self.is_2d:
+            raise WrongDimensionalityError("Trying to read zslices from 2D file")
         if not 0 <= zslice_id < self.n_samples:
             raise IndexError(self.range_error.format(zslice_id, 0, self.n_samples - 1))
         blocks_per_dim = tuple(dim // size for dim, size in zip(self.shape_pad, self.blockshape))
@@ -498,6 +504,8 @@ class SgzReader(object):
             - Shape (n_diagonal_traces OR max_cd_idx-min_cd_idx, n_samples OR max_sample_idx-min_sample_idx)
             The specified cd_slice, decompressed.
         """
+        if self.is_2d:
+            raise WrongDimensionalityError("Trying to read diagonal from 2D file")
         if not -self.n_xlines < cd_id < self.n_ilines:
             raise IndexError(self.range_error.format(cd_id, -self.n_xlines, self.n_ilines))
 
@@ -556,6 +564,8 @@ class SgzReader(object):
             - Shape (n_diagonal_traces OR max_ad_idx-min_ad_idx, n_samples OR max_sample_idx-min_sample_idx)
             The specified ad_slice, decompressed.
         """
+        if self.is_2d:
+            raise WrongDimensionalityError("Trying to read diagonal from 2D file")
         if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
             raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 2))
 
@@ -607,7 +617,8 @@ class SgzReader(object):
         subplane : numpy.ndarray of float32, shape (max_trace - min_trace, max_z - min_z)
             The specified subplane, decompressed
         """
-
+        if self.is_3d:
+            raise WrongDimensionalityError("Trying to read subplane from 3D file")
         upper_trace = self.shape_pad[1] if access_padding else self.tracecount
         upper_z = self.shape_pad[2] if access_padding else self.n_samples
 
@@ -653,6 +664,8 @@ class SgzReader(object):
         subvolume : numpy.ndarray of float32, shape (max_il - min_il, max_xl - min_xl, max_z - min_z)
             The specified subvolume, decompressed
         """
+        if self.is_2d:
+            raise WrongDimensionalityError("Trying to read subvolume from 2D file")
         upper_il = self.shape_pad[0] if access_padding else self.n_ilines
         upper_xl = self.shape_pad[1] if access_padding else self.n_xlines
         upper_z = self.shape_pad[2] if access_padding else self.n_samples

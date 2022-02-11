@@ -476,6 +476,32 @@ def test_index_errors():
         reader.gen_trace_header(25)
 
 
+def test_wrong_dimensionality_errors():
+    reader_3d = SgzReader(SGZ_FILE_4)
+    reader_2d = SgzReader(SGZ_FILE_2D)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_2d.read_inline(1)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_2d.read_crossline(2)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_2d.read_zslice(3)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_2d.read_correlated_diagonal(-1)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_2d.read_anticorrelated_diagonal(2)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_2d.read_subvolume(0, 10, 0, 1, 0, 10)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        reader_3d.read_subplane(0, 1, 0, 100)
+
+
 def test_filetype_error():
     with pytest.raises(RuntimeError):
         SgzReader(SGY_FILE)

@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 import seismic_zfp
 import segyio
+from seismic_zfp import utils
 
+SGZ_FILE_2D = 'test_data/small-2d.sgz'
 SGZ_FILE_1 = 'test_data/small_1bit.sgz'
 SGZ_FILE_2 = 'test_data/small_2bit.sgz'
 SGZ_FILE_4 = 'test_data/small_4bit.sgz'
@@ -193,6 +195,7 @@ def compare_cube(sgz_filename, sgy_filename, tolerance):
     vol_sgz = seismic_zfp.tools.cube(sgz_filename)
     assert np.allclose(vol_sgz, vol_sgy, rtol=tolerance)
 
+
 def compare_dt(sgz_filename, sgy_filename):
     with segyio.open(sgy_filename) as sgy_file:
         dt_sgy = segyio.tools.dt(sgy_file)
@@ -200,6 +203,20 @@ def compare_dt(sgz_filename, sgy_filename):
         dt_sgz = seismic_zfp.tools.dt(sgz_file)
     assert dt_sgy == dt_sgz
 
+
 def test_tools_functions():
     compare_cube(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
     compare_dt(SGZ_FILE_8, SGY_FILE)
+
+
+def test_dimensionality_errors():
+    sgzfile = seismic_zfp.open(SGZ_FILE_2D)
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        il = sgzfile.iline[0]
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        xl = sgzfile.xline[0]
+
+    with pytest.raises(utils.WrongDimensionalityError):
+        z_slice = sgzfile.depth_slice[0]

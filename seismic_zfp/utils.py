@@ -5,6 +5,8 @@ import numpy as np
 
 from .sgzconstants import DISK_BLOCK_BYTES
 
+class WrongDimensionalityError(TypeError):
+    pass
 
 class FileOffset(int):
     """Convenience class to enable distinction between default header values and file offsets"""
