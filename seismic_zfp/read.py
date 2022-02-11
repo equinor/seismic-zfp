@@ -46,6 +46,9 @@ class SgzReader(object):
     read_anticorrelated_diagonal(ad_id)
         Decompresses and returns one diagonal IL ~ -XL from SGZ file as 2D numpy array
 
+    read_subplane(min_trace, max_trace, min_z, max_z):
+        Decompresses and returns an arbitrary sub-plane from 2D SGZ file as 2D numpy array
+
     read_subvolume(min_il, max_il, min_xl, max_xl, min_z, max_z)
         Decompresses and returns an arbitrary sub-volume from SGZ file as 3D numpy array
 
