@@ -17,6 +17,7 @@ SGZ_FILE_4 = 'test_data/small_4bit.sgz'
 SGZ_FILE_8 = 'test_data/small_8bit.sgz'
 SGZ_FILE_2_64x64 = 'test_data/small_2bit-64x64.sgz'
 SGZ_FILE_8_8x8 = 'test_data/small_8bit-8x8.sgz'
+SGZ_FILE_OLD = 'test_data/small_v0.0.1.sgz'
 SGY_FILE = 'test_data/small.sgy'
 
 SGY_FILE_2D = 'test_data/small-2d.sgy'
@@ -151,7 +152,17 @@ def compare_trace_index_2d(sgz_filename, sgy_filename, tolerance):
             assert np.allclose(trace_sgz, trace_sgy, rtol=tolerance)
 
 
+def compare_trace_old(sgz_filename, sgy_filename, tolerance):
+    with segyio.open(sgy_filename) as sgyfile:
+        reader = SgzReader(sgz_filename)
+        for i, trace_sgy in enumerate(sgyfile.trace):
+            trace_sgz = reader.get_trace(i)
+            # Accuracy issues in last block of chunk, skip this.
+            assert np.allclose(trace_sgz[0:48], trace_sgy[0:48], rtol=tolerance)
+
+
 def test_get_trace():
+    compare_trace_old(SGZ_FILE_OLD, SGY_FILE, tolerance=1e-2)
     compare_trace_index_2d(SGZ_FILE_2D, SGY_FILE_2D, tolerance=1.e-3)
     compare_trace_index(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
     compare_trace_index(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
