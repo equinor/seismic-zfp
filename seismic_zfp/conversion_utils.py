@@ -280,10 +280,10 @@ def numpy_producer(queue, in_array, blockshape):
 
 def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, headers_dict, geom, verbose=True):
     n_traces, trace_length = len(geom.traces), len(seismicfile.samples)
-    padded_shape = (pad(n_traces, blockshape[1]), pad(trace_length, blockshape[2]))
+    padded_shape = (1, pad(n_traces, blockshape[1]), pad(trace_length, blockshape[2]))
 
     # Loop over groups of blockshape[0] traces
-    n_trace_groups = padded_shape[0] // blockshape[1]
+    n_trace_groups = padded_shape[1] // blockshape[1]
     start_time = time.time()
     for trace_group_id in range(n_trace_groups):
         if verbose:
@@ -294,12 +294,17 @@ def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, head
         else:
             traces_to_read = blockshape[1]
 
-        seismic_buffer = np.zeros((blockshape[1], padded_shape[1]), dtype=np.float32)
+        seismic_buffer = np.zeros((blockshape[1], padded_shape[2]), dtype=np.float32)
 
         io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
                           traces_to_read, seismic_buffer, seismicfile, trace_length)
 
-        queue.put(seismic_buffer)
+        if blockshape[0] == 4:
+            queue.put(seismic_buffer)
+        else:
+            for z in range(padded_shape[2] // blockshape[2]):
+                slice = seismic_buffer[:, z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                queue.put(slice)
 
 
 def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers_dict, geom, reduce_iops=True, verbose=True):

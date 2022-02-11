@@ -587,7 +587,7 @@ class SgzReader(object):
                                                        max_sample_id=max_sample_idx)
         return ad
 
-    def read_subplane(self, min_trace, max_trace, min_z, max_z):
+    def read_subplane(self, min_trace, max_trace, min_z, max_z, access_padding=False):
         """Reads a sub-plane from 2D SGZ file
 
         Parameters
@@ -608,10 +608,13 @@ class SgzReader(object):
             The specified subplane, decompressed
         """
 
-        if not (0 <= min_trace < self.tracecount and 0 < max_trace <= self.tracecount and max_trace > min_trace):
-            raise IndexError(self.range_error.format(min_trace, max_trace, 0, self.tracecount - 1))
+        upper_trace = self.shape_pad[1] if access_padding else self.tracecount
+        upper_z = self.shape_pad[2] if access_padding else self.n_samples
 
-        if not (0 <= min_z < self.n_samples and 0 < max_z <= self.n_samples and max_z > min_z):
+        if not (0 <= min_trace < upper_trace and 0 < max_trace <= upper_trace and max_trace > min_trace):
+            raise IndexError(self.range_error.format(min_trace, max_trace, 0, self.n_xlines - 1))
+
+        if not (0 <= min_z < upper_z and 0 < max_z <= upper_z and max_z > min_z):
             raise IndexError(self.range_error.format(min_z, max_z, 0, self.n_samples - 1))
 
         decompressed = self.loader.read_unshuffle_and_decompress_chunk_range(self.blockshape[1] * ((max_trace + self.blockshape[1] - 1) // self.blockshape[1]),
@@ -740,7 +743,12 @@ class SgzReader(object):
         """
         if self.is_2d:
             min_trace = self.blockshape[1] * (index // self.blockshape[1])
-            chunk = self.loader.read_and_decompress_trace_range(min_trace, min_trace+self.blockshape[1])
+
+            if self.blockshape[1] == 4:
+                chunk = self.loader.read_and_decompress_trace_range(min_trace, min_trace+self.blockshape[1])
+            else:
+                chunk = self.read_subplane(min_trace, min_trace+self.blockshape[1], 0, self.n_samples, access_padding=True)
+
             trace = chunk[index % self.blockshape[1], 0:self.n_samples]
             return np.squeeze(trace)
 

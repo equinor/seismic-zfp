@@ -69,7 +69,7 @@ class SgzLoader2d(SgzLoader):
 
         for nx, x in enumerate(range(min_id // self.blockshape[1], min_id // self.blockshape[1] + xl_blocks)):
             for nz, z in enumerate(range(min_z // self.blockshape[2], min_z // self.blockshape[2] + z_blocks)):
-                bytes_start = self.block_bytes * (self.block_dims[2] * x + z)
+                bytes_start = self.chunk_bytes * x + self.block_bytes * z
                 buffer = self._get_compressed_bytes(bytes_start, self.block_bytes)
                 # Fill decompressed buffer brick by brick
                 decompressed[nx * self.blockshape[1]:(nx + 1) * self.blockshape[1],
