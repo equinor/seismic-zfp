@@ -41,7 +41,14 @@ compared to n_traces disk blocks for SEG-Y
 #### Using z-slice optimized layout ####
 - A z-slice can be read by accessing **just** n_traces/4096 disk blocks, 
 compared to n_traces disk blocks for SEG-Y
+#### 2D SEG-Y Support ####
+As of v0.2.4 support for compressing 2D SEG-Y files (INLINE_3D and CROSSLINE_3D always zero) is included.
+Compression and reading follows the same pattern as 3D files, but segyio emulation only provides the 
+following attributes: trace, header, samples, bin & text. However an additional funciton read_subplane() 
+is available for extracting horizontally and vertically contrained data.
 
+
+#### Headers ####
 The [seismic-zfp (.SGZ) format](docs/file-specification.md) also allows for preservation of information in 
 SEG-Y file and trace headers, with compression code identifying constant 
 and varying trace header values and storing these appropriately.

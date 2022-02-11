@@ -38,7 +38,7 @@ Byte encoding is little-endian.
 |32-35 |uint32 |Crossline interval
 |36-39 |uint32 |Inline interval
 |40-43 |int32 |Bits-per-voxel (negative signifying reciprocal)
-|44-47 |uint32 |Blockshape: IL-direction
+|44-47 |uint32 |Blockshape: IL-direction ****
 |48-51 |uint32 |Blockshape: XL-direction
 |52-55 |uint32 |Blockshape: Trace-direction
 |56-59 |uint32 |Number of 4K disk blocks for data
@@ -65,3 +65,5 @@ Storing whether trace header fields are duplicates of previous ones reduces the 
 *** SeismicZFP supports multiple methods of determining which SEG-Y trace headers are present and/or duplicated. The file maintains a record of which was used (heuristic only until v0.1.10):
 
 0=heuristic, 10=thorough, 20=exhaustive, 30=strip
+
+**** Blockshape in IL direction is set to 1 for 2D files, also no bytes for 3D geometry between 4-40 are set.
