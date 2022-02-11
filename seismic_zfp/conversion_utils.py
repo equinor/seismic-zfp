@@ -20,6 +20,7 @@ from .utils import (
     progress_printer,
     CubeWithAxes,
     InferredGeometry,
+    Geometry2d,
 )
 
 
@@ -80,24 +81,26 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
 
     buffer[4:8] = int_to_bytes(len(samples))
-    n_xl = len(geom.xlines)
-    buffer[8:12] = int_to_bytes(n_xl)
-    n_il = len(geom.ilines)
-    buffer[12:16] = int_to_bytes(n_il)
-
     buffer[16:20] = np_float_to_bytes_signed(samples[0])
-    min_xl = np.int32(geom.min_xl) if unstructured else xlines[0]
-    buffer[20:24] = np_float_to_bytes(min_xl)
-    min_il = np.int32(geom.min_il) if unstructured else ilines[0]
-    buffer[24:28] = np_float_to_bytes(min_il)
+    buffer[28:32] = np_float_to_bytes(1000.0 * np.array(samples[1] - samples[0]))
 
-    buffer[28:32] = np_float_to_bytes(1000.0*np.array(samples[1] - samples[0]))
-    if not unstructured:
-        buffer[32:36] = np_float_to_bytes(xlines[1] - xlines[0])
-        buffer[36:40] = np_float_to_bytes(ilines[1] - ilines[0])
-    else:
-        buffer[32:36] = np_float_to_bytes(np.int32(geom.il_step))
-        buffer[36:40] = np_float_to_bytes(np.int32(geom.xl_step))
+    if not isinstance(geom, Geometry2d):
+        n_xl = len(geom.xlines)
+        buffer[8:12] = int_to_bytes(n_xl)
+        n_il = len(geom.ilines)
+        buffer[12:16] = int_to_bytes(n_il)
+
+        min_xl = np.int32(geom.min_xl) if unstructured else xlines[0]
+        buffer[20:24] = np_float_to_bytes(min_xl)
+        min_il = np.int32(geom.min_il) if unstructured else ilines[0]
+        buffer[24:28] = np_float_to_bytes(min_il)
+
+        if not unstructured:
+            buffer[32:36] = np_float_to_bytes(xlines[1] - xlines[0])
+            buffer[36:40] = np_float_to_bytes(ilines[1] - ilines[0])
+        else:
+            buffer[32:36] = np_float_to_bytes(np.int32(geom.il_step))
+            buffer[36:40] = np_float_to_bytes(np.int32(geom.xl_step))
 
     if bits_per_voxel < 1:
         bpv = -int(1 / bits_per_voxel)
@@ -111,14 +114,23 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     buffer[52:56] = int_to_bytes(blockshape[2])
 
     # Length of the seismic amplitudes cube after compression
-    compressed_data_length_diskblocks = int(((bits_per_voxel *
-                                    pad(len(samples), blockshape[2]) *
-                                    pad(n_xl, blockshape[1]) *
-                                    pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
+    if isinstance(geom, Geometry2d):
+        compressed_data_length_diskblocks = int(((bits_per_voxel *
+                                                  pad(len(samples), blockshape[2]) *
+                                                  pad(tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
+    else:
+        compressed_data_length_diskblocks = int(((bits_per_voxel *
+                                                  pad(len(samples), blockshape[2]) *
+                                                  pad(n_xl, blockshape[1]) *
+                                                  pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
     buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
-    buffer[60:64] = int_to_bytes((len(geom.xlines) * len(geom.ilines) * 32) // 8)
+    if isinstance(geom, Geometry2d):
+        header_entry_length_bytes = (len(geom.traces) * 32) // 8
+    else:
+        header_entry_length_bytes = (len(geom.xlines) * len(geom.ilines) * 32) // 8
+    buffer[60:64] = int_to_bytes(header_entry_length_bytes)
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     buffer[64:68] = int_to_bytes(hw_info.get_header_array_count())
@@ -173,6 +185,22 @@ class MinimalInlineReader:
         else:
             print("SEGY format code not in [1, 5]")
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
+
+def io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
+                      traces_to_read, seismic_buffer, seismicfile, trace_length):
+    for i in range(blockshape[1]):
+        if i < traces_to_read:
+            trace_id = (trace_group_id * blockshape[1] + i)
+            seismic_buffer[i, 0:trace_length] = np.asarray(seismicfile.trace[trace_id])
+            if store_headers:
+                for tracefield, array in headers_dict.items():
+                    array[trace_id] = seismicfile.header[trace_id][tracefield]
+
+        else:
+            # Repeat last plane across padding to give better compression accuracy
+            seismic_buffer[i, 0:trace_length] = np.asarray(seismicfile.trace[-1])
+
+        seismic_buffer[i, trace_length:] = np.expand_dims(seismic_buffer[i, trace_length - 1], 0)
 
 
 def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
@@ -249,6 +277,34 @@ def numpy_producer(queue, in_array, blockshape):
                     slice = buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
                             z * blockshape[2]: (z + 1) * blockshape[2]].copy()
                     queue.put(slice)
+
+def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, headers_dict, geom, verbose=True):
+    n_traces, trace_length = len(geom.traces), len(seismicfile.samples)
+    padded_shape = (1, pad(n_traces, blockshape[1]), pad(trace_length, blockshape[2]))
+
+    # Loop over groups of blockshape[0] traces
+    n_trace_groups = padded_shape[1] // blockshape[1]
+    start_time = time.time()
+    for trace_group_id in range(n_trace_groups):
+        if verbose:
+            progress_printer(start_time, trace_group_id / n_trace_groups)
+    # Need to allocate at every step as this is being sent to another function
+        if (trace_group_id+1)*blockshape[1] > n_traces:
+            traces_to_read = n_traces % blockshape[1]
+        else:
+            traces_to_read = blockshape[1]
+
+        seismic_buffer = np.zeros((blockshape[1], padded_shape[2]), dtype=np.float32)
+
+        io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
+                          traces_to_read, seismic_buffer, seismicfile, trace_length)
+
+        if blockshape[1] == 4:
+            queue.put(seismic_buffer)
+        else:
+            for z in range(padded_shape[2] // blockshape[2]):
+                slice = seismic_buffer[:, z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                queue.put(slice)
 
 
 def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers_dict, geom, reduce_iops=True, verbose=True):
@@ -342,6 +398,9 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
         # run the appropriate producer and wait for completion
         if isinstance(source, CubeWithAxes):
             numpy_producer(compression_queue, source.data_array, blockshape)
+        elif isinstance(geom, Geometry2d):
+            seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
+                                     header_info.headers_dict, geom)
         else:
             seismic_file_producer(compression_queue, source, blockshape, store_headers,
                                   header_info.headers_dict, geom, reduce_iops=reduce_iops)

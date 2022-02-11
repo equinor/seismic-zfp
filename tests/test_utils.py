@@ -58,32 +58,49 @@ def test_signed_int_to_bytes():
     assert b'\x00\x00\x01\x00' == signed_int_to_bytes(65536)
 
 
-def test_define_blockshape():
-    assert (4, (4, 4, 512)) == define_blockshape(4, (4, 4, 512))
-    assert (4, (4, 4, 512)) == define_blockshape("4", (4, 4, 512))
-    assert (4, (4, 4, 512)) == define_blockshape(4, (4, 4, -1))
-    assert (4, (4, 4, 512)) == define_blockshape("4", (4, 4, -1))
-    assert (4, (4, 4, 512)) == define_blockshape(4, (4, -1, 512))
-    assert (4, (4, 4, 512)) == define_blockshape("4", (4, -1, 512))
-    assert (4, (4, 4, 512)) == define_blockshape(4, (-1, 4, 512))
-    assert (4, (4, 4, 512)) == define_blockshape("4", (-1, 4, 512))
-    assert (4, (4, 4, 512)) == define_blockshape(-1, (4, 4, 512))
-    assert (4, (4, 4, 512)) == define_blockshape("-1", (4, 4, 512))
-    assert (2, (64, 64, 4)) == define_blockshape(-1, (64, 64, 4))
-    assert (2, (64, 64, 4)) == define_blockshape("-1", (64, 64, 4))
-    assert (0.5, (4, 4, 4096)) == define_blockshape(-2, (4, 4, -1))
-    assert (0.5, (4, 4, 4096)) == define_blockshape("-2", (4, 4, -1))
-    assert (0.25, (4, 4, 8192)) == define_blockshape(-1, (4, 4, 8192))
-    assert (0.25, (4, 4, 8192)) == define_blockshape("-1", (4, 4, 8192))
-    assert (0.5, (4, 4, 4096)) == define_blockshape(0.5, (4, 4, -1))
-    assert (0.5, (4, 4, 4096)) == define_blockshape("0.5", (4, 4, -1))
-    assert (0.25, (4, 4, 8192)) == define_blockshape(0.25, (4, 4, -1))
-    assert (0.25, (4, 4, 8192)) == define_blockshape("0.25", (4, 4, -1))
+def test_define_blockshape_2d():
+    assert (4, (1, 16, 512)) == define_blockshape_2d(4, (1, 16, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(4, (1, 16, -1))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(4, (1, -1, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d(-1, (1, 16, 512))
+    assert (4, (1, 16, 512)) == define_blockshape_2d("4", (1, 16, 512))
 
     with pytest.raises(ValueError):
-        define_blockshape(-1, (4, 4, -1))
+        define_blockshape_2d(4, (1, -1, -1))
+
     with pytest.raises(AssertionError):
-        define_blockshape(1, (4, 4, 128))
+        define_blockshape_2d(4, (1, 16, 16))
+
+    with pytest.raises(AssertionError):
+        define_blockshape_2d(4, (4, 4, -1))
+
+
+def test_define_blockshape_3d():
+    assert (4, (4, 4, 512)) == define_blockshape_3d(4, (4, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d("4", (4, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d(4, (4, 4, -1))
+    assert (4, (4, 4, 512)) == define_blockshape_3d("4", (4, 4, -1))
+    assert (4, (4, 4, 512)) == define_blockshape_3d(4, (4, -1, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d("4", (4, -1, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d(4, (-1, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d("4", (-1, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d(-1, (4, 4, 512))
+    assert (4, (4, 4, 512)) == define_blockshape_3d("-1", (4, 4, 512))
+    assert (2, (64, 64, 4)) == define_blockshape_3d(-1, (64, 64, 4))
+    assert (2, (64, 64, 4)) == define_blockshape_3d("-1", (64, 64, 4))
+    assert (0.5, (4, 4, 4096)) == define_blockshape_3d(-2, (4, 4, -1))
+    assert (0.5, (4, 4, 4096)) == define_blockshape_3d("-2", (4, 4, -1))
+    assert (0.25, (4, 4, 8192)) == define_blockshape_3d(-1, (4, 4, 8192))
+    assert (0.25, (4, 4, 8192)) == define_blockshape_3d("-1", (4, 4, 8192))
+    assert (0.5, (4, 4, 4096)) == define_blockshape_3d(0.5, (4, 4, -1))
+    assert (0.5, (4, 4, 4096)) == define_blockshape_3d("0.5", (4, 4, -1))
+    assert (0.25, (4, 4, 8192)) == define_blockshape_3d(0.25, (4, 4, -1))
+    assert (0.25, (4, 4, 8192)) == define_blockshape_3d("0.25", (4, 4, -1))
+
+    with pytest.raises(ValueError):
+        define_blockshape_3d(-1, (4, 4, -1))
+    with pytest.raises(AssertionError):
+        define_blockshape_3d(1, (4, 4, 128))
 
 
 def test_get_chunk_cache_size():

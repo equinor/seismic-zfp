@@ -43,6 +43,47 @@ class SgzLoader(object):
         else:
             pass
 
+    def _get_compressed_bytes(self, offset, length_bytes):
+        if self.compressed_volume is not None:
+            return self.compressed_volume[offset:offset+length_bytes]
+        else:
+            return self.file.read_range(self.file, self.data_start_bytes + offset, length_bytes)
+
+    def _decompress(self, buffer, shape):
+        return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, rate=self.rate)
+
+
+class SgzLoader2d(SgzLoader):
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_trace_range(self, min_id, max_id):
+        block_offset = self.chunk_bytes * (min_id // self.blockshape[1])
+        buffer = self._get_compressed_bytes(block_offset, self.chunk_bytes * ((max_id + self.blockshape[1] - 1) // self.blockshape[1]))
+        return self._decompress(buffer, (self.blockshape[1], self.shape_pad[2]))
+
+    @lru_cache(maxsize=1)
+    def read_unshuffle_and_decompress_chunk_range(self, max_id, max_z, min_id, min_z):
+        z_blocks = (max_z + self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
+        xl_blocks = (max_id + self.blockshape[1]) // self.blockshape[1] - min_id // self.blockshape[1]
+        decompressed = np.zeros((xl_blocks * self.blockshape[1], z_blocks  * self.blockshape[2]), dtype=np.float32)
+
+        for nx, x in enumerate(range(min_id // self.blockshape[1], min_id // self.blockshape[1] + xl_blocks)):
+            for nz, z in enumerate(range(min_z // self.blockshape[2], min_z // self.blockshape[2] + z_blocks)):
+                bytes_start = self.chunk_bytes * x + self.block_bytes * z
+                buffer = self._get_compressed_bytes(bytes_start, self.block_bytes)
+                # Fill decompressed buffer brick by brick
+                decompressed[nx * self.blockshape[1]:(nx + 1) * self.blockshape[1],
+                             nz * self.blockshape[2]:(nz + 1) * self.blockshape[2]] \
+                    = self._decompress(buffer, (self.blockshape[1], self.blockshape[2]))
+        return decompressed
+
+    def clear_cache(self):
+        self.read_and_decompress_trace_range.cache_clear()
+        self.read_unshuffle_and_decompress_chunk_range.cache_clear()
+
+
+class SgzLoader3d(SgzLoader):
+
     def _insert_into_buffer(self, buffer, buffer_start, data_offset, length):
         part = self._get_compressed_bytes(data_offset, length)
         buffer[buffer_start : buffer_start + length] = part
@@ -68,15 +109,6 @@ class SgzLoader(object):
                                 (self.shape_pad[1] * 4 * 4 * self.rate) // 8)
             buffer[buf_start:buf_start + sub_block_size_bytes] = \
                 temp_buf[sub_block_num * sub_block_size_bytes:(sub_block_num + 1) * sub_block_size_bytes]
-
-    def _get_compressed_bytes(self, offset, length_bytes):
-        if self.compressed_volume is not None:
-            return self.compressed_volume[offset:offset+length_bytes]
-        else:
-            return self.file.read_range(self.file, self.data_start_bytes + offset, length_bytes)
-
-    def _decompress(self, buffer, shape):
-        return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, rate=self.rate)
 
     def clear_cache(self):
         self.read_and_decompress_il_set.cache_clear()

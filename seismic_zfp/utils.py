@@ -20,13 +20,16 @@ class CubeWithAxes:
         self.xlines = xlines
         self.samples = samples
 
-
 class Geometry:
     """Lightweight place to keep track of IL/XL ranges"""
     def __init__(self, min_il, max_il, min_xl, max_xl):
         self.ilines = range(min_il, max_il)
         self.xlines = range(min_xl, max_xl)
 
+class Geometry2d(Geometry):
+    """Subclass used to signify 2D input SEG-Y"""
+    def __init__(self, tracecount):
+        self.traces = range(tracecount)
 
 class InferredGeometry(Geometry):
     """Subclass used to signify irregular input SEG-Y"""
@@ -111,7 +114,12 @@ def signed_int_to_bytes(bytes):
     return struct.pack('<i', bytes)
 
 
-def define_blockshape(bits_per_voxel, blockshape):
+def define_blockshape_2d(bits_per_voxel, blockshape):
+    assert blockshape[0] == 1
+    return define_blockshape_3d(bits_per_voxel, blockshape)
+
+
+def define_blockshape_3d(bits_per_voxel, blockshape):
     if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
         raise ValueError("Blockshape is underdefined")
 
