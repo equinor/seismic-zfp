@@ -54,15 +54,27 @@ def test_decompress_data_erroneous_format(tmp_path):
 
 
 def test_decompress_headers(tmp_path):
-    out_sgy = os.path.join(str(tmp_path), 'small_test_headers.sgy')
+    out_sgy = os.path.join(str(tmp_path), 'small_test_decompress_headers.sgy')
 
     with SgzConverter(SGZ_FILE) as converter:
         converter.convert_to_segy(out_sgy)
 
     with segyio.open(out_sgy) as recovered_sgy_file:
         with segyio.open(SGY_FILE) as original_sgy_file:
-            for sgz_header, sgy_header in zip(recovered_sgy_file.header, original_sgy_file.header):
-                assert sgz_header == sgy_header
+            for recovered_header, original_header in zip(recovered_sgy_file.header, original_sgy_file.header):
+                assert recovered_header == original_header
+
+
+def test_decompress_2d_headers(tmp_path):
+    out_sgy = os.path.join(str(tmp_path), 'small_test_decompress_2d_headers.sgy')
+
+    with SgzConverter(SGZ_FILE_2D) as converter:
+        converter.convert_to_segy(out_sgy)
+
+    with segyio.open(out_sgy, strict=False) as recovered_sgy_file:
+        with segyio.open(SGY_FILE_2D, strict=False) as original_sgy_file:
+            for recovered_header, original_header in zip(recovered_sgy_file.header, original_sgy_file.header):
+                assert recovered_header == original_header
 
 
 def test_decompress_unstructured(tmp_path):

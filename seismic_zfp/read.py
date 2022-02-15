@@ -870,8 +870,11 @@ class SgzReader(object):
         header_array : numpy.ndarray of int32, shape (n_ilines, n_xlines)
         """
         self.read_variant_headers(include_padding=True, tracefields=[segyio.tracefield.TraceField(tracefield)])
-        header_array = self.variant_headers[tracefield].reshape((self.n_ilines, self.n_xlines))
-        return header_array
+        header_array = self.variant_headers[tracefield]
+        if self.is_2d:
+            return header_array
+        else:
+            return header_array.reshape((self.n_ilines, self.n_xlines))
 
     def gen_trace_header(self, index, load_all_headers=False):
         """Generates one trace header from SGZ file
