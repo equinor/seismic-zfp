@@ -13,6 +13,9 @@ SGZ_FILE = 'test_data/small_8bit.sgz'
 SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
 
+SGY_FILE_2D = 'test_data/small-2d.sgy'
+SGZ_FILE_2D = 'test_data/small-2d.sgz'
+
 
 def test_decompress_data(tmp_path):
     out_sgy = os.path.join(str(tmp_path), 'small_test_decompress_data.sgy')
@@ -21,6 +24,21 @@ def test_decompress_data(tmp_path):
         converter.convert_to_segy(out_sgy)
 
     assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
+
+
+def test_decompress_2d_data(tmp_path):
+    out_sgy = os.path.join(str(tmp_path), 'small_test_decompress_2d_data.sgy')
+
+    with SgzConverter(SGZ_FILE_2D) as converter:
+        converter.convert_to_segy(out_sgy)
+
+    with seismic_zfp.open(SGZ_FILE_2D) as reader:
+        slice_sgz = np.stack(list(reader.trace[:].copy())).astype(np.float32)
+
+    with segyio.open(out_sgy, strict=False) as sgyfile:
+        slice_segy = np.stack(list((_.copy() for _ in sgyfile.trace[:]))).astype(np.float32)
+
+    assert np.allclose(slice_segy, slice_sgz)
 
 
 def test_decompress_data_erroneous_format(tmp_path):
