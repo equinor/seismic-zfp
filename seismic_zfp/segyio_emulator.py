@@ -8,6 +8,7 @@ class SegyioEmulator(SgzReader):
 
         self.trace = TraceAccessor(self.file).__enter__()
         self.header = HeaderAccessor(self.file).__enter__()
+        self.attributes = self.get_tracefield_1d
         self.samples = self.zslices
         self.bin = self.get_file_binary_header()
         self.text = self.get_file_text_header()

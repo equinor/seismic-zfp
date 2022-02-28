@@ -17,6 +17,6 @@ with seismic_zfp.open(os.path.join(base_path, '0.sgz')) as sgzfile:
     plt.imsave(os.path.join(base_path, '0_NStackedTraces_sgz.png'), sgz_headers)
 
 with segyio.open(os.path.join(base_path, '0.sgy')) as sgyfile:
-    tracefield_values = np.array([h[segyio.tracefield.TraceField.NStackedTraces] for h in sgyfile.header[:]])
+    tracefield_values = sgyfile.attributes(segyio.TraceField.NStackedTraces)[:]
     sgy_headers = tracefield_values.reshape((len(sgyfile.ilines), len(sgyfile.xlines)))
     plt.imsave(os.path.join(base_path, '0_NStackedTraces_sgy.png'), sgy_headers)
