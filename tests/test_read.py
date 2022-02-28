@@ -109,6 +109,17 @@ def test_get_tracefield_values():
             _ = reader.variant_headers[segyio.tracefield.TraceField.CROSSLINE_3D]
 
 
+def test_get_tracefield_values_2d():
+    with SgzReader(SGZ_FILE_2D) as reader:
+        with segyio.open(SGY_FILE_2D, strict=False) as sgyfile:
+             sgy_headers = np.array([h[segyio.tracefield.TraceField.CDP_X] for h in sgyfile.header[:]])
+        sgz_headers = reader.get_tracefield_values(segyio.tracefield.TraceField.CDP_X)
+        assert  np.array_equal(sgz_headers, sgy_headers)
+        # Also check that no other arrays got read in to memory...
+        with pytest.raises(KeyError):
+            _ = reader.variant_headers[segyio.tracefield.TraceField.CDP_Y]
+
+
 def test_read_irregular_file_not_structred():
     with SgzReader(SGZ_FILE_IRREG) as reader:
         assert reader.structured is False

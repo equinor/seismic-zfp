@@ -10,8 +10,6 @@ import pytest
 from seismic_zfp.utils import generate_fake_seismic
 from seismic_zfp.seismicfile import SeismicFile
 import warnings
-from seismic_zfp.sgzconstants import DISK_BLOCK_BYTES
-from seismic_zfp.utils import int_to_bytes
 
 import mock
 import psutil
@@ -404,51 +402,6 @@ def test_convert_to_adv_from_compressed(tmp_path):
         sgz_adv_data = reader.read_volume()
 
     assert np.array_equal(sgz_data, sgz_adv_data)
-
-
-def test_decompress_data(tmp_path):
-    out_sgy = os.path.join(str(tmp_path), 'small_test_data.sgy')
-
-    with SgzConverter(SGZ_FILE) as converter:
-        converter.convert_to_segy(out_sgy)
-
-    assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
-
-
-def test_decompress_data_erroneous_format(tmp_path):
-    out_sgy = os.path.join(str(tmp_path), 'small_test_data.sgy')
-
-    with SgzConverter(SGZ_FILE) as converter:
-        new_headerbytes = bytearray(converter.headerbytes)
-        new_headerbytes[DISK_BLOCK_BYTES + 3225: DISK_BLOCK_BYTES + 3227]= int_to_bytes(42)
-        converter.headerbytes = bytes(new_headerbytes)
-        converter.convert_to_segy(out_sgy)
-
-    assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
-
-
-def test_decompress_headers(tmp_path):
-    out_sgy = os.path.join(str(tmp_path), 'small_test_headers.sgy')
-
-    with SgzConverter(SGZ_FILE) as converter:
-        converter.convert_to_segy(out_sgy)
-
-    with segyio.open(out_sgy) as recovered_sgy_file:
-        with segyio.open(SGY_FILE) as original_sgy_file:
-            for sgz_header, sgy_header in zip(recovered_sgy_file.header, original_sgy_file.header):
-                assert sgz_header == sgy_header
-
-
-def test_decompress_unstructured(tmp_path):
-    out_sgy = os.path.join(str(tmp_path), 'small_test-irregular_data.sgy')
-
-    with SgzConverter(SGZ_FILE_IRREG) as converter:
-        converter.convert_to_segy(out_sgy)
-
-    with segyio.open(SGY_FILE_IRREG, ignore_geometry=True) as sgy_file:
-        with seismic_zfp.open(SGZ_FILE_IRREG) as sgz_file:
-            for sgy_trace, sgz_trace in zip(sgy_file.trace, sgz_file.trace):
-                assert np.allclose(sgy_trace, sgz_trace, rtol=1e-2)
 
 
 def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):

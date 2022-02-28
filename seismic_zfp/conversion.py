@@ -257,12 +257,17 @@ class SgzConverter(SgzReader):
         return header
 
     def convert_to_segy(self, out_file):
-        spec = segyio.spec()
-        spec.samples = self.zslices
-        spec.offsets = [0]
-        spec.xlines = self.xlines
-        spec.ilines = self.ilines
-        spec.sorting = 2
+        if self.is_3d:
+            spec = segyio.spec()
+            spec.samples = self.zslices
+            spec.offsets = [0]
+            spec.xlines = self.xlines
+            spec.ilines = self.ilines
+            spec.sorting = 2
+        else:
+            spec = segyio.spec()
+            spec.samples = self.zslices
+            spec.tracecount = self.tracecount
 
         # seimcic-zfp stores the binary header from the source SEG-Y file.
         # In case someone forgot to do this, give them IBM float
@@ -275,6 +280,11 @@ class SgzConverter(SgzReader):
             new_headerbytes[DISK_BLOCK_BYTES + 3225: DISK_BLOCK_BYTES + 3227] = int_to_bytes(1)
             self.headerbytes = bytes(new_headerbytes)
             spec.format = 1
+
+        self.write_segy(spec, out_file)
+
+
+    def write_segy(self, spec, out_file):
 
         with warnings.catch_warnings():
             # segyio will warn us that out padded cube is not contiguous. This is expected, and safe.
