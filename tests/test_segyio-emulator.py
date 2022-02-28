@@ -190,6 +190,14 @@ def test_subvolume_accessor_errors():
             sgzfile.subvolume[1:6:2, 20:21:3, 0:None:None]
 
 
+def test_attributes():
+    with segyio.open(SGY_FILE) as sgy_file:
+        sgy_attributes = sgy_file.attributes(segyio.TraceField.INLINE_3D)[:]
+    with seismic_zfp.open(SGZ_FILE_4) as sgz_file:
+        sgz_attributes = sgz_file.attributes(segyio.TraceField.INLINE_3D)[:]
+    assert np.array_equal(sgz_attributes, sgy_attributes)
+
+
 def compare_cube(sgz_filename, sgy_filename, tolerance):
     vol_sgy = segyio.tools.cube(sgy_filename)
     vol_sgz = seismic_zfp.tools.cube(sgz_filename)

@@ -856,6 +856,22 @@ class SgzReader(object):
                     values = np.frombuffer(buffer, dtype=np.int32)
                     self.variant_headers[k] = values[self.mask] if use_mask else values
 
+    def get_tracefield_1d(self, tracefield):
+        """Efficiently provides all trace header values for a given trace header field
+
+        Parameters
+        ----------
+        tracefield : int / segyio.tracefield.TraceField
+            The trace header value position, or its programmer-friendly
+            enumerated version from segyio
+
+        Returns
+        -------
+        header_array : numpy.ndarray of int32, shape (tracecount)
+        """
+        self.read_variant_headers(include_padding=True, tracefields=[segyio.tracefield.TraceField(tracefield)])
+        return self.variant_headers[tracefield]
+
     def get_tracefield_values(self, tracefield):
         """Efficiently provides all trace header values for a given trace header field
 
@@ -869,8 +885,7 @@ class SgzReader(object):
         -------
         header_array : numpy.ndarray of int32, shape (n_ilines, n_xlines)
         """
-        self.read_variant_headers(include_padding=True, tracefields=[segyio.tracefield.TraceField(tracefield)])
-        header_array = self.variant_headers[tracefield]
+        header_array = self.get_tracefield_1d(tracefield)
         if self.is_2d:
             return header_array
         else:
