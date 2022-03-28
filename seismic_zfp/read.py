@@ -532,12 +532,14 @@ class SgzReader(object):
             for d in range(min_cd_idx, cd_len + min_cd_idx):
                 cd[d - min_cd_idx, :] = self.get_trace((d + cd_id) * self.n_xlines + d,
                                                        min_sample_id=min_sample_idx,
-                                                       max_sample_id=max_sample_idx)
+                                                       max_sample_id=max_sample_idx,
+                                                       override_unstructured_mapping=True)
         else:
             for d in range(min_cd_idx, cd_len + min_cd_idx):
                 cd[d - min_cd_idx, :] = self.get_trace(d * self.n_xlines + d - cd_id,
                                                        min_sample_id=min_sample_idx,
-                                                       max_sample_id=max_sample_idx)
+                                                       max_sample_id=max_sample_idx,
+                                                       override_unstructured_mapping=True)
         return cd
 
     def read_anticorrelated_diagonal(self, ad_id, min_ad_idx=None, max_ad_idx=None, min_sample_idx=None, max_sample_idx=None):
@@ -592,12 +594,14 @@ class SgzReader(object):
             for d in range(min_ad_idx, ad_len + min_ad_idx):
                 ad[d - min_ad_idx, :] = self.get_trace(ad_id + d * (self.n_xlines - 1),
                                                        min_sample_id=min_sample_idx,
-                                                       max_sample_id=max_sample_idx)
+                                                       max_sample_id=max_sample_idx,
+                                                       override_unstructured_mapping=True)
         else:
             for d in range(min_ad_idx, ad_len + min_ad_idx):
                 ad[d - min_ad_idx, :] = self.get_trace((ad_id - self.n_xlines + 1 + d) * self.n_xlines + (self.n_xlines - d - 1),
                                                        min_sample_id=min_sample_idx,
-                                                       max_sample_id=max_sample_idx)
+                                                       max_sample_id=max_sample_idx,
+                                                       override_unstructured_mapping=True)
         return ad
 
     def read_subplane(self, min_trace, max_trace, min_z, max_z, access_padding=False):
@@ -736,7 +740,7 @@ class SgzReader(object):
         max_sample_no = self.zslices[-1] + self.zslices[1] - self.zslices[0] if max_sample_no is None else max_sample_no
         return self.get_trace(index, self.get_zslice_index(min_sample_no), self.get_zslice_index(max_sample_no, include_stop=True))
 
-    def get_trace(self, index, min_sample_id=None, max_sample_id=None):
+    def get_trace(self, index, min_sample_id=None, max_sample_id=None, override_unstructured_mapping=False):
         """Reads one trace from SGZ file
 
         Parameters
@@ -769,7 +773,7 @@ class SgzReader(object):
             return np.squeeze(trace)
 
         else:
-            if not self.structured:
+            if (not self.structured) and (not override_unstructured_mapping):
                 self.get_unstructured_mask()
                 index = np.arange(self.mask.shape[0])[self.mask != 0][index]
 
