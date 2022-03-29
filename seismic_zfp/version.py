@@ -45,4 +45,4 @@ class SeismicZfpVersion:
         return self.encoding == other.encoding
 
     def __repr__(self):
-        return 'Version({})'.format(self.string_version)
+        return f'Version({self.string_version})'

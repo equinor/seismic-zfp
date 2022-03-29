@@ -117,7 +117,7 @@ def sgy2sgz(
     min_xl=None,
     max_xl=None,
 ):
-    click.echo("Converting {} to {}...".format(input_segy_file, output_sgz_file))
+    click.echo(f"Converting {input_segy_file} to {output_sgz_file}...")
     with SegyConverter(
         input_segy_file,
         min_il=min_il,
@@ -150,7 +150,7 @@ def zgy2sgz(
     output_sgz_file=None,
     bits_per_voxel=None,
 ):
-    click.echo("Converting {} to {}...".format(input_zgy_file, output_sgz_file))
+    click.echo(f"Converting {input_zgy_file} to {output_sgz_file}...")
     with ZgyConverter(input_zgy_file) as converter:
         converter.run(
             output_sgz_file,
@@ -172,7 +172,7 @@ def sgz2sgy(
     input_sgz_file=None,
     output_sgy_file=None,
 ):
-    click.echo("Converting {} to {}...".format(input_sgz_file, output_sgy_file))
+    click.echo(f"Converting {input_sgz_file} to {output_sgy_file}...")
     with SgzConverter(input_sgz_file) as converter:
         converter.convert_to_segy(output_sgy_file,
         )

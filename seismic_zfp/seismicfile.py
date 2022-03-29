@@ -42,7 +42,7 @@ class SeismicFile:
             elif ext == 'sgz':
                 file_type = Filetype.SGZ
             else:
-                raise ValueError("Unknown file extension: '{}'".format(ext))
+                raise ValueError(f"Unknown file extension: '{ext}'")
         elif not isinstance(file_type, Filetype):
                 raise ValueError("Not a valid file_type. Must be of type Filetype")
 

@@ -79,8 +79,7 @@ class SeismicFileConverter(object):
                                   header_detection=header_detection)
         else:
             raise NotImplementedError(
-                "Invalid header_detection method {}: valid methods: 'heuristic', 'thorough', 'exhaustive', 'strip'"
-                    .format(header_detection))
+                f"Invalid header_detection method {header_detection}: valid methods: 'heuristic', 'thorough', 'exhaustive', 'strip'")
 
     def write_headers(self, header_detection, header_info):
         # Treating "thorough" mode the same until this point, where we've read the entire file (once)
@@ -116,8 +115,7 @@ class SeismicFileConverter(object):
             raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
 
         max_queue_length = min(16, (self.mem_limit // 2) // inline_set_bytes)
-        print(f'VirtualMemory={self.mem_limit / (1024 * 1024)}MB, ' \
-              f'InlineSet={inline_set_bytes / (1024 * 1024)}MB : Using queue of length {max_queue_length}')
+        print(f"VirtualMemory={self.mem_limit/(1024*1024*1024):.2f}GB  :  InlineSet={inline_set_bytes/(1024*1024):.2f}MB  :  Using queue of length {max_queue_length}")
 
         return max_queue_length
 
@@ -144,7 +142,7 @@ class SeismicFileConverter(object):
                 file_ext = 'file'
             else:
                 file_ext = self.filetype.__repr__().split('.')[1].split(':')[0]
-            msg = "With searching comes loss,  and the presence of absence:  'My {}' not found.".format(file_ext)
+            msg = f"With searching comes loss,  and the presence of absence:  'My {file_ext}' not found."
             raise FileNotFoundError(msg)
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=None,
@@ -192,7 +190,7 @@ class SeismicFileConverter(object):
             Default: "heuristic".
         """
         self.out_filename = out_filename
-        print("Converting: In={}, Out={}".format(self.in_filename, self.out_filename))
+        print(f"Converting: In={self.in_filename}, Out={self.out_filename}")
 
         t0 = time.time()
 
@@ -219,7 +217,7 @@ class SeismicFileConverter(object):
                                 queuesize=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
         self.write_headers(header_detection, header_info)
 
-        print("Total conversion time: {}                     ".format(time.time()-t0))
+        print(f"Total conversion time: {time.time()-t0:.3f}s                     ")
 
 
 class SegyConverter(SeismicFileConverter):

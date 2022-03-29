@@ -31,8 +31,8 @@ SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
 SGZ_FILE_DEC_8 = 'test_data/small-dec_8bit.sgz'
 SGY_FILE_DEC = 'test_data/small-dec.sgy'
 
-SGZ_SGY_FILE_PAIRS = [('test_data/padding/padding_{}x{}.sgz'.format(n, m),
-                       'test_data/padding/padding_{}x{}.sgy'.format(n, m))
+SGZ_SGY_FILE_PAIRS = [(f'test_data/padding/padding_{n}x{m}.sgz',
+                       f'test_data/padding/padding_{n}x{m}.sgy')
                       for n, m in itertools.product([5, 6, 7, 8], [5, 6, 7, 8])]
 
 

@@ -89,7 +89,7 @@ def test_compress_oom_error(mocked_virtual_memory, tmp_path):
 
 def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
     out_sgz = os.path.join(str(tmp_path),
-                           'test_detecting_filetype_{}_.sgz'.format(os.path.splitext(os.path.basename(input_file))[0]))
+                           f'test_detecting_filetype_{os.path.splitext(os.path.basename(input_file))[0]}_.sgz')
     with SeismicFileConverter(input_file) as converter:
         converter.run(out_sgz, bits_per_voxel=8)
 
@@ -106,8 +106,7 @@ def test_compress_detecting_filetypes(tmp_path):
 
 
 def compress_and_compare_vds(vds_file, tmp_path, bits_per_voxel, rtol, blockshape):
-    out_sgz = os.path.join(str(tmp_path), 'test_{}_{}_.sgz'.format(os.path.splitext(os.path.basename(vds_file))[0],
-                                                                   bits_per_voxel))
+    out_sgz = os.path.join(str(tmp_path), f'test_{os.path.splitext(os.path.basename(vds_file))[0]}_{bits_per_voxel}_.sgz')
 
     with VdsConverter(vds_file) as converter:
         converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
@@ -139,8 +138,7 @@ def test_compress_vds(tmp_path):
 
 
 def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol, blockshape):
-    out_sgz = os.path.join(str(tmp_path), 'test_{}_{}_.sgz'.format(os.path.splitext(os.path.basename(zgy_file))[0],
-                                                                   bits_per_voxel))
+    out_sgz = os.path.join(str(tmp_path), f'test_{os.path.splitext(os.path.basename(zgy_file))[0]}_{bits_per_voxel}_.sgz')
 
     with ZgyConverter(zgy_file) as converter:
         converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
@@ -176,7 +174,7 @@ def test_compress_zgy(tmp_path):
 
 
 def compress_and_compare_axes(sgy_file, unit, tmp_path):
-    out_sgz = os.path.join(str(tmp_path), 'small_test_axes_{}.sgz'.format(unit))
+    out_sgz = os.path.join(str(tmp_path), f'small_test_axes_{unit}.sgz')
 
     with SegyConverter(sgy_file) as converter:
         converter.run(out_sgz)
@@ -198,7 +196,7 @@ def test_compress_axes(tmp_path):
 
 def compress_and_compare_data(sgy_file, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
     for reduce_iops in [True, False]:
-        out_sgz = os.path.join(str(tmp_path), 'small_test_data_{}_{}_.sgz'.format(bits_per_voxel, reduce_iops))
+        out_sgz = os.path.join(str(tmp_path), f'small_test_data_{bits_per_voxel}_{reduce_iops}_.sgz')
 
         with SegyConverter(sgy_file) as converter:
             converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape, reduce_iops=reduce_iops)

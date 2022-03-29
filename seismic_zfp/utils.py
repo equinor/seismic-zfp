@@ -45,8 +45,8 @@ class InferredGeometry(Geometry):
         self.xlines = range(self.min_xl, self.max_xl + 1, self.xl_step)
 
     def __repr__(self):
-        return 'IL:[{},{},{}] -- XL:[{},{},{}]'.format(self.min_il, self.max_il, self.il_step,
-                                                       self.min_xl, self.max_xl, self.xl_step)
+        return f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
+
 
 def read_range_file(file, offset, length):
     file.seek(offset)
@@ -80,7 +80,7 @@ def coord_to_index(coord, coords, include_stop=False):
     except:
         if include_stop and (coord == coords[-1] + (coords[-1]-coords[-2])):
             return len(coords)
-        raise IndexError("Coordinate {} not in axis".format(coord))
+        raise IndexError(f"Coordinate {coord} not in axis")
     return index
 
 def gen_coord_list(start, step, count):
@@ -151,7 +151,7 @@ def progress_printer(start_time, progress_frac):
     current_time = time.time()
     eta = current_time + ((1. - progress_frac) * (current_time - start_time)) / (progress_frac + 0.0000001)
     st = datetime.datetime.fromtimestamp(eta).strftime('%Y-%m-%d %H:%M:%S')
-    print("   - {:5.1f}% complete. ETA: {}".format(progress_frac * 100, st), end="\r")
+    print(f"   - {progress_frac * 100:5.1f}% complete. ETA: {st}", end="\r")
 
 
 def get_correlated_diagonal_length(cd, n_il, n_xl):

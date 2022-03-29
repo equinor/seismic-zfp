@@ -39,11 +39,11 @@ class SubvolumeAccessor(SgzReader):
 
     def _check_subscripts(self, subscript, coords, coord_name):
         if subscript.start is not None and not coords[0] <= subscript.start < coords[-1] + coords[1] - coords[0]:
-            raise IndexError("{} start {} out of range. Axes are {}".format(coord_name, subscript.start, self.axes_message))
+            raise IndexError(f"{coord_name} start {subscript.start} out of range. Axes are {self.axes_message}")
         if subscript.stop is not None and not coords[0] < subscript.stop <= coords[-1] + coords[1] - coords[0]:
-            raise IndexError("{} stop {} out of range. Axes are {}".format(coord_name, subscript.stop, self.axes_message))
+            raise IndexError(f"{coord_name} stop {subscript.stop} out of range. Axes are {self.axes_message}")
         if subscript.step is not None and not subscript.step % (coords[1] - coords[0]) == 0:
-            raise IndexError("{} step {} invalid. Axes are {}".format(coord_name, subscript.step, self.axes_message))
+            raise IndexError(f"{coord_name} step {subscript.step} invalid. Axes are {self.axes_message}")
 
 
 class Accessor(SgzReader, Mapping):

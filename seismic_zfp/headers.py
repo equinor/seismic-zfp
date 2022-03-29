@@ -152,7 +152,7 @@ class HeaderwordInfo:
     def __repr__(self):
         output = ""
         for row in self.to_list():
-            output += "{} | {} | {}\n".format(row[0], row[1], row[2])
+            output += f"{row[0]} | {row[1]} | {row[2]}\n"
         return output
 
     def update_table(self, key, new_value):
