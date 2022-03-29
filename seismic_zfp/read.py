@@ -716,7 +716,7 @@ class SgzReader(object):
                                    0, self.n_samples)
 
     def get_trace_by_coord(self, index, min_sample_no=None, max_sample_no=None):
-        """Reads one zslice from SGZ file (time or depth, depending on file contents)
+        """Reads one trace from SGZ file, cropping referenced by sample coordinates
 
         Parameters
         ----------
@@ -741,7 +741,7 @@ class SgzReader(object):
         return self.get_trace(index, self.get_zslice_index(min_sample_no), self.get_zslice_index(max_sample_no, include_stop=True))
 
     def get_trace(self, index, min_sample_id=None, max_sample_id=None, override_unstructured_mapping=False):
-        """Reads one trace from SGZ file
+        """Reads one trace from SGZ file, cropping referenced by sample indexes
 
         Parameters
         ----------
