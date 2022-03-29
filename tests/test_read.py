@@ -18,6 +18,7 @@ SGZ_FILE_8 = 'test_data/small_8bit.sgz'
 SGZ_FILE_2_64x64 = 'test_data/small_2bit-64x64.sgz'
 SGZ_FILE_8_8x8 = 'test_data/small_8bit-8x8.sgz'
 SGZ_FILE_OLD = 'test_data/small_v0.0.1.sgz'
+SGZ_FILE_HOLE = 'test_data/small_hole.sgz'
 SGY_FILE = 'test_data/small.sgy'
 
 SGY_FILE_2D = 'test_data/small-2d.sgy'
@@ -294,6 +295,24 @@ def test_read_zslice():
     compare_zslice(SGZ_FILE_8_8x8, tolerance=1e-10)
     compare_zslice(SGZ_FILE_2_64x64, tolerance=1e-4)
     compare_zslice_coord(SGZ_FILE_8, tolerance=1e-10)
+
+
+def compare_unstructured_diagonals(sgz_filename, sgz_hole_filename, tolerance):
+    reader = SgzReader(sgz_filename)
+    reader_hole = SgzReader(sgz_hole_filename)
+
+    for line_number in [-2, -1, 1, 2]:
+        slice_sgz = reader.read_correlated_diagonal(line_number)
+        slice_sgz_hole = reader_hole.read_correlated_diagonal(line_number)
+        assert np.allclose(slice_sgz, slice_sgz_hole, rtol=tolerance)
+
+    for line_number in [2, 3, 5, 6]:
+        slice_sgz = reader.read_anticorrelated_diagonal(line_number)
+        slice_sgz_hole = reader_hole.read_anticorrelated_diagonal(line_number)
+        assert np.allclose(slice_sgz, slice_sgz_hole, rtol=tolerance)
+
+def test_read_unstructured_diagonals():
+    compare_unstructured_diagonals(SGZ_FILE_8, SGZ_FILE_HOLE, tolerance=1e-4)
 
 
 def compare_correlated_diagonal_cropped(sgz_filename, min_cd_idx, max_cd_idx, min_trace_idx, max_trace_idx):
