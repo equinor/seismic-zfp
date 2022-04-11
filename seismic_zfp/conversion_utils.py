@@ -7,6 +7,7 @@ from threading import Thread
 from queue import Queue
 import numpy as np
 import warnings
+import hashlib
 
 from .version import SeismicZfpVersion
 from .seismicfile import Filetype
@@ -307,7 +308,7 @@ def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, head
                 queue.put(slice)
 
 
-def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers_dict, geom, reduce_iops=True, verbose=True):
+def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers_dict, geom, hash_object, reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts them in the queue for writing to disk"""
 
     n_ilines, n_xlines, trace_length = len(geom.ilines), len(geom.xlines), len(seismicfile.samples)
@@ -349,6 +350,9 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
             io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
                            seismic_buffer, seismicfile, minimal_il_reader, trace_length)
 
+        for i in range(planes_to_read):
+            hash_object.update(seismic_buffer[i, 0:n_xlines, 0:trace_length].copy())
+
         if blockshape[0] == 4:
             queue.put(seismic_buffer)
         else:
@@ -389,7 +393,9 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
         compression_queue = Queue(maxsize=queuesize)
         writing_queue = Queue(maxsize=queuesize)
         # schedule the consumer
-        t_compress = Thread(target=compressor, args=(compression_queue, writing_queue, bits_per_voxel))
+        hash_object = hashlib.new('sha1')
+        t_compress = Thread(target=compressor,
+                            args=(compression_queue, writing_queue, bits_per_voxel))
         t_write = Thread(target=writer, args=(writing_queue, out_filehandle, header))
         t_compress.daemon = True
         t_compress.start()
@@ -403,8 +409,11 @@ def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
                                      header_info.headers_dict, geom)
         else:
             seismic_file_producer(compression_queue, source, blockshape, store_headers,
-                                  header_info.headers_dict, geom, reduce_iops=reduce_iops)
+                                  header_info.headers_dict, geom, hash_object, reduce_iops=reduce_iops)
         # wait until the consumer has processed all items
         compression_queue.join()
         writing_queue.join()
         out_filehandle.flush()
+        print(hash_object.hexdigest())
+        print(len(hash_object.digest()))
+        print(hash_object.digest())
