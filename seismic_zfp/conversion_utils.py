@@ -82,7 +82,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
 
     buffer[4:8] = int_to_bytes(len(samples))
     buffer[16:20] = np_float_to_bytes_signed(samples[0])
-    buffer[28:32] = np_float_to_bytes(1000.0 * np.array(samples[1] - samples[0]))
+    buffer[28:32] = np_float_to_bytes_signed(1000.0 * np.array(samples[1] - samples[0]))
 
     if not isinstance(geom, Geometry2d):
         n_xl = len(geom.xlines)
@@ -91,16 +91,16 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
         buffer[12:16] = int_to_bytes(n_il)
 
         min_xl = np.int32(geom.min_xl) if unstructured else xlines[0]
-        buffer[20:24] = np_float_to_bytes(min_xl)
+        buffer[20:24] = np_float_to_bytes_signed(min_xl)
         min_il = np.int32(geom.min_il) if unstructured else ilines[0]
-        buffer[24:28] = np_float_to_bytes(min_il)
+        buffer[24:28] = np_float_to_bytes_signed(min_il)
 
         if not unstructured:
-            buffer[32:36] = np_float_to_bytes(xlines[1] - xlines[0])
-            buffer[36:40] = np_float_to_bytes(ilines[1] - ilines[0])
+            buffer[32:36] = np_float_to_bytes_signed(xlines[1] - xlines[0])
+            buffer[36:40] = np_float_to_bytes_signed(ilines[1] - ilines[0])
         else:
-            buffer[32:36] = np_float_to_bytes(np.int32(geom.il_step))
-            buffer[36:40] = np_float_to_bytes(np.int32(geom.xl_step))
+            buffer[32:36] = np_float_to_bytes_signed(np.int32(geom.il_step))
+            buffer[36:40] = np_float_to_bytes_signed(np.int32(geom.xl_step))
 
     if bits_per_voxel < 1:
         bpv = -int(1 / bits_per_voxel)
