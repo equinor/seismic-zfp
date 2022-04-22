@@ -34,6 +34,8 @@ SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
 SGY_FILE_US = 'test_data/small_us.sgy'
 SGY_FILE = 'test_data/small.sgy'
 SGY_FILE_2D = 'test_data/small-2d.sgy'
+SGY_FILE_REVERSE_IL = 'test_data/small_reverse_il.sgy'
+SGY_FILE_NEGATIVE_IL_XL = 'test_data/small_negative_il_xl.sgy'
 SGY_FILE_NEGATIVE_SAMPLES = 'test_data/small-negative-samples.sgy'
 SGY_FILE_TRACEHEADER_SAMPLERATE = 'test_data/small-traceheader-samplerate.sgy'
 SGY_FILE_DUPLICATE_TRACEHEADERS = 'test_data/small-duplicate-traceheaders.sgy'
@@ -189,6 +191,8 @@ def compress_and_compare_axes(sgy_file, unit, tmp_path):
 
 def test_compress_axes(tmp_path):
     compress_and_compare_axes(SGY_FILE, "milliseconds", tmp_path)
+    compress_and_compare_axes(SGY_FILE_REVERSE_IL, "reversed_il", tmp_path)
+    compress_and_compare_axes(SGY_FILE_NEGATIVE_IL_XL, "negative_il_xl", tmp_path)
     compress_and_compare_axes(SGY_FILE_US, "microseconds", tmp_path)
     compress_and_compare_axes(SGY_FILE_NEGATIVE_SAMPLES, "milliseconds", tmp_path)
     compress_and_compare_axes(SGY_FILE_TRACEHEADER_SAMPLERATE, "microseconds", tmp_path)

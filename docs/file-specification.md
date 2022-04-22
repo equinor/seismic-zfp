@@ -31,13 +31,13 @@ Byte encoding is little-endian.
 |4-7   |uint32 |Samples per trace
 |8-11  |uint32 |Number of crosslines
 |12-15 |uint32 |Number of inlines
-|16-19 |uint32 |Minimum sample time/depth
-|20-23 |uint32 |Minimum crossline number
-|24-27 |uint32 |Minimum inline number
-|28-31 |uint32 |Sample interval (μs/m)
-|32-35 |uint32 |Crossline interval
-|36-39 |uint32 |Inline interval
-|40-43 |int32 |Bits-per-voxel (negative signifying reciprocal)
+|16-19 | int32 |Minimum sample time/depth
+|20-23 | int32 |Minimum crossline number
+|24-27 | int32 |Minimum inline number
+|28-31 | int32 |Sample interval (μs/m)
+|32-35 | int32 |Crossline interval
+|36-39 | int32 |Inline interval
+|40-43 | int32 |Bits-per-voxel (negative signifying reciprocal)
 |44-47 |uint32 |Blockshape: IL-direction ****
 |48-51 |uint32 |Blockshape: XL-direction
 |52-55 |uint32 |Blockshape: Trace-direction
