@@ -92,6 +92,7 @@ def add_options(options):
 
 
 @click.group()
+@click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
 def cli():
     """A simple command line interface for seismic-zfp."""
 
