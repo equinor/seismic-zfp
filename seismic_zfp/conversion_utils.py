@@ -134,7 +134,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     buffer[64:68] = int_to_bytes(hw_info.get_header_array_count())
-    buffer[68:72] = int_to_bytes(tracecount if unstructured else n_il * n_xl)
+    buffer[68:72] = int_to_bytes(tracecount if unstructured or isinstance(geom, Geometry2d) else n_il * n_xl)
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long

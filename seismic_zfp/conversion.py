@@ -129,7 +129,15 @@ class SeismicFileConverter(object):
                 print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
                 self.geom = None
         else:
-            self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
+            if seismic.ilines is not None and len(seismic.ilines) == 1:
+                # We have a 2D SEG-Y
+                self.geom = Geometry2d(seismic.xlines)
+            elif seismic.xlines is not None and len(seismic.xlines) == 1:
+                # We have a 2D SEG-Y
+                self.geom = Geometry2d(seismic.ilines)
+            else:
+                # We have a regular 3D SEG-Y
+                self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
 
     def infer_geometry(self, seismic):
         traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
