@@ -34,6 +34,8 @@ SGY_FILE_IEEE = 'test_data/small-ieee.sgy'
 SGY_FILE_US = 'test_data/small_us.sgy'
 SGY_FILE = 'test_data/small.sgy'
 SGY_FILE_2D = 'test_data/small-2d.sgy'
+SGY_FILE_2D_CROSSLINE_3D = 'test_data/small-2d-CROSSLINE_3D.sgy'
+SGY_FILE_2D_INLINE_3D = 'test_data/small-2d-INLINE_3D.sgy'
 SGY_FILE_REVERSE_IL = 'test_data/small_reverse_il.sgy'
 SGY_FILE_NEGATIVE_IL_XL = 'test_data/small_negative_il_xl.sgy'
 SGY_FILE_NEGATIVE_SAMPLES = 'test_data/small-negative-samples.sgy'
@@ -252,6 +254,9 @@ def test_compress_2d_data(tmp_path):
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 16, 1.e-5, blockshape=(1, 512, 4))
     compress_and_compare_2d_data(SGY_FILE_2D, tmp_path, 8, 1.e-3, blockshape=(1, 64, 64))
 
+    compress_and_compare_2d_data(SGY_FILE_2D_CROSSLINE_3D, tmp_path, 16, 1.e-5)
+    compress_and_compare_2d_data(SGY_FILE_2D_INLINE_3D, tmp_path, 16, 1.e-5)
+
 
 def compress_compare_headers(sgy_file, tmp_path, strict=True):
     for detection_method in ['heuristic', 'thorough', 'exhaustive', 'strip']:
@@ -275,6 +280,8 @@ def test_compress_headers(tmp_path):
     compress_compare_headers(SGY_FILE, tmp_path)
     compress_compare_headers(SGY_FILE_DUPLICATE_TRACEHEADERS, tmp_path)
     compress_compare_headers(SGY_FILE_2D, tmp_path, strict=False)
+    compress_compare_headers(SGY_FILE_2D_CROSSLINE_3D, tmp_path, strict=False)
+    compress_compare_headers(SGY_FILE_2D_INLINE_3D, tmp_path, strict=False)
 
 
 def test_compress_headers_errors(tmp_path):
