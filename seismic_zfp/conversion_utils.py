@@ -377,34 +377,33 @@ def writer(queue, out_filehandle, header):
         queue.task_done()
 
 
-def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
+def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
                         header_info, geom, queuesize=16, reduce_iops=False, store_headers=True):
     if isinstance(source, CubeWithAxes):
         header = make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom)
     else:
         header = make_header_seismic_file(source, bits_per_voxel, blockshape, geom, header_info)
-    with open(out_filename, 'wb') as out_filehandle:
-        # Maxsize can be reduced for machines with little memory
-        # ... or for files which are so big they might be very useful.
-        compression_queue = Queue(maxsize=queuesize)
-        writing_queue = Queue(maxsize=queuesize)
-        # schedule the consumer
-        t_compress = Thread(target=compressor, args=(compression_queue, writing_queue, bits_per_voxel))
-        t_write = Thread(target=writer, args=(writing_queue, out_filehandle, header))
-        t_compress.daemon = True
-        t_compress.start()
-        t_write.daemon = True
-        t_write.start()
-        # run the appropriate producer and wait for completion
-        if isinstance(source, CubeWithAxes):
-            numpy_producer(compression_queue, source.data_array, blockshape)
-        elif isinstance(geom, Geometry2d):
-            seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
-                                     header_info.headers_dict, geom)
-        else:
-            seismic_file_producer(compression_queue, source, blockshape, store_headers,
-                                  header_info.headers_dict, geom, reduce_iops=reduce_iops)
-        # wait until the consumer has processed all items
-        compression_queue.join()
-        writing_queue.join()
-        out_filehandle.flush()
+    # Maxsize can be reduced for machines with little memory
+    # ... or for files which are so big they might be very useful.
+    compression_queue = Queue(maxsize=queuesize)
+    writing_queue = Queue(maxsize=queuesize)
+    # schedule the consumer
+    t_compress = Thread(target=compressor, args=(compression_queue, writing_queue, bits_per_voxel))
+    t_write = Thread(target=writer, args=(writing_queue, out_filehandle, header))
+    t_compress.daemon = True
+    t_compress.start()
+    t_write.daemon = True
+    t_write.start()
+    # run the appropriate producer and wait for completion
+    if isinstance(source, CubeWithAxes):
+        numpy_producer(compression_queue, source.data_array, blockshape)
+    elif isinstance(geom, Geometry2d):
+        seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
+                                 header_info.headers_dict, geom)
+    else:
+        seismic_file_producer(compression_queue, source, blockshape, store_headers,
+                              header_info.headers_dict, geom, reduce_iops=reduce_iops)
+    # wait until the consumer has processed all items
+    compression_queue.join()
+    writing_queue.join()
+    out_filehandle.flush()
