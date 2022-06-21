@@ -6,12 +6,21 @@ import segyio
 import time
 import psutil
 
-from .utils import pad, define_blockshape_2d, define_blockshape_3d, bytes_to_int, int_to_bytes, CubeWithAxes, Geometry, InferredGeometry, Geometry2d
 from .headers import HeaderwordInfo
 from .conversion_utils import run_conversion_loop
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 from .seismicfile import SeismicFile, Filetype
+from .utils import (pad,
+                    define_blockshape_2d,
+                    define_blockshape_3d,
+                    bytes_to_int,
+                    int_to_bytes,
+                    CubeWithAxes,
+                    Geometry,
+                    InferredGeometry,
+                    Geometry2d
+                    )
 
 
 class SeismicFileConverter(object):
@@ -37,9 +46,8 @@ class SeismicFileConverter(object):
         """
         # Quia Ego Sic Dico
         self.in_filename = in_filename
-        self.out_filename = None
         self.filetype = self.set_filetype()
-        self.check_inputfile_exists()
+        self.check_input_file_exists()
 
         self.geom = None
         if all([min_il, max_il, min_xl, max_xl]):
@@ -49,7 +57,6 @@ class SeismicFileConverter(object):
                 self.detect_geometry(seismic)
         self.is_2d = isinstance(self.geom, Geometry2d)
         self.mem_limit = psutil.virtual_memory().total
-
 
     def __enter__(self):
         return self
@@ -64,7 +71,8 @@ class SeismicFileConverter(object):
         return None
 
     def get_blank_header_info(self, seismic, header_detection):
-        n_traces = seismic.tracecount if seismic.structured or seismic.header[0][segyio.tracefield.TraceField.INLINE_3D] == 0 else 0
+        first_il_header_val = seismic.header[0][segyio.tracefield.TraceField.INLINE_3D]
+        n_traces = seismic.tracecount if seismic.structured or first_il_header_val == 0 else 0
         if header_detection == 'heuristic':
             return HeaderwordInfo(n_traces=n_traces,
                                   seismicfile=seismic,
@@ -79,49 +87,53 @@ class SeismicFileConverter(object):
                                   header_detection=header_detection)
         else:
             raise NotImplementedError(
-                f"Invalid header_detection method {header_detection}: valid methods: 'heuristic', 'thorough', 'exhaustive', 'strip'")
+                f"Invalid header_detection method {header_detection}:"
+                " valid methods: 'heuristic', 'thorough', 'exhaustive', 'strip'")
 
-    def write_headers(self, header_detection, header_info):
+    @staticmethod
+    def write_headers(header_detection, header_info, out_filehandle):
         # Treating "thorough" mode the same until this point, where we've read the entire file (once)
         # and can do a proper check to ensure no header values are being lost by coincidentally being
         # the same in the first and last traces of the file.
         if header_detection == 'thorough':
             for hw in list(header_info.headers_dict.keys()):
                 if np.all(header_info.headers_dict[hw] == header_info.headers_dict[hw][0]):
-                    header_info.update_table(hw, (header_info.headers_dict[hw][0],0))
+                    header_info.update_table(hw, (header_info.headers_dict[hw][0], 0))
                     del header_info.headers_dict[hw]
             # Update SGZ header
-            with open(self.out_filename, 'r+b') as f:
+            with open(out_filehandle.name, 'r+b') as f:
                 f.seek(64)
                 f.write(int_to_bytes(header_info.get_header_array_count()))
                 f.seek(980)
                 f.write(header_info.to_buffer())
 
         if header_detection != 'strip':
-            with open(self.out_filename, 'ab') as f:
-                for header_array in header_info.headers_dict.values():
-                    # Pad to 512-bytes for page blobs
-                    f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
-
+            for header_array in header_info.headers_dict.values():
+                # Pad to 512-bytes for page blobs
+                out_filehandle.write(header_array.tobytes() + bytes(512-len(header_array.tobytes()) % 512))
 
     def check_memory(self, inline_set_bytes):
         """Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory,
         check this before doing anything inelegant.
         """
         if inline_set_bytes > self.mem_limit // 2:
-            print(f'One inline set is {inline_set_bytes} bytes,' \
-                  f'machine memory is {self.mem_limit} bytes \n' \
+            print(f'One inline set is {inline_set_bytes} bytes,'
+                  f'machine memory is {self.mem_limit} bytes \n'
                   f'Try using fewer inlines in the blockshape, or compressing a subcube')
             raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
 
         max_queue_length = min(16, (self.mem_limit // 2) // inline_set_bytes)
-        print(f"VirtualMemory={self.mem_limit/(1024*1024*1024):.2f}GB  :  InlineSet={inline_set_bytes/(1024*1024):.2f}MB  :  Using queue of length {max_queue_length}")
+        print(f"VirtualMemory={self.mem_limit/(1024*1024*1024):.2f}GB  :"
+              "  InlineSet={inline_set_bytes/(1024*1024):.2f}MB  :"
+              "  Using queue of length {max_queue_length}")
 
         return max_queue_length
 
     def detect_geometry(self, seismic):
         if seismic.unstructured:
-            if (seismic.header[0][189], seismic.header[0][193], seismic.header[-1][189], seismic.header[-1][193]) == (0, 0, 0, 0):
+            first_header = seismic.header[0]
+            last_header = seismic.header[-1]
+            if (first_header[189], first_header[193], last_header[189], last_header[193]) == (0, 0, 0, 0):
                 # We have a 2D SEG-Y
                 self.geom = Geometry2d(seismic.tracecount)
             else:
@@ -129,14 +141,22 @@ class SeismicFileConverter(object):
                 print("SEG-Y file is unstructured and no geometry provided. Determining this may take some time...")
                 self.geom = None
         else:
-            self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
+            if seismic.ilines is not None and len(seismic.ilines) == 1:
+                # We have a 2D SEG-Y
+                self.geom = Geometry2d(seismic.xlines)
+            elif seismic.xlines is not None and len(seismic.xlines) == 1:
+                # We have a 2D SEG-Y
+                self.geom = Geometry2d(seismic.ilines)
+            else:
+                # We have a regular 3D SEG-Y
+                self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
 
     def infer_geometry(self, seismic):
         traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
         self.geom = InferredGeometry(traces_ref)
         print("... inferred geometry is:", self.geom)
 
-    def check_inputfile_exists(self):
+    def check_input_file_exists(self):
         if not os.path.exists(self.in_filename):
             if self.filetype is None:
                 file_ext = 'file'
@@ -189,8 +209,7 @@ class SeismicFileConverter(object):
 
             Default: "heuristic".
         """
-        self.out_filename = out_filename
-        print(f"Converting: In={self.in_filename}, Out={self.out_filename}")
+        print(f"Converting: In={self.in_filename}, Out={out_filename}")
 
         t0 = time.time()
 
@@ -206,16 +225,17 @@ class SeismicFileConverter(object):
                 if blockshape is None:
                     blockshape = (4, 4, -1)
                 bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
-                inline_set_bytes = blockshape[0]*(len(self.geom.xlines)* len(seismic.samples)) * 4
+                inline_set_bytes = blockshape[0]*(len(self.geom.xlines) * len(seismic.samples)) * 4
 
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = not(header_detection == 'strip')
             if seismic.filetype == Filetype.ZGY:
                 store_headers = False
             max_queue_length = self.check_memory(inline_set_bytes=inline_set_bytes)
-            run_conversion_loop(seismic, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom,
-                                queuesize=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
-        self.write_headers(header_detection, header_info)
+            with open(out_filename, 'wb') as out_file:
+                run_conversion_loop(seismic, out_file, bits_per_voxel, blockshape, header_info, self.geom,
+                                    queue_size=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
+                self.write_headers(header_detection, header_info, out_file)
 
         print(f"Total conversion time: {time.time()-t0:.3f}s                     ")
 
@@ -226,11 +246,13 @@ class SegyConverter(SeismicFileConverter):
     def set_filetype():
         return Filetype.SEGY
 
+
 class ZgyConverter(SeismicFileConverter):
     """Reads ZGY file and converts to SGZ file(s)"""
     @staticmethod
     def set_filetype():
         return Filetype.ZGY
+
 
 class VdsConverter(SeismicFileConverter):
     """Reads VDS file and converts to SGZ file(s)"""
@@ -281,7 +303,6 @@ class SgzConverter(SgzReader):
 
         self.write_segy(spec, out_file)
 
-
     def write_segy(self, spec, out_file):
 
         with warnings.catch_warnings():
@@ -318,23 +339,24 @@ class SgzConverter(SgzReader):
             inline_bytes = (self.shape_pad[2] * self.shape_pad[1] * self.rate) // 8
             for i in range(padded_shape[0] // new_blockshape[0]):
                 if (i + 1) * new_blockshape[0] > self.n_ilines:
-                    icount = (self.n_ilines % new_blockshape[0] + 4) // 4
+                    i_count = (self.n_ilines % new_blockshape[0] + 4) // 4
                 else:
-                    icount = 16
+                    i_count = 16
                 for x in range(padded_shape[1] // new_blockshape[1]):
                     if (x + 1) * new_blockshape[1] > self.n_xlines:
-                        xcount = (self.n_xlines % new_blockshape[1] + 4) // 4
+                        x_count = (self.n_xlines % new_blockshape[1] + 4) // 4
                     else:
-                        xcount = 16
+                        x_count = 16
                     buffer = bytearray(self.chunk_bytes*16*16)
-                    for n in range(icount):
+                    for n in range(i_count):
                         self.file.seek(self.data_start_bytes + x*self.chunk_bytes*16 + 4*(n+i*16)*inline_bytes)
-                        buffer[n*self.chunk_bytes*16:n*self.chunk_bytes*16 + xcount*self.chunk_bytes] = self.file.read(self.chunk_bytes*xcount)
+                        idx = slice(n*self.chunk_bytes*16, n*self.chunk_bytes*16 + x_count*self.chunk_bytes)
+                        buffer[idx] = self.file.read(self.chunk_bytes*x_count)
                     for z in range(padded_shape[2] // new_blockshape[2]):
                         new_block = bytearray(DISK_BLOCK_BYTES)
                         for u in range(64*64):
                             new_block[u*self.unit_bytes:(u+1)*self.unit_bytes] = \
-                                buffer[u*self.chunk_bytes + z*self.unit_bytes :
+                                buffer[u*self.chunk_bytes + z*self.unit_bytes:
                                        u*self.chunk_bytes + (z+1)*self.unit_bytes]
                         outfile.write(new_block)
             self.read_variant_headers()
@@ -361,6 +383,8 @@ class NumpyConverter(object):
                 - Member of segyio.tracefield.TraceField Enum
                 - 2D numpy array of integers in inline-major order, representing trace header values to be inserted
         """
+        self.geom = None
+
         # Get ilines axis. If overspecified check consistency, and generate if unspecified.
         if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
             self.ilines = trace_headers[segyio.tracefield.TraceField.INLINE_3D][:, 0]
@@ -368,7 +392,6 @@ class NumpyConverter(object):
                 assert np.array_equal(self.ilines, ilines)
         else:
             self.ilines = np.arange(data_array.shape[0]) if ilines is None else ilines
-
 
         # Get xlines axis. If overspecified check consistency, and generate if unspecified.
         if segyio.tracefield.TraceField.CROSSLINE_3D in trace_headers:
@@ -378,24 +401,27 @@ class NumpyConverter(object):
         else:
             self.xlines = np.arange(data_array.shape[1]) if xlines is None else xlines
 
-        self.samples = 4*np.arange(data_array.shape[2]) if samples is None else samples # Default 4ms sampling
+        self.samples = 4*np.arange(data_array.shape[2]) if samples is None else samples   # Default 4ms sampling
         self.trace_headers = collections.OrderedDict(sorted(trace_headers.items()))
 
-        if segyio.tracefield.TraceField.INLINE_3D not in self.trace_headers:
-            self.trace_headers[segyio.tracefield.TraceField.INLINE_3D] = np.broadcast_to(np.expand_dims(self.ilines, 1), (len(self.ilines), len(self.xlines)))
+        shape = (len(self.ilines), len(self.xlines))
+        tf_il = segyio.tracefield.TraceField.INLINE_3D
+        tf_xl = segyio.tracefield.TraceField.CROSSLINE_3D
 
-        if segyio.tracefield.TraceField.CROSSLINE_3D not in self.trace_headers:
-            self.trace_headers[segyio.tracefield.TraceField.CROSSLINE_3D] = np.broadcast_to(self.xlines, (len(self.ilines), len(self.xlines)))
+        if tf_il not in self.trace_headers:
+            self.trace_headers[tf_il] = np.broadcast_to(np.expand_dims(self.ilines, 1), shape)
+
+        if tf_xl not in self.trace_headers:
+            self.trace_headers[tf_xl] = np.broadcast_to(self.xlines, shape)
 
         # Do some sanity checks
         assert data_array.dtype == np.float32
         assert data_array.shape == (len(self.ilines), len(self.xlines), len(self.samples))
         for tracefield, header_array in self.trace_headers.items():
             assert tracefield in segyio.tracefield.keys.values()
-            assert header_array.shape == data_array[:,:,0].shape
+            assert header_array.shape == data_array[:, :, 0].shape
 
         self.data_array = data_array
-
 
     def __enter__(self):
         return self
@@ -403,12 +429,11 @@ class NumpyConverter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def write_headers(self, header_info):
-         with open(self.out_filename, 'ab') as f:
-            for header_array in header_info.headers_dict.values():
-                # Pad to 512-bytes for page blobs
-                f.write(header_array.tobytes() + bytes(512-len(header_array.tobytes())%512))
-
+    @staticmethod
+    def write_headers(header_info, out_filehandle):
+        for header_array in header_info.headers_dict.values():
+            # Pad to 512-bytes for page blobs
+            out_filehandle.write(header_array.tobytes() + bytes(512-len(header_array.tobytes()) % 512))
 
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
         """General entrypoint for converting numpy arrays to SGZ files
@@ -436,10 +461,10 @@ class NumpyConverter(object):
             - (4, 4, -1) - default - is good for IL/XL reading
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
         """
-        self.out_filename = out_filename
         bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
         self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
         header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
-        run_conversion_loop(input_cube, self.out_filename, bits_per_voxel, blockshape, header_info, self.geom)
-        self.write_headers(header_info)
+        with open(out_filename, 'wb') as out_filehandle:
+            run_conversion_loop(input_cube, out_filehandle, bits_per_voxel, blockshape, header_info, self.geom)
+            self.write_headers(header_info, out_filehandle)

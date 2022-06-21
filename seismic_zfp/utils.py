@@ -30,8 +30,12 @@ class Geometry:
 
 class Geometry2d(Geometry):
     """Subclass used to signify 2D input SEG-Y"""
-    def __init__(self, tracecount):
-        self.traces = range(tracecount)
+    def __init__(self, setup_param):
+        if isinstance(setup_param, int):
+            self.traces = range(setup_param)
+        elif isinstance(setup_param, np.ndarray):
+            self.traces = setup_param
+
 
 class InferredGeometry(Geometry):
     """Subclass used to signify irregular input SEG-Y"""

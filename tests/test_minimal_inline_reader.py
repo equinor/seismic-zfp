@@ -2,6 +2,7 @@ import os
 import seismic_zfp
 from seismic_zfp import conversion_utils
 from seismic_zfp.conversion import SegyConverter
+from seismic_zfp.seismicfile import SeismicFile
 import segyio
 import mock
 import pytest
@@ -10,8 +11,8 @@ SGY_FILE = 'test_data/small.sgy'
 
 
 def test_inline_reading():
-    with segyio.open(SGY_FILE) as sgyfile:
-        assert conversion_utils.MinimalInlineReader(sgyfile).self_test()
+    with SeismicFile.open(SGY_FILE) as seismic_file:
+        assert conversion_utils.MinimalInlineReader(seismic_file).self_test()
 
 
 def test_minimal_inline_reader_defaults(tmp_path):
