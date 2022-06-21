@@ -689,9 +689,9 @@ class SgzReader(object):
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_chunk_range(max_il, max_xl, max_z, min_il, min_xl, min_z)
 
-            return decompressed[min_il%4:(min_il%4)+max_il-min_il,
-                                min_xl%4:(min_xl%4)+max_xl-min_xl,
-                                min_z%4:(min_z%4)+max_z-min_z]
+            return decompressed[min_il % 4: (min_il % 4) + max_il-min_il,
+                                min_xl % 4: (min_xl % 4) + max_xl-min_xl,
+                                min_z % 4: (min_z % 4) + max_z-min_z]
         else:
             # This works generally, but is pretty wasteful for IL or XL reads.
             # Really should encourage users to stick with either:

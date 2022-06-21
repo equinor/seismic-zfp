@@ -66,11 +66,11 @@ def test_headerword_info_roundtrip():
 
 def test_headerword_info_errors():
     with pytest.raises(RuntimeError):
-        hw_info = HeaderwordInfo(25)
+        HeaderwordInfo(25)
 
     with pytest.raises(RuntimeError):
         with SeismicFile.open(SGZ_FILE) as sgzfile:
-            hw_info = HeaderwordInfo(25, seismicfile=sgzfile)
+            HeaderwordInfo(25, seismicfile=sgzfile)
 
 
 def test_compress_sgz_file_errors(tmp_path):
@@ -100,6 +100,7 @@ def compress_and_compare_detecting_filetypes(input_file, reader, tmp_path):
 
     assert np.allclose(sgz_data, reader.tools.cube(input_file), rtol=1e-6)
 
+
 @pytest.mark.skipif(pyvds is None or pyzgy is None, reason="Requires pyvds and pyzgy")
 def test_compress_detecting_filetypes(tmp_path):
     compress_and_compare_detecting_filetypes(SGY_FILE, segyio, tmp_path)
@@ -108,12 +109,13 @@ def test_compress_detecting_filetypes(tmp_path):
 
 
 def compress_and_compare_vds(vds_file, tmp_path, bits_per_voxel, rtol, blockshape):
-    out_sgz = os.path.join(str(tmp_path), f'test_{os.path.splitext(os.path.basename(vds_file))[0]}_{bits_per_voxel}_.sgz')
+    out_filename = f'test_{os.path.splitext(os.path.basename(vds_file))[0]}_{bits_per_voxel}_.sgz'
+    out_filepath = os.path.join(str(tmp_path), out_filename)
 
     with VdsConverter(vds_file) as converter:
-        converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+        converter.run(out_filepath, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
-    with seismic_zfp.open(out_sgz) as sgzfile:
+    with seismic_zfp.open(out_filepath) as sgzfile:
         with pyvds.open(vds_file) as vdsfile:
             ref_ilines = vdsfile.ilines
             ref_samples = vdsfile.samples
@@ -131,7 +133,8 @@ def compress_and_compare_vds(vds_file, tmp_path, bits_per_voxel, rtol, blockshap
     assert np.allclose(sgz_data, pyvds.tools.cube(vds_file), rtol=rtol)
     assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
     assert all(ref_samples == sgz_samples)
-    assert 30 == SgzReader(out_sgz).get_file_source_code()
+    assert 30 == SgzReader(out_filepath).get_file_source_code()
+
 
 @pytest.mark.skipif(pyvds is None, reason="Requires pyvds")
 def test_compress_vds(tmp_path):
@@ -140,12 +143,13 @@ def test_compress_vds(tmp_path):
 
 
 def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol, blockshape):
-    out_sgz = os.path.join(str(tmp_path), f'test_{os.path.splitext(os.path.basename(zgy_file))[0]}_{bits_per_voxel}_.sgz')
+    out_filename = f'test_{os.path.splitext(os.path.basename(zgy_file))[0]}_{bits_per_voxel}_.sgz'
+    out_filepath = os.path.join(str(tmp_path), out_filename)
 
     with ZgyConverter(zgy_file) as converter:
-        converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+        converter.run(out_filepath, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
-    with seismic_zfp.open(out_sgz) as sgzfile:
+    with seismic_zfp.open(out_filepath) as sgzfile:
         with pyzgy.open(zgy_file) as zgyfile:
             ref_ilines = zgyfile.ilines
             ref_samples = zgyfile.samples
@@ -164,7 +168,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol,
     assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
     assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
     assert all(ref_samples == sgz_samples)
-    assert 10 == SgzReader(out_sgz).get_file_source_code()
+    assert 10 == SgzReader(out_filepath).get_file_source_code()
 
 
 @pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
@@ -188,6 +192,7 @@ def compress_and_compare_axes(sgy_file, unit, tmp_path):
             assert np.all(reader.zslices == f.samples)
             assert reader.tracecount == f.tracecount
             assert reader.structured
+
 
 def test_compress_axes(tmp_path):
     compress_and_compare_axes(SGY_FILE, "milliseconds", tmp_path)
@@ -225,7 +230,6 @@ def test_compress_data(tmp_path):
 
     compress_and_compare_data(SGY_FILE, tmp_path, 2, 1e-4, blockshape=(64, 64, 4))
     compress_and_compare_data(SGY_FILE, tmp_path, 8, 1e-10, blockshape=(16, 16, 16))
-
 
 
 def compress_and_compare_2d_data(sgy_file, tmp_path, bits_per_voxel, rtol, blockshape=(1, 16, -1)):
@@ -310,6 +314,7 @@ def test_compress_unstructured_decimated(tmp_path):
     segy_cube = segyio.tools.cube(SGY_FILE)[::2, ::2, :]
     segy_cube[2, 2, :] = 0
     assert np.allclose(sgz_data, segy_cube, atol=1e-4)
+
 
 def test_compress_unstructured_headers(tmp_path):
     out_sgz = os.path.join(str(tmp_path), 'small_test-irregular_headers.sgz')
@@ -406,7 +411,8 @@ def test_convert_to_adv_from_compressed(tmp_path):
     assert np.array_equal(sgz_data, sgz_adv_data)
 
 
-def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines, tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
+def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines,
+                                    tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
 
     out_sgz = os.path.join(str(tmp_path), 'from-numpy.sgz')
     out_sgz_no_headers = os.path.join(str(tmp_path), 'from-numpy_no_headers.sgz')
@@ -415,15 +421,15 @@ def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n
                                                            min_iline=min_iline, min_xline=min_xline)
 
     trace_headers = {segyio.tracefield.TraceField.INLINE_3D:
-                         np.broadcast_to(np.expand_dims(ilines, axis=1), (n_ilines, n_xlines)),
+                     np.broadcast_to(np.expand_dims(ilines, axis=1), (n_ilines, n_xlines)),
                      segyio.tracefield.TraceField.CROSSLINE_3D:
-                         np.broadcast_to(xlines, (n_ilines,n_xlines))}
+                     np.broadcast_to(xlines, (n_ilines, n_xlines))}
 
     with NumpyConverter(array, ilines=ilines, xlines=xlines, samples=samples, trace_headers=trace_headers) as converter:
         converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
 
     with SgzReader(out_sgz) as reader:
-        #print(np.max(np.abs(reader.read_volume()-array)/np.abs(array)))
+        # print(np.max(np.abs(reader.read_volume()-array)/np.abs(array)))
         assert np.allclose(reader.ilines, ilines, rtol=rtol)
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
@@ -437,8 +443,6 @@ def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n
         assert np.allclose(reader.xlines, np.arange(array.shape[1]), rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
-
-
 
 
 def test_compress_numpy_data(tmp_path):
