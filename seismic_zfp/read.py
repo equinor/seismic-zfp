@@ -643,7 +643,7 @@ class SgzReader(object):
         return decompressed[min_trace % self.blockshape[1]:(min_trace % self.blockshape[1]) + max_trace - min_trace,
                             min_z % self.blockshape[2]:(min_z % self.blockshape[2]) + max_z - min_z]
 
-    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False):
+    def read_subvolume(self, min_il, max_il, min_xl, max_xl, min_z, max_z, access_padding=False, multithreading=True):
         """Reads a sub-volume from SGZ file
 
         Parameters
@@ -666,6 +666,9 @@ class SgzReader(object):
         access_padding : bool, optional
             Functions which manage voxels used for padding themselves may relax bounds-checking to padded dimensions
 
+        multithreading : bool, optional
+            Request multithreaded decompression, should be turned off when doing individual chunk reads for get_trace
+
         Returns
         -------
         subvolume : numpy.ndarray of float32, shape (max_il - min_il, max_xl - min_xl, max_z - min_z)
@@ -687,11 +690,12 @@ class SgzReader(object):
             raise IndexError(self.range_error.format(min_z, max_z, 0, self.n_samples - 1))
 
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
-            decompressed = self.loader.read_and_decompress_chunk_range(max_il, max_xl, max_z, min_il, min_xl, min_z)
+            decompressed = self.loader.read_and_decompress_chunk_range(max_il, max_xl, max_z,
+                                                                       min_il, min_xl, min_z, multithreading)
 
-            return decompressed[min_il%4:(min_il%4)+max_il-min_il,
-                                min_xl%4:(min_xl%4)+max_xl-min_xl,
-                                min_z%4:(min_z%4)+max_z-min_z]
+            return decompressed[min_il % 4: (min_il % 4) + max_il-min_il,
+                                min_xl % 4: (min_xl % 4) + max_xl-min_xl,
+                                min_z % 4: (min_z % 4) + max_z-min_z]
         else:
             # This works generally, but is pretty wasteful for IL or XL reads.
             # Really should encourage users to stick with either:
@@ -752,9 +756,14 @@ class SgzReader(object):
             The index of the beginning of the range for a cropped trace
             Defaults to beginning of trace
 
-         max_sample_id : int
+        max_sample_id : int
             The index of the end (exclusive) of the range for a cropped trace
             Defaults to include end of trace
+
+        override_unstructured_mapping : bool
+            This function is used when reading diagonals from an SGZ file created
+            from an unstructured SEG-Y file. In this case we *do* want to read
+            empty traces, as they have meaning.
 
         Returns
         -------
@@ -795,7 +804,6 @@ class SgzReader(object):
             trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], min_sample_id-min_z:max_sample_id-min_z]
             return np.squeeze(trace)
 
-
     def _read_containing_chunk(self, ref_il, ref_xl, min_z, max_z):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0
@@ -803,8 +811,7 @@ class SgzReader(object):
         assert max_z % self.blockshape[2] == 0
         return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
                                    ref_xl, ref_xl + self.blockshape[1],
-                                   min_z, max_z, access_padding=True)
-
+                                   min_z, max_z, access_padding=True, multithreading=False)
 
     def get_unstructured_mask(self):
         if self.mask is None:

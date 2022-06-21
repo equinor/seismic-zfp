@@ -52,6 +52,10 @@ class SgzLoader(object):
     def _decompress(self, buffer, shape):
         return zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, rate=self.rate)
 
+    def _decompress_into_array(self, buffer, shape, array):
+        zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, out=array, rate=self.rate)
+
+
 
 class SgzLoader2d(SgzLoader):
 
@@ -86,7 +90,7 @@ class SgzLoader3d(SgzLoader):
 
     def _insert_into_buffer(self, buffer, buffer_start, data_offset, length):
         part = self._get_compressed_bytes(data_offset, length)
-        buffer[buffer_start : buffer_start + length] = part
+        buffer[buffer_start: buffer_start + length] = part
 
     def _insert_chunk_into_buffer(self, buffer, buffer_start, data_offset):
         self._insert_into_buffer(buffer, buffer_start, data_offset, self.chunk_bytes)
@@ -132,7 +136,7 @@ class SgzLoader3d(SgzLoader):
         with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
             for chunk_num in range(self.shape_pad[0] // 4):
                 executor.submit(self._insert_chunk_into_buffer, buffer, chunk_num * self.chunk_bytes,
-                                           xl_first_chunk_offset + chunk_num * xl_chunk_increment)
+                                xl_first_chunk_offset + chunk_num * xl_chunk_increment)
         return self._decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]))
 
     @lru_cache(maxsize=1)
@@ -157,7 +161,6 @@ class SgzLoader3d(SgzLoader):
                                                                     sub_block_size_bytes, zslice_first_block_offset)
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
 
-
     def read_chunk_range(self, min_il, min_xl, min_z, il_units, xl_units, z_units):
         buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
         read_length = self.unit_bytes * z_units
@@ -172,16 +175,26 @@ class SgzLoader3d(SgzLoader):
                 buffer[buf_start:buf_start+read_length] = self._get_compressed_bytes(bytes_start, read_length)
         return buffer
 
-
     @lru_cache(maxsize=1)
-    def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):
+    def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z, multithreading):
         z_units = (max_z + 3) // 4 - min_z // 4
         xl_units = (max_xl + 3) // 4 - min_xl // 4
         il_units = (max_il + 3) // 4 - min_il // 4
 
         buffer = self.read_chunk_range(min_il, min_xl, min_z,
                                        il_units, xl_units, z_units)
-        return self._decompress(buffer, (il_units * 4, xl_units * 4, z_units * 4))
+        if multithreading:
+            compressed_len = len(buffer) // il_units
+            cube = np.zeros((il_units * 4, xl_units * 4, z_units * 4), dtype='float32')
+            with cf.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False)) as executor:
+                for unit in range(il_units):
+                    executor.submit(self._decompress_into_array,
+                                    buffer[unit * compressed_len: (unit + 1) * compressed_len],
+                                    (4, xl_units * 4, z_units * 4),
+                                    cube[unit*4: unit*4 + 4, :, :])
+            return cube
+        else:
+            return self._decompress(buffer, (il_units * 4, xl_units * 4, z_units * 4))
 
 
     @lru_cache(maxsize=1)

@@ -11,17 +11,16 @@ import warnings
 from .version import SeismicZfpVersion
 from .seismicfile import Filetype
 from .sgzconstants import HEADER_DETECTION_CODES, DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
-from .utils import (
-    pad,
-    int_to_bytes,
-    signed_int_to_bytes,
-    np_float_to_bytes,
-    np_float_to_bytes_signed,
-    progress_printer,
-    CubeWithAxes,
-    InferredGeometry,
-    Geometry2d,
-)
+from .utils import (pad,
+                    int_to_bytes,
+                    signed_int_to_bytes,
+                    np_float_to_bytes,
+                    np_float_to_bytes_signed,
+                    progress_printer,
+                    CubeWithAxes,
+                    InferredGeometry,
+                    Geometry2d,
+                    )
 
 
 def make_header_seismic_file(seismicfile, bits_per_voxel, blockshape, geom, header_info):
@@ -36,7 +35,7 @@ def make_header_seismic_file(seismicfile, bits_per_voxel, blockshape, geom, head
 
     # Just copy the bytes from the SEG-Y file header
     if seismicfile.filetype == Filetype.SEGY:
-        with open(seismicfile._filename, "rb") as f:
+        with open(seismicfile.filename, "rb") as f:
             segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
             buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
 
@@ -84,7 +83,17 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     buffer[16:20] = np_float_to_bytes_signed(samples[0])
     buffer[28:32] = np_float_to_bytes_signed(1000.0 * np.array(samples[1] - samples[0]))
 
-    if not isinstance(geom, Geometry2d):
+    if bits_per_voxel < 1:
+        bpv = -int(1 / bits_per_voxel)
+    else:
+        bpv = int(bits_per_voxel)
+
+    if isinstance(geom, Geometry2d):
+        # Length of the seismic amplitudes cube after compression
+        compressed_data_length_diskblocks = int(((bits_per_voxel *
+                                                  pad(len(samples), blockshape[2]) *
+                                                  pad(tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
+    else:
         n_xl = len(geom.xlines)
         buffer[8:12] = int_to_bytes(n_xl)
         n_il = len(geom.ilines)
@@ -102,27 +111,15 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
             buffer[32:36] = np_float_to_bytes_signed(np.int32(geom.il_step))
             buffer[36:40] = np_float_to_bytes_signed(np.int32(geom.xl_step))
 
-    if bits_per_voxel < 1:
-        bpv = -int(1 / bits_per_voxel)
-    else:
-        bpv = int(bits_per_voxel)
-        
-    buffer[40:44] = signed_int_to_bytes(bpv)
-    
-    buffer[44:48] = int_to_bytes(blockshape[0])
-    buffer[48:52] = int_to_bytes(blockshape[1])
-    buffer[52:56] = int_to_bytes(blockshape[2])
-
-    # Length of the seismic amplitudes cube after compression
-    if isinstance(geom, Geometry2d):
-        compressed_data_length_diskblocks = int(((bits_per_voxel *
-                                                  pad(len(samples), blockshape[2]) *
-                                                  pad(tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
-    else:
         compressed_data_length_diskblocks = int(((bits_per_voxel *
                                                   pad(len(samples), blockshape[2]) *
                                                   pad(n_xl, blockshape[1]) *
                                                   pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
+
+    buffer[40:44] = signed_int_to_bytes(bpv)
+    buffer[44:48] = int_to_bytes(blockshape[0])
+    buffer[48:52] = int_to_bytes(blockshape[1])
+    buffer[52:56] = int_to_bytes(blockshape[2])
     buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
@@ -138,25 +135,26 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
-    buffer[980:2048] = hw_info.to_buffer() # Start at 980 to end at 2048
+    buffer[980:2048] = hw_info.to_buffer()   # Start at 980 to end at 2048
 
     return buffer
 
 
-
-# A minimal IL reader reads an inline with the minimum number of read calls, i.e. one.
-# segyio is designed around Linux, which is quite happy to wrap up millions of fread calls
-# into reading from disk buffers. Windows appears reluctant to perform the same trick.
-# So reading inline sample data and header data is pulled off in one big read, and this MinimalInlineReader
-# sorts the data out into a numpy array, and dictionaries containing the header values.
-# Because this small class cannot hope to replicate the full range of functionality which segyio
-# provides, it is also endowed with a self_test function which should be called once when reading
-# a SEG-Y file. This checks that for the first inline in a file both segyio and the MinimalInlineReader give
-# identical output. When using this function it is recommended that segyio is used as fallback if self_test fails
 class MinimalInlineReader:
+    """
+    A minimal IL reader reads an inline with the minimum number of read calls, i.e. one.
+    segyio is designed around Linux, which is quite happy to wrap up millions of fread calls
+    into reading from disk buffers. Windows appears reluctant to perform the same trick.
+    So reading inline sample data and header data is pulled off in one big read, and this MinimalInlineReader
+    sorts the data out into a numpy array, and dictionaries containing the header values.
+    Because this small class cannot hope to replicate the full range of functionality which segyio
+    provides, it is also endowed with a self_test function which should be called once when reading
+    a SEG-Y file. This checks that for the first inline in a file both segyio and the MinimalInlineReader give
+    identical output. When using this function it is recommended that segyio is used as fallback if self_test fails
+    """
     def __init__(self, segyfile):
         self.segyfile = segyfile
-        self.file = open(self.segyfile._filename, "rb")
+        self.file = open(segyfile.filename, "rb")
         self.n_il = len(segyfile.ilines)
         self.n_xl = len(segyfile.xlines)
         self.n_samp = len(segyfile.samples)
@@ -186,6 +184,7 @@ class MinimalInlineReader:
             print("SEGY format code not in [1, 5]")
             raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
+
 def io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
                       traces_to_read, seismic_buffer, seismicfile, trace_length):
     for i in range(blockshape[1]):
@@ -209,7 +208,8 @@ def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, 
         start_trace = (plane_set_id * blockshape[0] + i) * len(seismicfile.xlines) + geom.xlines[0]
         if i < planes_to_read:
             if minimal_il_reader is not None:
-                headers, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
+                headers, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] \
+                    = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
             else:
                 seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(
                     seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + i]]
@@ -227,10 +227,13 @@ def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, 
         else:
             # Repeat last plane across padding to give better compression accuracy
             if minimal_il_reader is not None:
-                _, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
+                _, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] \
+                    = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
             else:
-                seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1]]
-                                  )[geom.xlines[0]:geom.xlines[-1]+1, :]
+                last_populated_inline_number = geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1
+                last_populated_inline = seismicfile.iline[seismicfile.ilines[last_populated_inline_number]]
+                il_shape = (slice(geom.xlines[0], geom.xlines[-1] + 1), slice(None))
+                seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(last_populated_inline)[il_shape]
 
         # Also, repeat edge values across padding. Non Quod Maneat, Sed Quod Adimimus.
         seismic_buffer[i, len(geom.xlines):, 0:trace_length] = seismic_buffer[i, len(geom.xlines) - 1, 0:trace_length]
@@ -251,6 +254,7 @@ def unstructured_io_thread_func(blockshape, store_headers, headers_dict, geom, p
                     for tracefield, array in headers_dict.items():
                         array[t_store] = header[tracefield]
 
+
 def numpy_producer(queue, in_array, blockshape):
     """Copies plane-sets from input array, and puts them in the queue for writing to disk"""
     n_ilines, n_xlines, trace_length = in_array.shape
@@ -260,8 +264,8 @@ def numpy_producer(queue, in_array, blockshape):
     n_plane_sets = padded_shape[0] // blockshape[0]
     for plane_set_id in range(n_plane_sets):
         if (plane_set_id+1)*blockshape[0] > n_ilines:
-            ilines_pad = blockshape[0] - n_ilines%blockshape[0]
-            buffer = np.pad(in_array[plane_set_id*blockshape[0]:(plane_set_id+1)*blockshape[0],:,:],
+            ilines_pad = blockshape[0] - n_ilines % blockshape[0]
+            buffer = np.pad(in_array[plane_set_id*blockshape[0]:(plane_set_id+1)*blockshape[0], :, :],
                             ((0, ilines_pad), (0, padded_shape[1]-n_xlines), (0, padded_shape[2]-trace_length)),
                             'edge')
         else:
@@ -275,8 +279,9 @@ def numpy_producer(queue, in_array, blockshape):
             for x in range(padded_shape[1] // blockshape[1]):
                 for z in range(padded_shape[2] // blockshape[2]):
                     slice = buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
-                            z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                                   z * blockshape[2]: (z + 1) * blockshape[2]].copy()
                     queue.put(slice)
+
 
 def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, headers_dict, geom, verbose=True):
     n_traces, trace_length = len(geom.traces), len(seismicfile.samples)
@@ -307,7 +312,8 @@ def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, head
                 queue.put(slice)
 
 
-def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers_dict, geom, reduce_iops=True, verbose=True):
+def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
+                          headers_dict, geom, reduce_iops=True, verbose=True):
     """Reads and compresses data from input file, and puts them in the queue for writing to disk"""
 
     n_ilines, n_xlines, trace_length = len(geom.ilines), len(geom.xlines), len(seismicfile.samples)
@@ -320,7 +326,8 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
             warnings.warn("Chaos reigns within. Reflect, repent, and reboot. Order shall return.", UserWarning)
         else:
             minimal_il_reader = MinimalInlineReader(seismicfile)
-            if minimal_il_reader.self_test() and n_ilines == len(seismicfile.ilines) and n_xlines == len(seismicfile.xlines):
+            seismicfile_shape = (len(seismicfile.ilines), len(seismicfile.xlines))
+            if minimal_il_reader.self_test() and seismicfile_shape == (n_ilines, n_xlines):
                 pass
             else:
                 warnings.warn("MinimalInlineReader failed self-test, using fallback", UserWarning)
@@ -354,8 +361,9 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers, headers
         else:
             for x in range(padded_shape[1] // blockshape[1]):
                 for z in range(padded_shape[2] // blockshape[2]):
-                    slice = seismic_buffer[:, x * blockshape[1]: (x + 1) * blockshape[1],
-                                              z * blockshape[2]: (z + 1) * blockshape[2]].copy()
+                    slice = seismic_buffer[:,
+                                           x * blockshape[1]: (x + 1) * blockshape[1],
+                                           z * blockshape[2]: (z + 1) * blockshape[2]].copy()
                     queue.put(slice)
 
 
@@ -377,34 +385,33 @@ def writer(queue, out_filehandle, header):
         queue.task_done()
 
 
-def run_conversion_loop(source, out_filename, bits_per_voxel, blockshape,
-                        header_info, geom, queuesize=16, reduce_iops=False, store_headers=True):
+def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
+                        header_info, geom, queue_size=16, reduce_iops=False, store_headers=True):
     if isinstance(source, CubeWithAxes):
         header = make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom)
     else:
         header = make_header_seismic_file(source, bits_per_voxel, blockshape, geom, header_info)
-    with open(out_filename, 'wb') as out_filehandle:
-        # Maxsize can be reduced for machines with little memory
-        # ... or for files which are so big they might be very useful.
-        compression_queue = Queue(maxsize=queuesize)
-        writing_queue = Queue(maxsize=queuesize)
-        # schedule the consumer
-        t_compress = Thread(target=compressor, args=(compression_queue, writing_queue, bits_per_voxel))
-        t_write = Thread(target=writer, args=(writing_queue, out_filehandle, header))
-        t_compress.daemon = True
-        t_compress.start()
-        t_write.daemon = True
-        t_write.start()
-        # run the appropriate producer and wait for completion
-        if isinstance(source, CubeWithAxes):
-            numpy_producer(compression_queue, source.data_array, blockshape)
-        elif isinstance(geom, Geometry2d):
-            seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
-                                     header_info.headers_dict, geom)
-        else:
-            seismic_file_producer(compression_queue, source, blockshape, store_headers,
-                                  header_info.headers_dict, geom, reduce_iops=reduce_iops)
-        # wait until the consumer has processed all items
-        compression_queue.join()
-        writing_queue.join()
-        out_filehandle.flush()
+    # Maxsize can be reduced for machines with little memory
+    # ... or for files which are so big they might be very useful.
+    compression_queue = Queue(maxsize=queue_size)
+    writing_queue = Queue(maxsize=queue_size)
+    # schedule the consumer
+    t_compress = Thread(target=compressor, args=(compression_queue, writing_queue, bits_per_voxel))
+    t_write = Thread(target=writer, args=(writing_queue, out_filehandle, header))
+    t_compress.daemon = True
+    t_compress.start()
+    t_write.daemon = True
+    t_write.start()
+    # run the appropriate producer and wait for completion
+    if isinstance(source, CubeWithAxes):
+        numpy_producer(compression_queue, source.data_array, blockshape)
+    elif isinstance(geom, Geometry2d):
+        seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
+                                 header_info.headers_dict, geom)
+    else:
+        seismic_file_producer(compression_queue, source, blockshape, store_headers,
+                              header_info.headers_dict, geom, reduce_iops=reduce_iops)
+    # wait until the consumer has processed all items
+    compression_queue.join()
+    writing_queue.join()
+    out_filehandle.flush()

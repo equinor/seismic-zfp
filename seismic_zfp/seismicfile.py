@@ -68,5 +68,6 @@ class SeismicFile:
             handle.structured = True
 
         handle.filetype = file_type
+        handle.filename = filename
 
         return handle
