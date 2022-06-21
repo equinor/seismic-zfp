@@ -86,7 +86,7 @@ class SgzLoader3d(SgzLoader):
 
     def _insert_into_buffer(self, buffer, buffer_start, data_offset, length):
         part = self._get_compressed_bytes(data_offset, length)
-        buffer[buffer_start : buffer_start + length] = part
+        buffer[buffer_start: buffer_start + length] = part
 
     def _insert_chunk_into_buffer(self, buffer, buffer_start, data_offset):
         self._insert_into_buffer(buffer, buffer_start, data_offset, self.chunk_bytes)
@@ -132,7 +132,7 @@ class SgzLoader3d(SgzLoader):
         with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
             for chunk_num in range(self.shape_pad[0] // 4):
                 executor.submit(self._insert_chunk_into_buffer, buffer, chunk_num * self.chunk_bytes,
-                                           xl_first_chunk_offset + chunk_num * xl_chunk_increment)
+                                xl_first_chunk_offset + chunk_num * xl_chunk_increment)
         return self._decompress(buffer, (self.shape_pad[0], self.blockshape[1], self.shape_pad[2]))
 
     @lru_cache(maxsize=1)
@@ -157,7 +157,6 @@ class SgzLoader3d(SgzLoader):
                                                                     sub_block_size_bytes, zslice_first_block_offset)
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
 
-
     def read_chunk_range(self, min_il, min_xl, min_z, il_units, xl_units, z_units):
         buffer = bytearray(z_units * xl_units * il_units * self.unit_bytes)
         read_length = self.unit_bytes * z_units
@@ -171,7 +170,6 @@ class SgzLoader3d(SgzLoader):
                 buf_start = (i * xl_units * z_units + x * z_units) * self.unit_bytes
                 buffer[buf_start:buf_start+read_length] = self._get_compressed_bytes(bytes_start, read_length)
         return buffer
-
 
     @lru_cache(maxsize=1)
     def read_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):

@@ -752,9 +752,14 @@ class SgzReader(object):
             The index of the beginning of the range for a cropped trace
             Defaults to beginning of trace
 
-         max_sample_id : int
+        max_sample_id : int
             The index of the end (exclusive) of the range for a cropped trace
             Defaults to include end of trace
+
+        override_unstructured_mapping : bool
+            This function is used when reading diagonals from an SGZ file created
+            from an unstructured SEG-Y file. In this case we *do* want to read
+            empty traces, as they have meaning.
 
         Returns
         -------
@@ -795,7 +800,6 @@ class SgzReader(object):
             trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], min_sample_id-min_z:max_sample_id-min_z]
             return np.squeeze(trace)
 
-
     def _read_containing_chunk(self, ref_il, ref_xl, min_z, max_z):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0
@@ -804,7 +808,6 @@ class SgzReader(object):
         return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
                                    ref_xl, ref_xl + self.blockshape[1],
                                    min_z, max_z, access_padding=True)
-
 
     def get_unstructured_mask(self):
         if self.mask is None:
