@@ -112,6 +112,12 @@ class SeismicFileConverter(object):
                 # Pad to 512-bytes for page blobs
                 out_filehandle.write(header_array.tobytes() + bytes(512-len(header_array.tobytes()) % 512))
 
+    @staticmethod
+    def write_hash(hash, out_filehandle):
+        with open(out_filehandle.name, 'r+b') as f:
+            f.seek(960)
+            f.write(hash)
+
     def check_memory(self, inline_set_bytes):
         """Requires at least n_crosslines x n_samples x blockshape[2] x 4 bytes of available memory,
         check this before doing anything inelegant.
@@ -233,9 +239,10 @@ class SeismicFileConverter(object):
                 store_headers = False
             max_queue_length = self.check_memory(inline_set_bytes=inline_set_bytes)
             with open(out_filename, 'wb') as out_file:
-                run_conversion_loop(seismic, out_file, bits_per_voxel, blockshape, header_info, self.geom,
+                hash_bytes = run_conversion_loop(seismic, out_file, bits_per_voxel, blockshape, header_info, self.geom,
                                     queue_size=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
                 self.write_headers(header_detection, header_info, out_file)
+                self.write_hash(hash_bytes, out_file)
 
         print(f"Total conversion time: {time.time()-t0:.3f}s                     ")
 
@@ -435,6 +442,12 @@ class NumpyConverter(object):
             # Pad to 512-bytes for page blobs
             out_filehandle.write(header_array.tobytes() + bytes(512-len(header_array.tobytes()) % 512))
 
+    @staticmethod
+    def write_hash(hash, out_filehandle):
+        with open(out_filehandle.name, 'r+b') as f:
+            f.seek(960)
+            f.write(hash)
+
     def run(self, out_filename, bits_per_voxel=4, blockshape=(4, 4, -1)):
         """General entrypoint for converting numpy arrays to SGZ files
 
@@ -466,5 +479,6 @@ class NumpyConverter(object):
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
         header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
         with open(out_filename, 'wb') as out_filehandle:
-            run_conversion_loop(input_cube, out_filehandle, bits_per_voxel, blockshape, header_info, self.geom)
+            hash_bytes = run_conversion_loop(input_cube, out_filehandle, bits_per_voxel, blockshape, header_info, self.geom)
             self.write_headers(header_info, out_filehandle)
+            self.write_hash(hash_bytes, out_filehandle)

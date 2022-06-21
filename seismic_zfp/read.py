@@ -252,13 +252,15 @@ class SgzReader(object):
                    f'  crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
                    f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
                    f'  traces: {self.tracecount}\n' \
-                   f'  Header arrays: {self.stored_header_keys}'
+                   f'  Header arrays: {self.stored_header_keys}\n' \
+                   f'  Source data hash: {self.get_source_data_hash()}'
         else:
             return f'seismic-zfp 2d file {self._filename}, {self.file_version}:\n' \
                    f'  compression ratio: {int(32/self.rate)}:1\n' \
                    f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
                    f'  traces: {self.tracecount}\n' \
-                   f'  Header arrays: {self.stored_header_keys}'
+                   f'  Header arrays: {self.stored_header_keys}\n' \
+                   f'  Source data hash: {self.get_source_data_hash()}'
 
     def __enter__(self):
         return self
@@ -286,6 +288,9 @@ class SgzReader(object):
 
     def get_file_source_code(self):
         return bytes_to_int(self.headerbytes[76:80])
+
+    def get_source_data_hash(self):
+        return self.headerbytes[960:980].hex()
 
     def get_header_detection_method_code(self):
         return bytes_to_int(self.headerbytes[80:84])
@@ -930,7 +935,7 @@ class SgzReader(object):
                     self.read_variant_headers()
                     header[k] = self.variant_headers[k][index]
                 else:
-                    buf = self.file.read_range(self.file, v + 4*index, 4) # A 32-bit int is 4 bytes
+                    buf = self.file.read_range(self.file, v + 4*index, 4)  # A 32-bit int is 4 bytes
                     header[k] = np.frombuffer(buf, dtype=np.int32)[0]
         return header
 

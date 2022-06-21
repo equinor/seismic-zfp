@@ -557,16 +557,16 @@ def test_hw_info_repr():
 
 
 def test_repr():
-    with SgzReader(SGZ_FILE_4) as reader:
+    with SgzReader(SGZ_FILE_8) as reader:
         representation = reader.__repr__()
         as_string = reader.__str__()
-    assert as_string == 'seismic-zfp 3d file test_data/small_4bit.sgz, Version(0.0.0.dev):\n  compression ratio: 8:1\n  inlines: 5 [1, 5]\n  crosslines: 5 [20, 24]\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [INLINE_3D, CROSSLINE_3D]'
-    assert representation == 'SgzReader(test_data/small_4bit.sgz)'
+    assert as_string == 'seismic-zfp 3d file test_data/small_8bit.sgz, Version(0.2.8.dev):\n  compression ratio: 4:1\n  inlines: 5 [1, 5]\n  crosslines: 5 [20, 24]\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [INLINE_3D, CROSSLINE_3D]\n  Source data hash: 3a76a29e6be0c9e1b639b05fe0fa317b5ac5a309'
+    assert representation == 'SgzReader(test_data/small_8bit.sgz)'
 
 
 def test_repr_2d():
     with SgzReader(SGZ_FILE_2D) as reader:
         representation = reader.__repr__()
         as_string = reader.__str__()
-    assert as_string == 'seismic-zfp 2d file test_data/small-2d.sgz, Version(0.2.8.dev):\n  compression ratio: 4:1\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [CDP_X, CDP_Y]'
+    assert as_string == 'seismic-zfp 2d file test_data/small-2d.sgz, Version(0.2.8.dev):\n  compression ratio: 4:1\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [CDP_X, CDP_Y]\n  Source data hash: e5a543b68b20fd4f6207d7d6a2027bb01e181efd'
     assert representation == 'SgzReader(test_data/small-2d.sgz)'

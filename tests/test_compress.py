@@ -295,6 +295,17 @@ def test_compress_headers_errors(tmp_path):
             converter.run(out_sgz, bits_per_voxel=8, header_detection='fake-method')
 
 
+def test_compress_source_data_hash(tmp_path):
+    out_sgzs = [os.path.join(str(tmp_path), f'test_hash{bits_per_voxel}.sgz') for bits_per_voxel in [8, 4, 2, 1]]
+
+    for out_sgz, bits_per_voxel in zip(out_sgzs, [8, 4, 2, 1]):
+        with SegyConverter(SGY_FILE) as converter:
+            converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+    hashes = [SgzReader(out_sgz).get_source_data_hash() for out_sgz in out_sgzs]
+    assert all(hash == hashes[0] for hash in hashes)
+
+
 def test_compress_crop(tmp_path):
     out_sgz = os.path.join(str(tmp_path), 'small_test_data.sgz')
 

@@ -256,7 +256,7 @@ def unstructured_io_thread_func(blockshape, store_headers, headers_dict, geom, p
                         array[t_store] = header[tracefield]
 
 
-def numpy_producer(queue, in_array, blockshape):
+def numpy_producer(queue, in_array, blockshape, hash_object):
     """Copies plane-sets from input array, and puts them in the queue for writing to disk"""
     n_ilines, n_xlines, trace_length = in_array.shape
     padded_shape = (pad(n_ilines, blockshape[0]), pad(n_xlines, blockshape[1]), pad(trace_length, blockshape[2]))
@@ -274,6 +274,14 @@ def numpy_producer(queue, in_array, blockshape):
                             ((0, 0), (0, padded_shape[1]-n_xlines), (0, padded_shape[2]-trace_length)),
                             'edge')
 
+        if (plane_set_id+1)*blockshape[0] > n_ilines:
+            planes_to_read = n_ilines % blockshape[0]
+        else:
+            planes_to_read = blockshape[0]
+
+        for i in range(planes_to_read):
+            hash_object.update(buffer[i, 0:n_xlines, 0:trace_length].copy())
+
         if blockshape[0] == 4:
             queue.put(buffer)
         else:
@@ -284,7 +292,8 @@ def numpy_producer(queue, in_array, blockshape):
                     queue.put(slice)
 
 
-def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, headers_dict, geom, verbose=True):
+def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers,
+                             headers_dict, geom, hash_object, verbose=True):
     n_traces, trace_length = len(geom.traces), len(seismicfile.samples)
     padded_shape = (1, pad(n_traces, blockshape[1]), pad(trace_length, blockshape[2]))
 
@@ -304,6 +313,8 @@ def seismic_file_producer_2d(queue, seismicfile, blockshape, store_headers, head
 
         io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
                           traces_to_read, seismic_buffer, seismicfile, trace_length)
+
+        hash_object.update(seismic_buffer[0:n_traces, 0:trace_length].copy())
 
         if blockshape[1] == 4:
             queue.put(seismic_buffer)
@@ -409,10 +420,10 @@ def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
     t_write.start()
     # run the appropriate producer and wait for completion
     if isinstance(source, CubeWithAxes):
-        numpy_producer(compression_queue, source.data_array, blockshape)
+        numpy_producer(compression_queue, source.data_array, blockshape, hash_object)
     elif isinstance(geom, Geometry2d):
         seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
-                                 header_info.headers_dict, geom)
+                                 header_info.headers_dict, geom, hash_object)
     else:
         seismic_file_producer(compression_queue, source, blockshape, store_headers,
                               header_info.headers_dict, geom, hash_object, reduce_iops=reduce_iops)
@@ -420,6 +431,4 @@ def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
     compression_queue.join()
     writing_queue.join()
     out_filehandle.flush()
-    print(hash_object.hexdigest())
-    print(len(hash_object.digest()))
-    print(hash_object.digest())
+    return hash_object.digest()
