@@ -48,7 +48,8 @@ Byte encoding is little-endian.
 |72-75 |uint32 |Encoded version number
 |76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY, 20=numpy
 |80-83 |uint32 |Encoded header-detection method ***
-|84-979 |---  | --- Unused ---
+|84-959 |---  | --- Unused ---
+|960-979 |bytes |Hash of input data
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---
 |4096-7295 |[SEG-Y](https://seg.org/Portals/0/SEG/News%20and%20Resources/Technical%20Standards/seg_y_rev2_0-mar2017.pdf)  | SEG-Y First textual header
