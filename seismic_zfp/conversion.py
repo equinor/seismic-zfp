@@ -123,15 +123,15 @@ class SeismicFileConverter(object):
         check this before doing anything inelegant.
         """
         if inline_set_bytes > self.mem_limit // 2:
-            print(f'One inline set is {inline_set_bytes} bytes,'
-                  f'machine memory is {self.mem_limit} bytes \n'
-                  f'Try using fewer inlines in the blockshape, or compressing a subcube')
+            print(f"One inline set is {inline_set_bytes} bytes,"
+                  f"machine memory is {self.mem_limit} bytes \n"
+                  f"'Try using fewer inlines in the blockshape, or compressing a subcube")
             raise RuntimeError("ABORTED effort: Close all that you have. You ask way too much.")
 
         max_queue_length = min(16, (self.mem_limit // 2) // inline_set_bytes)
         print(f"VirtualMemory={self.mem_limit/(1024*1024*1024):.2f}GB  :"
-              "  InlineSet={inline_set_bytes/(1024*1024):.2f}MB  :"
-              "  Using queue of length {max_queue_length}")
+              f"  InlineSet={inline_set_bytes/(1024*1024):.2f}MB  :"
+              f"  Using queue of length {max_queue_length}")
 
         return max_queue_length
 
