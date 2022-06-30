@@ -5,8 +5,10 @@ import numpy as np
 
 from .sgzconstants import DISK_BLOCK_BYTES
 
+
 class WrongDimensionalityError(TypeError):
     pass
+
 
 class FileOffset(int):
     """Convenience class to enable distinction between default header values and file offsets"""
@@ -22,42 +24,50 @@ class CubeWithAxes:
         self.xlines = xlines
         self.samples = samples
 
-class Geometry:
+
+class Geometry3d:
     """Lightweight place to keep track of IL/XL ranges"""
-    def __init__(self, min_il, max_il, min_xl, max_xl):
-        self.ilines = range(min_il, max_il)
-        self.xlines = range(min_xl, max_xl)
-
-class Geometry2d(Geometry):
-    """Subclass used to signify 2D input SEG-Y"""
-    def __init__(self, setup_param):
-        if isinstance(setup_param, int):
-            self.traces = range(setup_param)
-        elif isinstance(setup_param, np.ndarray):
-            self.traces = setup_param
+    def __init__(self, min_il, max_il, min_xl, max_xl, il_step=1, xl_step=1):
+        self.ilines = range(min_il, max_il, il_step)
+        self.xlines = range(min_xl, max_xl, xl_step)
 
 
-class InferredGeometry(Geometry):
+class InferredGeometry3d(Geometry3d):
     """Subclass used to signify irregular input SEG-Y"""
     def __init__(self, traces_ref):
         self.traces_ref = traces_ref
         il_ids = set([k[0] for k in traces_ref.keys()])
         xl_ids = set([k[1] for k in traces_ref.keys()])
-        self.min_il, self.max_il, self.il_step = min(il_ids), max(il_ids), (max(il_ids) - min(il_ids)) // (len(il_ids) - 1)
-        self.min_xl, self.max_xl, self.xl_step = min(xl_ids), max(xl_ids), (max(xl_ids) - min(xl_ids)) // (len(xl_ids) - 1)
-        self.ilines = range(self.min_il, self.max_il + 1, self.il_step)
-        self.xlines = range(self.min_xl, self.max_xl + 1, self.xl_step)
+        self.min_il, self.max_il, self.il_step = self.get_range(il_ids)
+        self.min_xl, self.max_xl, self.xl_step = self.get_range(xl_ids)
+        super().__init__(self.min_il, self.max_il + 1, self.min_xl, self.max_xl + 1,
+                         il_step=self.il_step, xl_step=self.xl_step)
+
+    @staticmethod
+    def get_range(ids):
+        return min(ids), max(ids), (max(ids) - min(ids)) // (len(ids) - 1)
 
     def __repr__(self):
         return f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
+
+
+class Geometry2d:
+    """Class used to signify 2D input SEG-Y"""
+    def __init__(self, setup_param):
+        if isinstance(setup_param, int):
+            self.traces = list(range(setup_param))
+        elif isinstance(setup_param, np.ndarray):
+            self.traces = list(setup_param)
 
 
 def read_range_file(file, offset, length):
     file.seek(offset)
     return file.read(length)
 
+
 def read_range_blob(file, offset, length):
     return file.download_blob(offset=offset, length=length).readall()
+
 
 def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=0):
     # Generate an array which looks a *bit* like an impulse-response test...
@@ -73,19 +83,21 @@ def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=
 
 
 def pad(orig, multiple):
-    if orig%multiple == 0:
+    if orig % multiple == 0:
         return orig
     else:
         return multiple * (orig//multiple + 1)
 
+
 def coord_to_index(coord, coords, include_stop=False):
     try:
         index = np.where(coords == coord)[0][0]
-    except:
+    except IndexError:
         if include_stop and (coord == coords[-1] + (coords[-1]-coords[-2])):
             return len(coords)
         raise IndexError(f"Coordinate {coord} not in axis")
     return index
+
 
 def gen_coord_list(start, step, count):
     return np.arange(start, start + step*count, step)
@@ -93,10 +105,12 @@ def gen_coord_list(start, step, count):
 
 def np_float_to_bytes(numpy_float):
     # How is this so hard?
-    return struct.pack("<I", int((numpy_float).astype(int)))
+    return struct.pack("<I", int(numpy_float.astype(int)))
+
 
 def np_float_to_bytes_signed(numpy_float):
-    return struct.pack("<i", int((numpy_float).astype(int)))
+    return struct.pack("<i", int(numpy_float.astype(int)))
+
 
 def bytes_to_int(bytes):
     if len(bytes) == 4:

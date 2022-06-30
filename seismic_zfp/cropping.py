@@ -5,6 +5,7 @@ from .read import SgzReader
 from .utils import pad, int_to_bytes, np_float_to_bytes, np_float_to_bytes_signed, coord_to_index
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_TEXT_HEADER_BYTES
 
+
 class SgzCropper(SgzReader):
     """Creates SGZ files from subcrops of others.
        This is superior to using read_subvolume() and a NumpyConverter because seismic data is copied compressed.
@@ -19,9 +20,12 @@ class SgzCropper(SgzReader):
             print("Error: No cropping ranges specified, no file will be written.")
             valid_bounds = False
 
-        if iline_index_range   is None: iline_index_range   = (0, len(self.ilines))
-        if xline_index_range   is None: xline_index_range   = (0, len(self.xlines))
-        if zslices_index_range is None: zslices_index_range = (0, len(self.zslices))
+        if iline_index_range is None:
+            iline_index_range = (0, len(self.ilines))
+        if xline_index_range is None:
+            xline_index_range = (0, len(self.xlines))
+        if zslices_index_range is None:
+            zslices_index_range = (0, len(self.zslices))
 
         err_string = "{} bounds out of range. Expected range within [{},{}], but got ({},{})."
 
@@ -38,32 +42,34 @@ class SgzCropper(SgzReader):
             valid_bounds = False
 
         if valid_bounds:
-            iline_index_range = self.correct_bounds(iline_index_range, "inline", len(self.ilines), self.blockshape[0])
-            xline_index_range = self.correct_bounds(xline_index_range, "crossline", len(self.xlines), self.blockshape[1])
-            zslices_index_range = self.correct_bounds(zslices_index_range, "zslice", len(self.zslices), self.blockshape[2])
+            iline_index_range = self.correct_bounds(iline_index_range, "inline", len(self.ilines), 0)
+            xline_index_range = self.correct_bounds(xline_index_range, "crossline", len(self.xlines), 1)
+            zslices_index_range = self.correct_bounds(zslices_index_range, "zslice", len(self.zslices), 2)
         else:
             raise IndexError("There is a chasm, Of carbon and silicon, The server can't bridge.")
 
         return iline_index_range, xline_index_range, zslices_index_range
 
-    def correct_bounds(self, index_range, axis_name, axis_len, pad_dim):
-        new_index_0 = index_range[0] - index_range[0] % pad_dim if index_range[0] % pad_dim != 0 else index_range[0]
-        new_index_1 = index_range[1] - index_range[1] % pad_dim + pad_dim if index_range[1] % pad_dim != 0 else index_range[1]
+    def correct_bounds(self, range_, axis_name, axis_len, axis_num):
+        pad_dim = self.blockshape[axis_num]
+        new_index_0 = range_[0] - range_[0] % pad_dim if range_[0] % pad_dim != 0 else range_[0]
+        new_index_1 = range_[1] - range_[1] % pad_dim + pad_dim if range_[1] % pad_dim != 0 else range_[1]
 
         new_index_0 = max(new_index_0, 0)
         new_index_1 = min(new_index_1, axis_len)
-        if not (new_index_0==index_range[0] and new_index_1==index_range[1]):
+        if not (new_index_0 == range_[0] and new_index_1 == range_[1]):
             print("Warning: Specified {} bounds not aligned with compression blocks.".format(axis_name))
-            print("... correcting from ({},{}) to ({},{})".format(*index_range, new_index_0, new_index_1))
+            print("... correcting from ({},{}) to ({},{})".format(*range_, new_index_0, new_index_1))
         return new_index_0, new_index_1
 
     def regenerate_header(self, iline_index_range, xline_index_range, zslices_index_range):
         len_zslices = zslices_index_range[1] - zslices_index_range[0]
         len_xlines = xline_index_range[1] - xline_index_range[0]
         len_ilines = iline_index_range[1] - iline_index_range[0]
-        compressed_data_length_diskblocks = int(((self.rate * pad(len_zslices, self.blockshape[2]) *
-                                                              pad(len_xlines, self.blockshape[1]) *
-                                                              pad(len_ilines, self.blockshape[0]) ) // 8)
+        compressed_data_length_diskblocks = int(((self.rate
+                                                  * pad(len_zslices, self.blockshape[2])
+                                                  * pad(len_xlines, self.blockshape[1])
+                                                  * pad(len_ilines, self.blockshape[0])) // 8)
                                                 // DISK_BLOCK_BYTES)
 
         header = bytearray(self.headerbytes).copy()
@@ -90,9 +96,10 @@ class SgzCropper(SgzReader):
         return (coord_to_index(coord_range[0], coord_list, include_stop=True),
                 coord_to_index(coord_range[1], coord_list, include_stop=True))
 
-    def write_cropped_file_by_coords(self, out_file, iline_coord_range=None,
-                                                     xline_coord_range=None,
-                                                     zslices_coord_range=None):
+    def write_cropped_file_by_coords(self, out_file,
+                                     iline_coord_range=None,
+                                     xline_coord_range=None,
+                                     zslices_coord_range=None):
         """Convenience function for cropping SGZ files by coordinates rather than indexes
 
         Parameters
@@ -116,13 +123,15 @@ class SgzCropper(SgzReader):
         IndexError
             If indexes to crop on are missing, or do not align with the compression blocks
         """
-        self.write_cropped_file_by_indexes(out_file, self.get_index_range(iline_coord_range, self.ilines),
-                                                     self.get_index_range(xline_coord_range, self.xlines),
-                                                     self.get_index_range(zslices_coord_range, self.zslices))
+        self.write_cropped_file_by_indexes(out_file,
+                                           self.get_index_range(iline_coord_range, self.ilines),
+                                           self.get_index_range(xline_coord_range, self.xlines),
+                                           self.get_index_range(zslices_coord_range, self.zslices))
 
-    def write_cropped_file_by_indexes(self, out_file, iline_index_range=None,
-                                                      xline_index_range=None,
-                                                      zslices_index_range=None):
+    def write_cropped_file_by_indexes(self, out_file,
+                                      iline_index_range=None,
+                                      xline_index_range=None,
+                                      zslices_index_range=None):
         """General entrypoint for cropping SGZ files
 
         Parameters

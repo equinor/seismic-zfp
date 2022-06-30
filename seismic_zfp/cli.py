@@ -112,23 +112,23 @@ def cli():
 @add_options(segyconverter_options)
 @click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
 def sgy2sgz(
-    input_segy_file=None,
-    output_sgz_file=None,
-    bits_per_voxel=None,
-    blockshape=None,
-    reduce_iops=None,
-    min_il=None,
-    max_il=None,
-    min_xl=None,
-    max_xl=None,
+        input_segy_file=None,
+        output_sgz_file=None,
+        bits_per_voxel=None,
+        blockshape=None,
+        reduce_iops=None,
+        min_il=None,
+        max_il=None,
+        min_xl=None,
+        max_xl=None,
 ):
     click.echo(f"Converting {input_segy_file} to {output_sgz_file}...")
     with SegyConverter(
-        input_segy_file,
-        min_il=min_il,
-        max_il=max_il,
-        min_xl=min_xl,
-        max_xl=max_xl,
+            input_segy_file,
+            min_il=min_il,
+            max_il=max_il,
+            min_xl=min_xl,
+            max_xl=max_xl,
     ) as converter:
         converter.run(
             output_sgz_file,
@@ -152,9 +152,9 @@ def sgy2sgz(
 @add_options(zgy_options)
 @click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
 def zgy2sgz(
-    input_zgy_file=None,
-    output_sgz_file=None,
-    bits_per_voxel=None,
+        input_zgy_file=None,
+        output_sgz_file=None,
+        bits_per_voxel=None,
 ):
     click.echo(f"Converting {input_zgy_file} to {output_sgz_file}...")
     with ZgyConverter(input_zgy_file) as converter:
@@ -162,6 +162,7 @@ def zgy2sgz(
             output_sgz_file,
             bits_per_voxel=bits_per_voxel,
         )
+
 
 @cli.command("sgz2sgy", short_help="convert a SGZ file to SEG-Y")
 @click.argument(
@@ -176,13 +177,14 @@ def zgy2sgz(
 )
 @click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
 def sgz2sgy(
-    input_sgz_file=None,
-    output_sgy_file=None,
+        input_sgz_file=None,
+        output_sgy_file=None,
 ):
     click.echo(f"Converting {input_sgz_file} to {output_sgy_file}...")
     with SgzConverter(input_sgz_file) as converter:
         converter.convert_to_segy(output_sgy_file,
-        )
+                                  )
+
 
 if __name__ == "__main__":
     cli()

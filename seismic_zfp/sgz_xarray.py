@@ -25,7 +25,6 @@ class SeismicZfpBackendArray(BackendArray):
 
     def _raw_indexing_method(self, key: tuple) -> np.typing.ArrayLike:
 
-
         min_il = key[0].start if isinstance(key[0], slice) else key[0]
         min_xl = key[1].start if isinstance(key[1], slice) else key[1]
         min_z = key[2].start if isinstance(key[2], slice) else key[2]
@@ -45,7 +44,6 @@ class SeismicZfpBackendArray(BackendArray):
         return self.sgz_reader.read_subvolume(min_il=min_il, max_il=max_il,
                                               min_xl=min_xl, max_xl=max_xl,
                                               min_z=min_z,   max_z=max_z)
-
 
 
 class SeismicZfpBackendEntrypoint(BackendEntrypoint):

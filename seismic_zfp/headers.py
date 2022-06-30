@@ -6,6 +6,7 @@ from .utils import signed_int_to_bytes, bytes_to_signed_int, FileOffset
 from .seismicfile import Filetype
 from .sgzconstants import DISK_BLOCK_BYTES
 
+
 class HeaderwordInfo:
     """Represents the variant/invariant/unpopulated status of trace headers, and their values.
 
@@ -20,10 +21,8 @@ class HeaderwordInfo:
     - variant_header_dict:   Dict of variant header fields for creating new file
     """
     def __init__(self, n_traces, seismicfile=None,
-                                 variant_header_list=None,
-                                 variant_header_dict=None,
-                                 header_detection=None,
-                                 buffer=None):
+                 variant_header_list=None, variant_header_dict=None,
+                 header_detection=None, buffer=None):
         """
         Parameters
         ----------
@@ -43,15 +42,15 @@ class HeaderwordInfo:
         self.table = {self._get_hw_code(hw): (0, 0) for hw in segyio.segy.Field(bytearray(240), kind='trace')}
 
         if seismicfile is not None:
-            if seismicfile.filetype in [Filetype.SEGY, Filetype.VDS]:
+            self.seismicfile = seismicfile
+            if self.seismicfile.filetype in [Filetype.SEGY, Filetype.VDS]:
                 # This would work for ZGY too, but there's a more efficient way to do it
-                self.seismicfile = seismicfile
                 self.unique_variant_nonzero_header_words = self._get_unique_headerwords()
                 self.duplicate_header_words = self._find_duplicated_headerwords()
 
-                for hw in seismicfile.header[0]:
+                for hw in self.seismicfile.header[0]:
                     if hw in self._get_invariant_nonzero_headerwords():
-                        self.table[self._get_hw_code(hw)] = (seismicfile.header[0][hw], 0)
+                        self.table[self._get_hw_code(hw)] = (self.seismicfile.header[0][hw], 0)
 
                     if hw in self.unique_variant_nonzero_header_words:
                         self.table[self._get_hw_code(hw)] = (0, self._get_hw_code(hw))
@@ -70,10 +69,10 @@ class HeaderwordInfo:
                     self.table[hw_code] = (0, hw_code)
 
                 # Create required numpy int arrays
-                cdp_x, cdp_y, iline_headers, xline_headers = self.get_zgy_header_arrays(seismicfile)
+                cdp_x, cdp_y, iline_headers, xline_headers = self.get_zgy_header_arrays()
 
                 # Keep them in memory until file is ready for them to be written
-                self.headers_dict = {181: cdp_x, 185: cdp_y, 189: iline_headers, 193:xline_headers}
+                self.headers_dict = {181: cdp_x, 185: cdp_y, 189: iline_headers, 193: xline_headers}
 
             else:
                 raise RuntimeError("Only SEG-Y and ZGY files supported for header generation")
@@ -99,8 +98,8 @@ class HeaderwordInfo:
             for hv in template:
                 self.table[hv[0]] = (hv[1], hv[2])
 
-
-    def get_header_dict(self, n_header_arrays, n_header_blocks, compressed_data_diskblocks, padded_header_entry_length_bytes):
+    def get_header_dict(self, n_header_arrays, n_header_blocks,
+                        compressed_data_diskblocks, padded_header_entry_length_bytes):
         header_dict = {}
         stored_header_keys = []
 
@@ -125,27 +124,32 @@ class HeaderwordInfo:
 
         return header_dict
 
-
-    def get_zgy_header_arrays(self, seismicfile):
-        iline_axis = np.linspace(seismicfile.ilines[0], seismicfile.ilines[-1],
-                                 num=len(seismicfile.ilines), dtype=np.intc)
-        xline_axis = np.linspace(seismicfile.xlines[0], seismicfile.xlines[-1],
-                                 num=len(seismicfile.xlines), dtype=np.intc)
+    def get_zgy_header_arrays(self):
+        iline_axis = np.linspace(self.seismicfile.ilines[0], self.seismicfile.ilines[-1],
+                                 num=len(self.seismicfile.ilines), dtype=np.intc)
+        xline_axis = np.linspace(self.seismicfile.xlines[0], self.seismicfile.xlines[-1],
+                                 num=len(self.seismicfile.xlines), dtype=np.intc)
         xline_headers, iline_headers = np.meshgrid(xline_axis, iline_axis)
 
-        iline_axis = np.linspace(0, seismicfile.n_ilines - 1, num=seismicfile.n_ilines)
-        xline_axis = np.linspace(0, seismicfile.n_xlines - 1, num=seismicfile.n_xlines)
+        iline_axis = np.linspace(0, self.seismicfile.n_ilines - 1, num=self.seismicfile.n_ilines)
+        xline_axis = np.linspace(0, self.seismicfile.n_xlines - 1, num=self.seismicfile.n_xlines)
         xline_idx, iline_idx = np.meshgrid(xline_axis, iline_axis)
 
-        corners = seismicfile.corners
+        corners = self.seismicfile.corners
 
-        easting_inc_il = (corners[1][0] - corners[0][0]) / (seismicfile.n_ilines - 1)
-        northing_inc_il = (corners[1][1] - corners[0][1]) / (seismicfile.n_ilines - 1)
-        easting_inc_xl = (corners[2][0] - corners[0][0]) / (seismicfile.n_xlines - 1)
-        northing_inc_xl = (corners[2][1] - corners[0][1]) / (seismicfile.n_xlines - 1)
+        easting_inc_il = (corners[1][0] - corners[0][0]) / (self.seismicfile.n_ilines - 1)
+        northing_inc_il = (corners[1][1] - corners[0][1]) / (self.seismicfile.n_ilines - 1)
+        easting_inc_xl = (corners[2][0] - corners[0][0]) / (self.seismicfile.n_xlines - 1)
+        northing_inc_xl = (corners[2][1] - corners[0][1]) / (self.seismicfile.n_xlines - 1)
 
-        cdp_x = np.round_(100.0 * (corners[0][0] + iline_idx * easting_inc_il + xline_idx * easting_inc_xl)).astype(np.intc)
-        cdp_y = np.round_(100.0 * (corners[0][1] + iline_idx * northing_inc_il + xline_idx * northing_inc_xl)).astype(np.intc)
+        cdp_x = np.round_(100.0 * (corners[0][0]
+                                   + iline_idx * easting_inc_il
+                                   + xline_idx * easting_inc_xl)
+                          ).astype(np.intc)
+        cdp_y = np.round_(100.0 * (corners[0][1]
+                                   + iline_idx * northing_inc_il
+                                   + xline_idx * northing_inc_xl)
+                          ).astype(np.intc)
 
         return cdp_x, cdp_y, iline_headers, xline_headers
 
@@ -210,7 +214,7 @@ class HeaderwordInfo:
             for hw2 in variant_nonzero_header_words[:i]:
                 if first_header[hw] == first_header[hw2] and last_header[hw] == last_header[hw2]:
                     hw_mappings[hw] = hw2
-                    break # Use the first one you find...
+                    break  # Use the first one you find...
 
         return hw_mappings
 

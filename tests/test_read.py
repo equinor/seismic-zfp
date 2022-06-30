@@ -207,7 +207,7 @@ def compare_inline_number(sgz_filename, sgy_filename, line_coords, tolerance):
 def compare_inline_unstructured(sgz_filename, sgy_filename, tolerance):
     reader = SgzReader(sgz_filename)
     with segyio.open(sgy_filename, ignore_geometry=True) as segyfile:
-        geom = utils.InferredGeometry({(h[189], h[193]): i for i, h in enumerate(segyfile.header)})
+        geom = utils.InferredGeometry3d({(h[189], h[193]): i for i, h in enumerate(segyfile.header)})
         for line_number in geom.ilines:
             slice_sgz = reader.read_inline_number(line_number)
             slice_segy = np.zeros((len(geom.xlines), len(segyfile.samples)))

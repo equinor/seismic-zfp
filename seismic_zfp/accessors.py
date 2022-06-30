@@ -10,10 +10,15 @@ class SubvolumeAccessor(SgzReader):
 
         self.zslices_int = self.zslices.astype('intc')
 
-        self.axes_message = "Inline {}:{}:{}, Crossline {}:{}:{}, Samples {}:{}:{}".format(
-                self.ilines[0], self.ilines[-1] + self.ilines[1] - self.ilines[0], self.ilines[1] - self.ilines[0],
-                self.xlines[0], self.xlines[-1] + self.xlines[1] - self.xlines[0], self.xlines[1] - self.xlines[0],
-                self.zslices_int[0], self.zslices_int[-1] + self.zslices_int[1] - self.zslices_int[0], self.zslices_int[1] - self.zslices_int[0])
+        self.axes_message = f"Inline {self.ilines[0]}:" \
+                            f"{self.ilines[-1]}:" \
+                            f"{self.ilines[1] - self.ilines[0]}, " \
+                            f"Crossline {self.xlines[0]}:" \
+                            f"{self.xlines[-1] + self.xlines[1] - self.xlines[0]}:" \
+                            f"{ self.xlines[1] - self.xlines[0]}, " \
+                            f"Samples {self.zslices_int[0]}:" \
+                            f"{self.zslices_int[-1] + self.zslices_int[1] - self.zslices_int[0]}:" \
+                            f"{self.zslices_int[1] - self.zslices_int[0]}"
 
     def __getitem__(self, subscripts):
         il, xl, z = subscripts
@@ -29,11 +34,17 @@ class SubvolumeAccessor(SgzReader):
         # N.B. While this implementation will work with steps larger than 1, it has to read and decompress
         # everything in between. Of course there's no way to avoid that for steps <=4 but memory usage could
         # be reduced with a better implementation
-        return self.read_subvolume(il_start, il_stop, xl_start, xl_stop, z_start, z_stop)[::il_step, ::xl_step, ::z_step]
+        return self.read_subvolume(il_start, il_stop,
+                                   xl_start, xl_stop,
+                                   z_start, z_stop)[::il_step, ::xl_step, ::z_step]
 
-    def _get_index_subscripts(self, coord_subscript, coords):
+    @staticmethod
+    def _get_index_subscripts(coord_subscript, coords):
         start = 0 if coord_subscript.start is None else coord_to_index(coord_subscript.start, coords)
-        stop = len(coords) if (coord_subscript.stop is None) or (coord_subscript.stop == coords[-1] + coords[1] - coords[0]) else coord_to_index(coord_subscript.stop, coords)
+        if (coord_subscript.stop is None) or (coord_subscript.stop == coords[-1] + coords[1] - coords[0]):
+            stop = len(coords)
+        else:
+            stop = coord_to_index(coord_subscript.stop, coords)
         step = 1 if coord_subscript.step is None else coord_subscript.step // (coords[1] - coords[0])
         return start, step, stop
 

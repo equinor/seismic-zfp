@@ -1,9 +1,11 @@
 from .read import SgzReader
-from .accessors import InlineAccessor, CrosslineAccessor, ZsliceAccessor, HeaderAccessor, TraceAccessor, SubvolumeAccessor
+from .accessors import InlineAccessor, CrosslineAccessor, ZsliceAccessor, \
+                       HeaderAccessor, TraceAccessor, SubvolumeAccessor
 from .utils import WrongDimensionalityError
 
+
 class SegyioEmulator(SgzReader):
-    def __init__(self, file, chunk_cache_size: int=None):
+    def __init__(self, file, chunk_cache_size: int = None):
         super(SegyioEmulator, self).__init__(file, chunk_cache_size=chunk_cache_size)
 
         self.trace = TraceAccessor(self.file).__enter__()
@@ -40,6 +42,10 @@ class SegyioEmulator(SgzReader):
 
         self.close_sgz_file()
 
+
 class DimensionalityError:
+    def __init__(self):
+        pass
+
     def __getitem__(self, item):
         raise WrongDimensionalityError("SEG-Y emulation does not support this for 2D files")

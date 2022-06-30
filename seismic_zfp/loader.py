@@ -32,14 +32,15 @@ class SgzLoader(object):
         if preload:
             uncompressed_buf_size = self.compressed_data_diskblocks * DISK_BLOCK_BYTES * (32 / self.rate)
             if uncompressed_buf_size > self.mem_limit:
-                print(f'Uncompressed volume is {uncompressed_buf_size//(1024*1024)}MB' \
+                print(f'Uncompressed volume is {uncompressed_buf_size//(1024*1024)}MB'
                       f'machine memory is {self.mem_limit//(1024*1024)}MB, try using "preload=False"')
                 raise RuntimeError(random.choice(self.oom_msgs))
             self.load_compressed_volume()
 
     def load_compressed_volume(self):
         if self.compressed_volume is None:
-            self.compressed_volume = self.file.read_range(self.file, self.data_start_bytes, self.compressed_data_diskblocks * self.block_bytes)
+            self.compressed_volume = self.file.read_range(self.file, self.data_start_bytes,
+                                                          self.compressed_data_diskblocks * self.block_bytes)
         else:
             pass
 
@@ -56,20 +57,21 @@ class SgzLoader(object):
         zfpy._decompress(bytes(buffer), zfpy.dtype_to_ztype(np.dtype('float32')), shape, out=array, rate=self.rate)
 
 
-
 class SgzLoader2d(SgzLoader):
 
     @lru_cache(maxsize=1)
     def read_and_decompress_trace_range(self, min_id, max_id):
         block_offset = self.chunk_bytes * (min_id // self.blockshape[1])
-        buffer = self._get_compressed_bytes(block_offset, self.chunk_bytes * ((max_id + self.blockshape[1] - 1) // self.blockshape[1]))
+        buffer = self._get_compressed_bytes(block_offset,
+                                            self.chunk_bytes
+                                            * ((max_id + self.blockshape[1] - 1) // self.blockshape[1]))
         return self._decompress(buffer, (self.blockshape[1], self.shape_pad[2]))
 
     @lru_cache(maxsize=1)
-    def read_unshuffle_and_decompress_chunk_range(self, max_id, max_z, min_id, min_z):
+    def read_unshuffle_and_decompress_chunk_range_2d(self, max_id, max_z, min_id, min_z):
         z_blocks = (max_z + self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
         xl_blocks = (max_id + self.blockshape[1]) // self.blockshape[1] - min_id // self.blockshape[1]
-        decompressed = np.zeros((xl_blocks * self.blockshape[1], z_blocks  * self.blockshape[2]), dtype=np.float32)
+        decompressed = np.zeros((xl_blocks * self.blockshape[1], z_blocks * self.blockshape[2]), dtype=np.float32)
 
         for nx, x in enumerate(range(min_id // self.blockshape[1], min_id // self.blockshape[1] + xl_blocks)):
             for nz, z in enumerate(range(min_z // self.blockshape[2], min_z // self.blockshape[2] + z_blocks)):
@@ -83,7 +85,7 @@ class SgzLoader2d(SgzLoader):
 
     def clear_cache(self):
         self.read_and_decompress_trace_range.cache_clear()
-        self.read_unshuffle_and_decompress_chunk_range.cache_clear()
+        self.read_unshuffle_and_decompress_chunk_range_2d.cache_clear()
 
 
 class SgzLoader3d(SgzLoader):
@@ -157,8 +159,8 @@ class SgzLoader3d(SgzLoader):
         buffer = bytearray(self.block_bytes * blocks_per_dim[0] * blocks_per_dim[1])
         with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
             for block_id in range(blocks_per_dim[0]*blocks_per_dim[1]):
-                executor.submit(self._distribute_chunk_into_buffer, buffer, block_id, blocks_per_dim,
-                                                                    sub_block_size_bytes, zslice_first_block_offset)
+                executor.submit(self._distribute_chunk_into_buffer,
+                                buffer, block_id, blocks_per_dim, sub_block_size_bytes, zslice_first_block_offset)
         return self._decompress(buffer, (self.shape_pad[0], self.shape_pad[1], 4))
 
     def read_chunk_range(self, min_il, min_xl, min_z, il_units, xl_units, z_units):
@@ -196,7 +198,6 @@ class SgzLoader3d(SgzLoader):
         else:
             return self._decompress(buffer, (il_units * 4, xl_units * 4, z_units * 4))
 
-
     @lru_cache(maxsize=1)
     def read_unshuffle_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):
         z_blocks = (max_z + self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
@@ -204,7 +205,7 @@ class SgzLoader3d(SgzLoader):
         il_blocks = (max_il + self.blockshape[0]) // self.blockshape[0] - min_il // self.blockshape[0]
         decompressed = np.zeros((il_blocks * self.blockshape[0],
                                  xl_blocks * self.blockshape[1],
-                                 z_blocks  * self.blockshape[2]), dtype=np.float32)
+                                 z_blocks * self.blockshape[2]), dtype=np.float32)
         for ni, i in enumerate(range(min_il // self.blockshape[0], min_il // self.blockshape[0] + il_blocks)):
             for nx, x in enumerate(range(min_xl // self.blockshape[1], min_xl // self.blockshape[1] + xl_blocks)):
                 for nz, z in enumerate(range(min_z // self.blockshape[2], min_z // self.blockshape[2] + z_blocks)):

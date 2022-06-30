@@ -19,7 +19,7 @@ from .utils import (pad,
                     np_float_to_bytes_signed,
                     progress_printer,
                     CubeWithAxes,
-                    InferredGeometry,
+                    InferredGeometry3d,
                     Geometry2d,
                     )
 
@@ -91,6 +91,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
 
     if isinstance(geom, Geometry2d):
         # Length of the seismic amplitudes cube after compression
+        n_il = n_xl = 0
         compressed_data_length_diskblocks = int(((bits_per_voxel *
                                                   pad(len(samples), blockshape[2]) *
                                                   pad(tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
@@ -206,6 +207,7 @@ def io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
 def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
                    seismic_buffer, seismicfile, minimal_il_reader, trace_length):
     for i in range(blockshape[0]):
+        headers = []
         start_trace = (plane_set_id * blockshape[0] + i) * len(seismicfile.xlines) + geom.xlines[0]
         if i < planes_to_read:
             if minimal_il_reader is not None:
@@ -333,7 +335,7 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
 
     minimal_il_reader = None
     if reduce_iops:
-        if isinstance(geom, InferredGeometry):
+        if isinstance(geom, InferredGeometry3d):
             print("Cannot use MinimalInlineReader with unstructured SEG-Y")
             warnings.warn("Chaos reigns within. Reflect, repent, and reboot. Order shall return.", UserWarning)
         else:
@@ -347,7 +349,7 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
     # Loop over groups of 4 inlines
     n_plane_sets = padded_shape[0] // blockshape[0]
     start_time = time.time()
-    if isinstance(geom, InferredGeometry):
+    if isinstance(geom, InferredGeometry3d):
         for tracefield, array in headers_dict.items():
             headers_dict[tracefield] = np.zeros(len(geom.ilines)*len(geom.xlines), dtype=np.int32)
     for plane_set_id in range(n_plane_sets):
@@ -361,7 +363,7 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
 
         seismic_buffer = np.zeros((blockshape[0], padded_shape[1], padded_shape[2]), dtype=np.float32)
 
-        if isinstance(geom, InferredGeometry):
+        if isinstance(geom, InferredGeometry3d):
             unstructured_io_thread_func(blockshape, store_headers,  headers_dict, geom, plane_set_id,
                                         seismic_buffer, seismicfile, trace_length)
         else:

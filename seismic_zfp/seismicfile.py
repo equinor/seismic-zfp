@@ -27,9 +27,12 @@ class Filetype(Enum):
 
 
 class SeismicFile:
+    def __init__(self):
+        pass
 
     @staticmethod
     def open(filename, file_type=None):
+        handle = None
         if file_type is None:
             ext = os.path.splitext(filename)[1].lower().strip('.')
             if ext in ['', 'sgy', 'segy']:
@@ -44,7 +47,7 @@ class SeismicFile:
             else:
                 raise ValueError(f"Unknown file extension: '{ext}'")
         elif not isinstance(file_type, Filetype):
-                raise ValueError("Not a valid file_type. Must be of type Filetype")
+            raise ValueError("Not a valid file_type. Must be of type Filetype")
 
         if file_type == Filetype.SEGY:
             handle = segyio.open(filename, mode='r', strict=False)

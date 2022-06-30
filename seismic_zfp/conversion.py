@@ -17,8 +17,8 @@ from .utils import (pad,
                     bytes_to_int,
                     int_to_bytes,
                     CubeWithAxes,
-                    Geometry,
-                    InferredGeometry,
+                    Geometry3d,
+                    InferredGeometry3d,
                     Geometry2d
                     )
 
@@ -51,7 +51,7 @@ class SeismicFileConverter(object):
 
         self.geom = None
         if all([min_il, max_il, min_xl, max_xl]):
-            self.geom = Geometry(min_il, max_il, min_xl, max_xl)
+            self.geom = Geometry3d(min_il, max_il, min_xl, max_xl)
         if self.geom is None:
             with SeismicFile.open(self.in_filename, self.filetype) as seismic:
                 self.detect_geometry(seismic)
@@ -155,11 +155,11 @@ class SeismicFileConverter(object):
                 self.geom = Geometry2d(seismic.ilines)
             else:
                 # We have a regular 3D SEG-Y
-                self.geom = Geometry(0, len(seismic.ilines), 0, len(seismic.xlines))
+                self.geom = Geometry3d(0, len(seismic.ilines), 0, len(seismic.xlines))
 
     def infer_geometry(self, seismic):
         traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
-        self.geom = InferredGeometry(traces_ref)
+        self.geom = InferredGeometry3d(traces_ref)
         print("... inferred geometry is:", self.geom)
 
     def check_input_file_exists(self):
@@ -240,7 +240,8 @@ class SeismicFileConverter(object):
             max_queue_length = self.check_memory(inline_set_bytes=inline_set_bytes)
             with open(out_filename, 'wb') as out_file:
                 hash_bytes = run_conversion_loop(seismic, out_file, bits_per_voxel, blockshape, header_info, self.geom,
-                                    queue_size=max_queue_length, reduce_iops=reduce_iops, store_headers=store_headers)
+                                                 queue_size=max_queue_length, reduce_iops=reduce_iops,
+                                                 store_headers=store_headers)
                 self.write_headers(header_detection, header_info, out_file)
                 self.write_hash(hash_bytes, out_file)
 
@@ -475,10 +476,11 @@ class NumpyConverter(object):
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
         """
         bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
-        self.geom = Geometry(0, len(self.ilines), 0, len(self.xlines))
+        self.geom = Geometry3d(0, len(self.ilines), 0, len(self.xlines))
         input_cube = CubeWithAxes(self.data_array, self.ilines, self.xlines, self.samples)
         header_info = HeaderwordInfo(n_traces=len(self.ilines)*len(self.xlines), variant_header_dict=self.trace_headers)
         with open(out_filename, 'wb') as out_filehandle:
-            hash_bytes = run_conversion_loop(input_cube, out_filehandle, bits_per_voxel, blockshape, header_info, self.geom)
+            hash_bytes = run_conversion_loop(input_cube, out_filehandle, bits_per_voxel,
+                                             blockshape, header_info, self.geom)
             self.write_headers(header_info, out_filehandle)
             self.write_hash(hash_bytes, out_filehandle)
