@@ -789,7 +789,7 @@ class SgzReader(object):
         else:
             if (not self.structured) and (not override_unstructured_mapping):
                 self.get_unstructured_mask()
-                index = np.arange(self.mask.shape[0])[self.mask != 0][index]
+                index = int(np.arange(self.mask.shape[0])[self.mask != 0][index])
 
             if not 0 <= index < self.n_ilines * self.n_xlines:
                 if platform.system() == 'Windows':
