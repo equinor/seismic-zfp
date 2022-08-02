@@ -69,8 +69,8 @@ class SgzLoader2d(SgzLoader):
 
     @lru_cache(maxsize=1)
     def read_unshuffle_and_decompress_chunk_range_2d(self, max_id, max_z, min_id, min_z):
-        z_blocks = (max_z + self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
-        xl_blocks = (max_id + self.blockshape[1]) // self.blockshape[1] - min_id // self.blockshape[1]
+        z_blocks = (max_z + self.blockshape[2] - 1) // self.blockshape[2] - min_z // self.blockshape[2]
+        xl_blocks = (max_id + self.blockshape[1] - 1) // self.blockshape[1] - min_id // self.blockshape[1]
         decompressed = np.zeros((xl_blocks * self.blockshape[1], z_blocks * self.blockshape[2]), dtype=np.float32)
 
         for nx, x in enumerate(range(min_id // self.blockshape[1], min_id // self.blockshape[1] + xl_blocks)):
@@ -200,9 +200,9 @@ class SgzLoader3d(SgzLoader):
 
     @lru_cache(maxsize=1)
     def read_unshuffle_and_decompress_chunk_range(self, max_il, max_xl, max_z, min_il, min_xl, min_z):
-        z_blocks = (max_z + self.blockshape[2]) // self.blockshape[2] - min_z // self.blockshape[2]
-        xl_blocks = (max_xl + self.blockshape[1]) // self.blockshape[1] - min_xl // self.blockshape[1]
-        il_blocks = (max_il + self.blockshape[0]) // self.blockshape[0] - min_il // self.blockshape[0]
+        z_blocks = (max_z + self.blockshape[2] - 1) // self.blockshape[2] - min_z // self.blockshape[2]
+        xl_blocks = (max_xl + self.blockshape[1] - 1) // self.blockshape[1] - min_xl // self.blockshape[1]
+        il_blocks = (max_il + self.blockshape[0] - 1) // self.blockshape[0] - min_il // self.blockshape[0]
         decompressed = np.zeros((il_blocks * self.blockshape[0],
                                  xl_blocks * self.blockshape[1],
                                  z_blocks * self.blockshape[2]), dtype=np.float32)
