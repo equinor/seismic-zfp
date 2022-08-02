@@ -1,7 +1,7 @@
 numpy>=1.20
 segyio
 psutil
-zfpy
+zfpy==1.0.0rc1
 click
 pyzgy
 pyvds
