@@ -7,6 +7,7 @@ except ImportError:
 
 SGZ_FILE = 'test_data/small_4bit.sgz'
 
+
 @pytest.mark.skipif(xr is None, reason="Requires xarray")
 def test_xarray_from_sgz_file():
     s = xr.open_dataset(SGZ_FILE)

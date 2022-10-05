@@ -35,12 +35,16 @@ jobs:
         pip install pytest mock
 
     - name: Install seismic-zfp dependencies with VDS
-      if: matrix.os != 'macos-latest'
+      if: matrix.os != 'macos-latest' && matrix.python-version != '3.7'
       run: pip install .[zgy,vds,xr,azure]
 
     - name: Install seismic-zfp dependencies without VDS
       if: matrix.os == 'macos-latest'
       run: pip install .[zgy,xr,azure]
+
+    - name: Install seismic-zfp dependencies without VDS or XR
+      if: matrix.python-version == '3.7'
+      run: pip install .[zgy,azure]
 
     - name: Test with pytest
       run: |
