@@ -9,6 +9,7 @@ import mock
 import psutil
 
 
+SGZ_FILE_UTM = 'test_data/small_utm.sgz'
 SGZ_FILE_025 = 'test_data/small_025bit.sgz'
 SGZ_FILE_05 = 'test_data/small_05bit.sgz'
 SGZ_FILE_1 = 'test_data/small_1bit.sgz'
@@ -180,6 +181,20 @@ def test_get_trace():
     compare_trace_index(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
     compare_trace_coord(SGZ_FILE_2_64x64, SGY_FILE, tolerance=1e-4)
     compare_trace_coord(SGZ_FILE_8, SGY_FILE, tolerance=1e-10)
+
+
+def compare_interpolated_trace(sgz_filename, tolerance):
+    reader = SgzReader(sgz_filename)
+    interpolated_trace = reader.get_interpolated_trace((1.333333333, 20.25))
+    test_trace = reader.get_trace(0) * (6/12) \
+                 + reader.get_trace(1) * (2/12) \
+                 + reader.get_trace(5) * (3/12) \
+                 + reader.get_trace(6) * (1/12)
+    assert np.allclose(interpolated_trace, test_trace, rtol=tolerance)
+
+
+def test_get_interpolated_trace():
+    compare_interpolated_trace(SGZ_FILE_8, tolerance=1e-8)
 
 
 def compare_inline(sgz_filename, sgy_filename, lines, tolerance):
@@ -570,3 +585,22 @@ def test_repr_2d():
         as_string = reader.__str__()
     assert as_string == 'seismic-zfp 2d file test_data/small-2d.sgz, Version(0.2.8.dev):\n  compression ratio: 4:1\n  samples: 50 [0.0, 196.0]\n  traces: 25\n  Header arrays: [CDP_X, CDP_Y]\n  Source data hash: e5a543b68b20fd4f6207d7d6a2027bb01e181efd'
     assert representation == 'SgzReader(test_data/small-2d.sgz)'
+
+
+def test_get_il_xl_trace_spacing():
+    with SgzReader(SGZ_FILE_UTM) as reader:
+        il_xl_spacing = reader.get_il_xl_trace_spacing()
+    assert (12.5, 18.75) == il_xl_spacing
+
+
+def test_cannot_get_il_xl_trace_spacing():
+    with pytest.warns(UserWarning):
+        with SgzReader(SGZ_FILE_4) as reader:
+            il_xl_spacing = reader.get_il_xl_trace_spacing()
+    assert il_xl_spacing is None
+
+
+def test_get_trace_coods_from_utm():
+    with SgzReader(SGZ_FILE_UTM) as reader:
+        coord_list = reader.get_trace_coods_from_utm((529818.00, 6717550.00))
+    assert [(21, 2)] == coord_list

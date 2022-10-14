@@ -1,6 +1,8 @@
 import os
+import math
 import platform
 import random
+import warnings
 from functools import lru_cache
 import numpy as np
 import segyio
@@ -961,3 +963,53 @@ class SgzReader(object):
     def get_file_text_header(self):
         return [bytearray(self.file_text_header.decode("cp037"),
                           encoding="ascii", errors="ignore")]
+
+    def get_il_xl_trace_spacing(self):
+        """Find the spacing (in m) between adjacent traces in IL/XL direction using trace header UTM coordinates"""
+        source_group_scalar = self.get_tracefield_values(segyio.TraceField.SourceGroupScalar)
+        source_group_scalar = np.where(source_group_scalar < 0, -1/source_group_scalar, source_group_scalar)
+        cdp_x = (self.get_tracefield_values(segyio.TraceField.CDP_X) * source_group_scalar).reshape((self.n_ilines, self.n_xlines))
+        cdp_y = (self.get_tracefield_values(segyio.TraceField.CDP_Y) * source_group_scalar).reshape((self.n_ilines, self.n_xlines))
+        def dim_0_sq_diff(x): return (float(x[0, 1]) - float(x[0, 0])) ** 2
+        il_trace_spacing = math.sqrt(dim_0_sq_diff(cdp_x) + dim_0_sq_diff(cdp_y))
+        def dim_1_sq_diff(x): return (float(x[1, 0]) - float(x[0, 0])) ** 2
+        xl_trace_spacing = math.sqrt(dim_1_sq_diff(cdp_x) + dim_1_sq_diff(cdp_y))
+        if il_trace_spacing == 0 or xl_trace_spacing == 0:
+            print("Warning: Trace spacing of 0")
+            warnings.warn("You step in the stream, but the water has moved on. This page is not here.", UserWarning)
+            return None
+        else:
+            return round(il_trace_spacing, 2), round(xl_trace_spacing, 2)
+
+    def get_trace_coods_from_utm(self, utm_coords, count=1):
+        """Get IL/XL numbers of nearest trace(s) to given UTM coordinates
+
+        Accepts UTM coordinates of a point in (our outside) the survey and
+        returns an list of <n> IL/XL pairs ordered by their cartesian distance
+        from the input point.
+
+        Parameters
+        ----------
+        utm_coords : tuple(float, float)
+            The UTM coordinates to find traces near
+
+        count : int, optional
+            How many IL/XL coordinates to return
+
+        Returns
+        -------
+        trace_coord_list : list[tuple(IL, XL), ]
+            A list of IL/XL pairs ordered by their cartesian distance
+            from the input point
+        """
+        cdp_x_array = self.get_tracefield_values(181).astype(np.float32) / 100.0
+        cdp_y_array = self.get_tracefield_values(185).astype(np.float32) / 100.0
+        squared_dist = (cdp_x_array - utm_coords[0]) ** 2 + (cdp_y_array - utm_coords[1]) ** 2
+        trace_coord_list = []
+        while count > 0:
+            idx = np.argmin(squared_dist)
+            trace_coord_list.append((self.xlstep * (idx // self.n_xlines) + self.xlines[0],
+                                     self.ilstep * (idx % self.n_xlines) + self.ilines[0]))
+            squared_dist[idx // self.n_xlines, idx % self.n_xlines] = np.finfo(np.float32).max
+            count -= 1
+        return trace_coord_list
