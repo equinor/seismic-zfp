@@ -618,6 +618,38 @@ class SgzReader(object):
                                                        override_unstructured_mapping=True)
         return ad
 
+    def read_random_line(self, utm_coord_list):
+        curtain = []
+        for utm_start, utm_end in zip(utm_coord_list, utm_coord_list[1:]):
+            curtain.append(self.read_arbitrary_line_segment_utm(utm_start, utm_end))
+        return np.concatenate(curtain)
+
+    def read_arbitrary_line_segment_utm(self, utm_start, utm_end):
+        il_xl_start = self.get_trace_coods_from_utm(utm_start, 1)[0]
+        il_xl_end = self.get_trace_coods_from_utm(utm_end, 1)[0]
+        return self.read_arbitrary_line_segment_il_xl(il_xl_start, il_xl_end)
+
+    def read_arbitrary_line_segment_il_xl(self, il_xl_start, il_xl_end):
+        start_header = self.gen_trace_header((il_xl_start[0]-self.ilines[0]) * self.n_xlines + il_xl_start[1])
+        end_header = self.gen_trace_header((il_xl_end[0]-self.ilines[0]) * self.n_xlines + il_xl_end[1])
+
+        scaler = start_header[segyio.TraceField.SourceGroupScalar]
+        scaler = -1/scaler if scaler < 0 else scaler
+
+        inter_knee_dist = math.sqrt((end_header[segyio.TraceField.CDP_X]*scaler
+                                     - start_header[segyio.TraceField.CDP_X]*scaler) ** 2
+                                    + (end_header[segyio.TraceField.CDP_Y]*scaler
+                                       - start_header[segyio.TraceField.CDP_Y]*scaler) ** 2)
+
+        n_traces_between_knees = math.floor(inter_knee_dist / min(self.get_il_xl_trace_spacing()))
+        il_coords = np.linspace(il_xl_start[0], il_xl_end[0], n_traces_between_knees)
+        xl_coords = np.linspace(il_xl_start[1], il_xl_end[1], n_traces_between_knees)
+
+        line_segment = np.zeros((len(il_coords), self.n_samples))
+        for i, coords in enumerate(zip(il_coords, xl_coords)):
+            line_segment[i] = self.get_interpolated_trace(coords)
+        return line_segment
+
     def read_subplane(self, min_trace, max_trace, min_z, max_z, access_padding=False):
         """Reads a sub-plane from 2D SGZ file
 
@@ -737,6 +769,26 @@ class SgzReader(object):
         return self.read_subvolume(0, self.n_ilines,
                                    0, self.n_xlines,
                                    0, self.n_samples)
+
+    def get_interpolated_trace(self, coord):
+        """Creates a virtual trace interpolated between four neighbouring traces
+
+        Parameters
+        ----------
+
+        coord : tuple(float, float)
+            The fractional IL/XL location
+
+        """
+        il_fraction = coord[0] % 1
+        il_idx = int(coord[0]//1) - int(self.ilines[0])  # Cast to int else il_idx is implicitly a 32-bit signed int
+        xl_fraction = coord[1] % 1
+        xl_idx = int(coord[1]//1) - int(self.xlines[0])  # Cast to int else xl_idx is implicitly a 32-bit signed int
+
+        return (self.get_trace(il_idx * self.n_xlines + xl_idx) * (1 - il_fraction) * (1 - xl_fraction)
+                + self.get_trace(il_idx * self.n_xlines + (xl_idx + 1)) * (1 - il_fraction) * xl_fraction
+                + self.get_trace((il_idx + 1) * self.n_xlines + xl_idx) * il_fraction * (1 - xl_fraction)
+                + self.get_trace((il_idx + 1) * self.n_xlines + (xl_idx + 1)) * il_fraction * xl_fraction)
 
     def get_trace_by_coord(self, index, min_sample_no=None, max_sample_no=None):
         """Reads one trace from SGZ file, cropping referenced by sample coordinates
@@ -903,8 +955,11 @@ class SgzReader(object):
         -------
         header_array : numpy.ndarray of int32, shape (tracecount)
         """
-        self.read_variant_headers(include_padding=True, tracefields=[segyio.tracefield.TraceField(tracefield)])
-        return self.variant_headers[tracefield]
+        if segyio.tracefield.TraceField(tracefield) in self.stored_header_keys:
+            self.read_variant_headers(include_padding=True, tracefields=[segyio.tracefield.TraceField(tracefield)])
+            return self.variant_headers[tracefield]
+        else:
+            return np.broadcast_to(np.asarray(self.segy_traceheader_template[tracefield]), self.tracecount)
 
     def get_tracefield_values(self, tracefield):
         """Efficiently provides all trace header values for a given trace header field
