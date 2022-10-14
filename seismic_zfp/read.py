@@ -147,6 +147,8 @@ class SgzReader(object):
 
         if self.is_3d:
             self.zslices, self.xlines, self.ilines = self._parse_coordinates()
+            self.ilstep = self.ilines[1] - self.ilines[0]
+            self.xlstep = self.xlines[1] - self.xlines[0]
         else:
             # 2d file is certainly > v0.1.6
             sample_rate_ms = bytes_to_int(self.headerbytes[28:32]) / 1000
@@ -212,7 +214,7 @@ class SgzReader(object):
         # Placeholder. Don't read these if you're not going to use them
         self.variant_headers = {}
         self.include_padding = None
-        
+
         self.range_error = "Index {} is out of range [{}, {}]. Try using slice ordinals instead of numbers?"
 
         # Split out responsibility for I/O and decompression
@@ -873,8 +875,8 @@ class SgzReader(object):
         if not self.structured:
             assert self.include_padding == include_padding
 
-        tracefild_list = self.segy_traceheader_template if tracefields is None else tracefields
-        for k in tracefild_list:
+        tracefield_list = self.segy_traceheader_template if tracefields is None else tracefields
+        for k in tracefield_list:
             # Yes, iterate through list of dictionary keys, because we might not have dict
             if k not in self.variant_headers:
                 offset = self.segy_traceheader_template[k]

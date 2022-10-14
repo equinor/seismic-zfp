@@ -29,7 +29,7 @@ with SgzReader(os.path.join(base_path, '0.sgz')) as reader:
     t0 = time.time()
     slice_sgz = reader.read_inline_number(LINE_NO)
     print("SgzReader took", time.time() - t0)
-    slice_sgz = slice_sgz[(min(xl_ids) - reader.xlines[0])//(reader.xlines[1]-reader.xlines[0]): (max(xl_ids) - reader.xlines[0])//(reader.xlines[1]-reader.xlines[0]) + 1]
+    slice_sgz = slice_sgz[(min(xl_ids) - reader.xlines[0])//(reader.xlstep): (max(xl_ids) - reader.xlines[0])//(reader.xlstep) + 1]
 
 im = Image.fromarray(np.uint8(cm.seismic((slice_sgz.T.clip(-CLIP, CLIP) + CLIP) * SCALE)*255))
 im.save(os.path.join(base_path, 'out_inline-sgz.png'))

@@ -12,10 +12,10 @@ class SubvolumeAccessor(SgzReader):
 
         self.axes_message = f"Inline {self.ilines[0]}:" \
                             f"{self.ilines[-1]}:" \
-                            f"{self.ilines[1] - self.ilines[0]}, " \
+                            f"{self.ilstep}, " \
                             f"Crossline {self.xlines[0]}:" \
-                            f"{self.xlines[-1] + self.xlines[1] - self.xlines[0]}:" \
-                            f"{ self.xlines[1] - self.xlines[0]}, " \
+                            f"{self.xlines[-1] + self.xlstep}:" \
+                            f"{ self.xlstep}, " \
                             f"Samples {self.zslices_int[0]}:" \
                             f"{self.zslices_int[-1] + self.zslices_int[1] - self.zslices_int[0]}:" \
                             f"{self.zslices_int[1] - self.zslices_int[0]}"
