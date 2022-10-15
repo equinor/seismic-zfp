@@ -34,7 +34,7 @@ setuptools.setup(name='seismic-zfp',
                  setup_requires=['setuptools', 'setuptools_scm'],
                  entry_points={
                      'xarray.backends': ['sgz_engine=seismic_zfp.sgz_xarray:SeismicZfpBackendEntrypoint'],
-                     'console_scripts' : ['seismic-zfp=seismic_zfp.cli:cli']
+                     'console_scripts': ['seismic-zfp=seismic_zfp.cli:cli']
                  },
                  packages=['seismic_zfp']
                  )
