@@ -603,4 +603,4 @@ def test_cannot_get_il_xl_trace_spacing():
 def test_get_trace_coods_from_utm():
     with SgzReader(SGZ_FILE_UTM) as reader:
         coord_list = reader.get_trace_coods_from_utm((529818.00, 6717550.00))
-    assert [(21, 2)] == coord_list
+    assert (21, 2) == coord_list
