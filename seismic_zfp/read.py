@@ -786,10 +786,10 @@ class SgzReader(object):
         xl_fraction = coord[1] % 1
         xl_idx = int(coord[1]//1) - int(self.xlines[0])  # Cast to int else xl_idx is implicitly a 32-bit signed int
 
-        return (self.get_trace(il_idx * self.n_xlines + xl_idx) * (1 - il_fraction) * (1 - xl_fraction)
-                + self.get_trace(il_idx * self.n_xlines + (xl_idx + 1)) * (1 - il_fraction) * xl_fraction
-                + self.get_trace((il_idx + 1) * self.n_xlines + xl_idx) * il_fraction * (1 - xl_fraction)
-                + self.get_trace((il_idx + 1) * self.n_xlines + (xl_idx + 1)) * il_fraction * xl_fraction)
+        return (self.get_trace(il_idx * self.n_xlines + xl_idx) * ((1 - il_fraction) * (1 - xl_fraction))
+                + self.get_trace(il_idx * self.n_xlines + (xl_idx + 1)) * ((1 - il_fraction) * xl_fraction)
+                + self.get_trace((il_idx + 1) * self.n_xlines + xl_idx) * (il_fraction * (1 - xl_fraction))
+                + self.get_trace((il_idx + 1) * self.n_xlines + (xl_idx + 1)) * (il_fraction * xl_fraction))
 
     def get_trace_by_coord(self, index, min_sample_no=None, max_sample_no=None):
         """Reads one trace from SGZ file, cropping referenced by sample coordinates
