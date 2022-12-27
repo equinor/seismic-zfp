@@ -1,7 +1,7 @@
 # seismic-zfp #
 
 [![LGPLv3 License](https://img.shields.io/badge/License-LGPL%20v3-green.svg)](https://opensource.org/licenses/)
-[![Travis](https://travis-ci.org/equinor/seismic-zfp.svg?branch=master)](https://travis-ci.org/equinor/seismic-zfp)
+[![Run Tests](https://github.com/equinor/seismic-zfp/actions/workflows/run_tests.yml/badge.svg)](https://github.com/equinor/seismic-zfp/actions/workflows/run_tests.yml)
 [![codecov](https://codecov.io/gh/equinor/seismic-zfp/branch/master/graph/badge.svg)](https://codecov.io/gh/equinor/seismic-zfp)
 [![PyPi Version](https://img.shields.io/pypi/v/seismic-zfp.svg)](https://pypi.org/project/seismic-zfp/)
 
