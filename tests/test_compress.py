@@ -164,7 +164,7 @@ def compress_and_compare_zgy(zgy_file, sgy_file, tmp_path, bits_per_voxel, rtol,
             for trace_number in range(25):
                 sgz_header = sgzfile.header[trace_number]
                 zgy_header = zgyfile.header[trace_number]
-                for header_pos in [115, 117, 181, 185, 189, 193]:
+                for header_pos in [71, 115, 117, 181, 185, 189, 193]:
                     assert sgz_header[header_pos] == zgy_header[header_pos]
 
     assert np.allclose(sgz_data, segyio.tools.cube(sgy_file), rtol=rtol)
