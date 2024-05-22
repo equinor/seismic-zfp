@@ -65,6 +65,7 @@ class HeaderwordInfo:
                 # Set up hw table with entries possible to scrape out of ZGY
                 self.table[115] = (int(seismicfile.n_samples), 0)
                 self.table[117] = (int(1000*seismicfile.zinc), 0)
+                self.table[71] = (-100, 0)
                 for hw_code in [181, 185, 189, 193]:
                     self.table[hw_code] = (0, hw_code)
 
