@@ -22,6 +22,14 @@ def test_gen_coord_list():
     assert np.all(np.arange(0, 6, 2) == gen_coord_list(0, 2, 3))
 
 
+def test_bytes_to_double():
+    assert 1337.7331 == bytes_to_double(b'\xCA\x32\xC4\xB1\xEE\xE6\x94\x40')
+
+
+def test_double_to_bytes():
+    assert b'\xCA\x32\xC4\xB1\xEE\xE6\x94\x40' == double_to_bytes(1337.7331)
+
+
 def test_np_float_to_bytes():
     assert b'\x0f\x00\00\00' == np_float_to_bytes(np.single(15.0))
     assert b'\x39\x05\00\00' == np_float_to_bytes(np.single(1337.0))

@@ -34,7 +34,7 @@ Byte encoding is little-endian.
 |16-19 | int32 |Minimum sample time/depth
 |20-23 | int32 |Minimum crossline number
 |24-27 | int32 |Minimum inline number
-|28-31 | int32 |Sample interval (μs/m)
+|28-31 | int32 |Sample interval (μs/m)*****
 |32-35 | int32 |Crossline interval
 |36-39 | int32 |Inline interval
 |40-43 | int32 |Bits-per-voxel (negative signifying reciprocal)
@@ -48,7 +48,9 @@ Byte encoding is little-endian.
 |72-75 |uint32 |Encoded version number
 |76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY, 20=numpy
 |80-83 |uint32 |Encoded header-detection method ***
-|84-959 |---  | --- Unused ---
+|84-92   |float64  | Minimum sample time/depth*****
+|92-100  |float64  | Sample interval (μs/m)*****
+|100-959 |---      | --- Unused ---
 |960-979 |bytes |Hash of input data
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---
@@ -68,3 +70,6 @@ Storing whether trace header fields are duplicates of previous ones reduces the 
 0=heuristic, 10=thorough, 20=exhaustive, 30=strip
 
 **** Blockshape in IL direction is set to 1 for 2D files, also no bytes for 3D geometry between 4-40 are set.
+
+***** This value may be overidden to provide greater precision by bytes 3273–3280 in the SEG-Y header, or equivalent in ZGY file
+These bytes were allocated in rev 2.0 for "Extended sample interval", as an IEEE double-precision float.

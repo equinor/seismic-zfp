@@ -100,7 +100,16 @@ def coord_to_index(coord, coords, include_stop=False):
 
 
 def gen_coord_list(start, step, count):
+    print(np.arange(start, start + step*count, step))
     return np.arange(start, start + step*count, step)
+
+
+def bytes_to_double(bytes):
+    return struct.unpack("<d", bytes)[0]
+
+
+def double_to_bytes(value):
+    return struct.pack("<d", value)
 
 
 def np_float_to_bytes(numpy_float):
