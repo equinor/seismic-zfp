@@ -48,8 +48,8 @@ Byte encoding is little-endian.
 |72-75 |uint32 |Encoded version number
 |76-79 |uint32 |Encoded source format 0=SEG-Y, 10=ZGY, 20=numpy
 |80-83 |uint32 |Encoded header-detection method ***
-|84-92   |float64  | Minimum sample time/depth*****
-|92-100  |float64  | Sample interval (μs/m)*****
+|84-91   |float64  | Minimum sample time/depth*****
+|92-99   |float64  | Sample interval (μs/m)*****
 |100-959 |---      | --- Unused ---
 |960-979 |bytes |Hash of input data
 |980-2047 |** |Default trace header values

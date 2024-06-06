@@ -52,7 +52,6 @@ ZGY_FILE_32 = 'test_data/zgy/small-32bit.zgy'
 ZGY_FILE_16 = 'test_data/zgy/small-16bit.zgy'
 ZGY_FILE_8 = 'test_data/zgy/small-8bit.zgy'
 ZGY_FILE_FLOAT_SR = 'test_data/zgy/small-float-samplerate.zgy'
-SGY0_FILE_FLOAT_SR = 'test_data/zgy/small-float-samplerate-rev0.sgy'
 
 VDS_FILE = 'test_data/vds/small.vds'
 

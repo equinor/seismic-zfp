@@ -100,7 +100,6 @@ def coord_to_index(coord, coords, include_stop=False):
 
 
 def gen_coord_list(start, step, count):
-    print(np.arange(start, start + step*count, step))
     return np.arange(start, start + step*count, step)
 
 
