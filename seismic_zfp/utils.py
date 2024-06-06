@@ -103,6 +103,14 @@ def gen_coord_list(start, step, count):
     return np.arange(start, start + step*count, step)
 
 
+def bytes_to_double(bytes):
+    return struct.unpack("<d", bytes)[0]
+
+
+def double_to_bytes(value):
+    return struct.pack("<d", value)
+
+
 def np_float_to_bytes(numpy_float):
     # How is this so hard?
     return struct.pack("<I", int(numpy_float.astype(int)))

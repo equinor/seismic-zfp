@@ -15,6 +15,7 @@ from .sgzconstants import HEADER_DETECTION_CODES, DISK_BLOCK_BYTES, SEGY_FILE_HE
 from .utils import (pad,
                     int_to_bytes,
                     signed_int_to_bytes,
+                    double_to_bytes,
                     np_float_to_bytes,
                     np_float_to_bytes_signed,
                     progress_printer,
@@ -39,6 +40,10 @@ def make_header_seismic_file(seismicfile, bits_per_voxel, blockshape, geom, head
         with open(seismicfile.filename, "rb") as f:
             segy_file_header = f.read(SEGY_FILE_HEADER_BYTES)
             buffer[DISK_BLOCK_BYTES:DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES] = segy_file_header
+
+    elif seismicfile.filetype == Filetype.ZGY:
+        buffer[84:92] = double_to_bytes(seismicfile.samples[0])
+        buffer[92:100] = double_to_bytes(seismicfile.zinc*1000)
 
     buffer[76:80] = int_to_bytes(seismicfile.filetype.value)
     buffer[80:84] = int_to_bytes(HEADER_DETECTION_CODES[header_info.header_detection])

@@ -8,7 +8,7 @@ from segyio import _segyio
 
 from .loader import SgzLoader2d, SgzLoader3d
 from .version import SeismicZfpVersion
-from .utils import (pad, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
+from .utils import (pad, bytes_to_double, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
                     coord_to_index, gen_coord_list, FileOffset, WrongDimensionalityError,
                     get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
 import seismic_zfp
@@ -313,15 +313,20 @@ class SgzReader(object):
         return n_samples, n_xlines, n_ilines, rate, blockshape
 
     def _parse_coordinates(self):
-        sample_rate_ms = bytes_to_int(self.headerbytes[28:32])
+        if bytes_to_double(self.headerbytes[92:100]) == 0:
+            sample_rate_ms = bytes_to_int(self.headerbytes[28:32])
+            zmin = bytes_to_signed_int(self.headerbytes[16:20])
 
-        # Use microseconds to store sample interval for files written with version 0.1.7 and above.
-        # zslices is still in milliseconds for segyio compatibility, but now has float type rather than int.
-        # Conversion from ZGY still uses milliseconds, this is safe as zgy2sgz gives a version of 0.0.0
-        if self.file_version > SeismicZfpVersion("0.1.6"):
-            sample_rate_ms /= 1000
+            # Use microseconds to store sample interval for files written with version 0.1.7 and above.
+            # zslices is still in milliseconds for segyio compatibility, but now has float type rather than int.
+            # Conversion from ZGY still uses milliseconds, this is safe as zgy2sgz gives a version of 0.0.0
+            if self.file_version > SeismicZfpVersion("0.1.6"):
+                sample_rate_ms /= 1000
+        else:
+            sample_rate_ms = bytes_to_double(self.headerbytes[92:100]) / 1000.0
+            zmin = bytes_to_double(self.headerbytes[84:92])
 
-        zslices_list = gen_coord_list(bytes_to_signed_int(self.headerbytes[16:20]),
+        zslices_list = gen_coord_list(zmin,
                                       sample_rate_ms,
                                       bytes_to_int(self.headerbytes[4:8])).astype('float')
         xlines_list = gen_coord_list(bytes_to_int(self.headerbytes[20:24]),

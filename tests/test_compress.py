@@ -51,6 +51,7 @@ SGY_FILE_IRREG_DEC = 'test_data/small-irreg-dec.sgy'
 ZGY_FILE_32 = 'test_data/zgy/small-32bit.zgy'
 ZGY_FILE_16 = 'test_data/zgy/small-16bit.zgy'
 ZGY_FILE_8 = 'test_data/zgy/small-8bit.zgy'
+ZGY_FILE_FLOAT_SR = 'test_data/zgy/small-float-samplerate.zgy'
 
 VDS_FILE = 'test_data/vds/small.vds'
 
@@ -179,6 +180,38 @@ def test_compress_zgy(tmp_path):
     compress_and_compare_zgy(ZGY_FILE_16, SGY_FILE_16, tmp_path, 16, 1e-4, blockshape=(4, 4, -1))
     compress_and_compare_zgy(ZGY_FILE_32, SGY_FILE_32, tmp_path, 16, 1e-5, blockshape=(4, 4, -1))
     compress_and_compare_zgy(ZGY_FILE_32, SGY_FILE_32, tmp_path, 2, 1e-4, blockshape=(64, 64, 4))
+
+
+@pytest.mark.skipif(pyvds is None, reason="Requires pyvds")
+def test_compress_vds(tmp_path):
+    compress_and_compare_vds(VDS_FILE, tmp_path, 8, 1e-6, blockshape=(4, 4, -1))
+    compress_and_compare_vds(VDS_FILE, tmp_path, 2, 1e-4, blockshape=(64, 64, 4))
+
+
+def compress_and_compare_zgy_float_sr(zgy_file, tmp_path, bits_per_voxel, blockshape):
+    out_filename = f'test_{os.path.splitext(os.path.basename(zgy_file))[0]}_{bits_per_voxel}_.sgz'
+    out_filepath = os.path.join(str(tmp_path), out_filename)
+
+    with ZgyConverter(zgy_file) as converter:
+        converter.run(out_filepath, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+
+    with seismic_zfp.open(out_filepath) as sgzfile:
+        with pyzgy.open(zgy_file) as zgyfile:
+            ref_ilines = zgyfile.ilines
+            ref_samples = np.arange(2558.034423828125, 3501.77894402, 4.309335708618164)
+
+            sgz_ilines = sgzfile.ilines
+            sgz_samples = sgzfile.zslices
+            assert sgzfile.structured
+
+    assert all([a == b for a, b in zip(sgz_ilines, ref_ilines)])
+    assert all(ref_samples == sgz_samples)
+    assert 10 == SgzReader(out_filepath).get_file_source_code()
+
+
+@pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
+def test_compress_zgy_float_sr(tmp_path):
+    compress_and_compare_zgy_float_sr(ZGY_FILE_FLOAT_SR, tmp_path, 2, blockshape=(64, 64, 4))
 
 
 def compress_and_compare_axes(sgy_file, unit, tmp_path):
