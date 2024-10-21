@@ -7,7 +7,7 @@ import time
 import psutil
 
 from .headers import HeaderwordInfo
-from .conversion_utils import run_conversion_loop
+from .conversion_utils import run_conversion_loop, StreamProducer
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 from .seismicfile import SeismicFile, Filetype
@@ -16,6 +16,7 @@ from .utils import (pad,
                     define_blockshape_3d,
                     bytes_to_int,
                     int_to_bytes,
+                    Axes,
                     CubeWithAxes,
                     Geometry3d,
                     InferredGeometry3d,
@@ -484,3 +485,123 @@ class NumpyConverter(object):
                                              blockshape, header_info, self.geom)
             self.write_headers(header_info, out_filehandle)
             self.write_hash(hash_bytes, out_filehandle)
+
+
+class StreamConverter(object):
+    """Compresses chunks of 3D numpy arrays as a stream to SGZ file(s)"""
+
+    def __init__(
+        self, out_filename, ilines, xlines, samples, bits_per_voxel=4, blockshape=(4, 4, -1), trace_headers={}
+    ):
+        """
+        Parameters
+        ----------
+
+        out_filename: str
+            The SGZ output file
+
+        ilines, xlines, samples: 1D array-like objects
+            Axes labels for input array
+
+        bits_per_voxel: int, float, str
+            The number of bits to use for storing each seismic voxel.
+            - Uncompressed seismic has 32-bits per voxel
+            - Using 16-bits gives almost perfect reproduction
+            - Tested using 8, 4, 2, 1, 0.5 & 0.25 bit
+            - Recommended using 4-bit, giving 8:1 compression
+            - Negative value implies reciprocal: i.e. -2 ==> 1/2 bits per voxel
+
+        blockshape: (int, int, int)
+            The physical shape of voxels compressed to one disk block.
+            Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, 4th is redundant.
+            - Specifying -1 for one of these will calculate that one
+            - Specifying -1 for more than one of these will fail
+            - Each one must be a power of 2
+            - (4, 4, -1) - default - is good for IL/XL reading
+            - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
+
+        trace_headers: dict
+            key, value pairs pf:
+                - Member of segyio.tracefield.TraceField Enum
+                - 2D numpy array of integers in inline-major order, representing trace header values to be inserted
+        """
+        # Get ilines axis. If overspecified check consistency, and generate if unspecified.
+        if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
+            self.ilines = trace_headers[segyio.tracefield.TraceField.INLINE_3D][:, 0]
+            if ilines is not None:
+                assert np.array_equal(self.ilines, ilines)
+        else:
+            self.ilines = ilines
+
+        # Get xlines axis. If overspecified check consistency, and generate if unspecified.
+        if segyio.tracefield.TraceField.CROSSLINE_3D in trace_headers:
+            self.xlines = trace_headers[segyio.tracefield.TraceField.CROSSLINE_3D][0, :]
+            if xlines is not None:
+                assert np.array_equal(self.xlines, xlines)
+        else:
+            self.xlines = xlines
+
+        self.samples = samples
+        self.trace_headers = collections.OrderedDict(sorted(trace_headers.items()))
+
+        shape = (len(self.ilines), len(self.xlines))
+        total_shape = (len(self.ilines), len(self.xlines), len(samples))
+        tf_il = segyio.tracefield.TraceField.INLINE_3D
+        tf_xl = segyio.tracefield.TraceField.CROSSLINE_3D
+
+        if tf_il not in self.trace_headers:
+            self.trace_headers[tf_il] = np.broadcast_to(
+                np.expand_dims(self.ilines, 1), shape
+            )
+
+        if tf_xl not in self.trace_headers:
+            self.trace_headers[tf_xl] = np.broadcast_to(self.xlines, shape)
+
+        
+        for tracefield, header_array in self.trace_headers.items():
+            assert tracefield in segyio.tracefield.keys.values()
+            assert header_array.shape == shape
+
+        bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
+        self.geom = Geometry3d(0, len(self.ilines), 0, len(self.xlines))
+        axes = Axes(self.ilines, self.xlines, self.samples)
+        self.header_info = HeaderwordInfo(
+            n_traces=len(self.ilines) * len(self.xlines),
+            variant_header_dict=self.trace_headers,
+        )
+        self.out_filehandle = open(out_filename, "wb")
+        self.blockshape = blockshape
+
+        self.numpy_chunk_converter = StreamProducer(axes,
+                self.out_filehandle,
+                bits_per_voxel,
+                blockshape,
+                self.header_info,
+                self.geom,
+                total_shape)
+
+    def write(self, data_array):
+        # Do some sanity checks
+        assert data_array.dtype == np.float32
+        assert data_array.shape[0] <= self.blockshape[0]
+        assert data_array.shape[1] == len(self.xlines)
+        assert data_array.shape[2] == len(self.samples)
+        self.numpy_chunk_converter.produce(data_array)
+
+    def close(self):
+        for header_array in self.header_info.headers_dict.values():
+            # Pad to 512-bytes for page blobs
+            self.out_filehandle.write(
+                header_array.tobytes() + bytes(512 - len(header_array.tobytes()) % 512)
+            )
+        hash = self.numpy_chunk_converter.hash_object.digest()
+        with open(self.out_filehandle.name, "r+b") as f:
+            f.seek(960)
+            f.write(hash)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False

@@ -439,3 +439,113 @@ def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
     writing_queue.join()
     out_filehandle.flush()
     return hash_object.digest()
+
+
+class StreamProducer(object):
+    """Handles the compression of Numpy3D data chunks for writing to disk."""
+
+    def __init__(
+        self,
+        axes,
+        out_filehandle,
+        bits_per_voxel,
+        blockshape,
+        header_info,
+        geom,
+        total_shape,
+        queue_size=16,
+    ):
+        """
+        Parameters
+        ----------
+        axes : tuple
+            Tuple of axis names.
+        out_filehandle : file object
+            File object to write the compressed data to.
+        bits_per_voxel : float
+            Target number of bits per voxel after compression.
+        blockshape : tuple
+            Shape of the blocks to divide the chunks into.
+        header_info : HeaderInfo
+            Header information for the SGZ file.
+        geom : Geometry3d
+            Geometry information for the SGZ file.
+        total_shape : tuple
+            Total shape of the full input array.
+        queue_size : int, optional
+            Maximum size of the compression and writing queues.
+        """
+        self.total_shape = total_shape
+        self.blockshape = blockshape
+        self.header = make_header_numpy(
+            bits_per_voxel, blockshape, axes, header_info, geom
+        )
+        # Maxsize can be reduced for machines with little memory
+        # ... or for files which are so big they might be very useful.
+        self.compression_queue = Queue(maxsize=queue_size)
+        self.writing_queue = Queue(maxsize=queue_size)
+        # schedule the consumer
+        self.hash_object = hashlib.new("sha1")
+        t_compress = Thread(
+            target=compressor, args=(self.compression_queue, self.writing_queue, bits_per_voxel)
+        )
+        t_write = Thread(target=writer, args=(self.writing_queue, out_filehandle, self.header))
+        t_compress.daemon = True
+        t_compress.start()
+        t_write.daemon = True
+        t_write.start()
+        self.position = 0
+
+    def produce(self, in_array):
+        """
+        Processes a chunk of the input array, applies necessary padding, updates the hash,
+        and puts the processed chunk into the queue for writing to disk.
+
+        :param queue: Queue to put the processed chunks into.
+        :param chunk: The current chunk of the input array to process.
+        :param blockshape: The shape of the blocks to divide the chunks into.
+        :param hash_object: The hash object to update with the chunk data.
+        :param position: The starting inline index of the chunk in the full array.
+        :param total_shape: The total shape of the full input array.
+        """
+        n_ilines, n_xlines, trace_length = self.total_shape
+        padded_shape = (
+            pad(n_ilines, self.blockshape[0]),
+            pad(n_xlines, self.blockshape[1]),
+            pad(trace_length, self.blockshape[2]),
+        )
+        chunk_shape = in_array.shape
+
+        # Determine if padding is needed for the last chunk in the inline direction
+        ilines_pad = 0
+        if self.position + chunk_shape[0] > n_ilines:
+            ilines_pad = self.blockshape[0] - chunk_shape[0]
+        self.position += chunk_shape[0]
+
+        # Calculate padding for the current chunk
+        padding = (
+            (0, ilines_pad),
+            (0, padded_shape[1] - n_xlines),
+            (0, padded_shape[2] - trace_length),
+        )
+
+        # Apply padding to the chunk
+        buffer = np.pad(in_array, padding, "edge")
+
+        # Update the hash object with the data from the current chunk
+        for i in range(chunk_shape[0]):
+            self.hash_object.update(buffer[i, 0:n_xlines, 0:trace_length].copy())
+
+        # Put the processed chunk into the queue
+        if self.blockshape[0] == 4:
+            self.compression_queue.put(buffer)
+        else:
+            for x in range(padded_shape[1] // self.blockshape[1]):
+                for z in range(padded_shape[2] // self.blockshape[2]):
+                    slice = buffer[
+                        :,
+                        x * self.blockshape[1] : (x + 1) * self.blockshape[1],
+                        z * self.blockshape[2] : (z + 1) * self.blockshape[2],
+                    ].copy()
+                    self.compression_queue.put(slice)
+
