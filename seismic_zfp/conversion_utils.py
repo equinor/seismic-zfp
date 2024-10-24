@@ -487,9 +487,12 @@ class StreamProducer(object):
         # schedule the consumer
         self.hash_object = hashlib.new("sha1")
         t_compress = Thread(
-            target=compressor, args=(self.compression_queue, self.writing_queue, bits_per_voxel)
+            target=compressor,
+            args=(self.compression_queue, self.writing_queue, bits_per_voxel),
         )
-        t_write = Thread(target=writer, args=(self.writing_queue, out_filehandle, self.header))
+        t_write = Thread(
+            target=writer, args=(self.writing_queue, out_filehandle, self.header)
+        )
         t_compress.daemon = True
         t_compress.start()
         t_write.daemon = True
@@ -498,15 +501,10 @@ class StreamProducer(object):
 
     def produce(self, in_array):
         """
-        Processes a chunk of the input array, applies necessary padding, updates the hash,
+        Processes a chunk of the total input array, applies necessary padding, updates the hash,
         and puts the processed chunk into the queue for writing to disk.
 
-        :param queue: Queue to put the processed chunks into.
-        :param chunk: The current chunk of the input array to process.
-        :param blockshape: The shape of the blocks to divide the chunks into.
-        :param hash_object: The hash object to update with the chunk data.
-        :param position: The starting inline index of the chunk in the full array.
-        :param total_shape: The total shape of the full input array.
+        :param in_array: The current chunk of the input array to process.
         """
         n_ilines, n_xlines, trace_length = self.total_shape
         padded_shape = (
@@ -548,4 +546,3 @@ class StreamProducer(object):
                         z * self.blockshape[2] : (z + 1) * self.blockshape[2],
                     ].copy()
                     self.compression_queue.put(slice)
-

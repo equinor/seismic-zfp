@@ -491,7 +491,14 @@ class StreamConverter(object):
     """Compresses chunks of 3D numpy arrays as a stream to SGZ file(s)"""
 
     def __init__(
-        self, out_filename, ilines, xlines, samples, bits_per_voxel=4, blockshape=(4, 4, -1), trace_headers={}
+        self,
+        out_filename,
+        ilines,
+        xlines,
+        samples,
+        bits_per_voxel=4,
+        blockshape=(4, 4, -1),
+        trace_headers={},
     ):
         """
         Parameters
@@ -557,7 +564,6 @@ class StreamConverter(object):
         if tf_xl not in self.trace_headers:
             self.trace_headers[tf_xl] = np.broadcast_to(self.xlines, shape)
 
-        
         for tracefield, header_array in self.trace_headers.items():
             assert tracefield in segyio.tracefield.keys.values()
             assert header_array.shape == shape
@@ -572,21 +578,28 @@ class StreamConverter(object):
         self.out_filehandle = open(out_filename, "wb")
         self.blockshape = blockshape
 
-        self.numpy_chunk_converter = StreamProducer(axes,
-                self.out_filehandle,
-                bits_per_voxel,
-                blockshape,
-                self.header_info,
-                self.geom,
-                total_shape)
+        self.stream_producer = StreamProducer(
+            axes,
+            self.out_filehandle,
+            bits_per_voxel,
+            blockshape,
+            self.header_info,
+            self.geom,
+            total_shape,
+        )
 
     def write(self, data_array):
+        """
+        data_array: np.ndarray of dtype==np.float32
+            The 3D numpy array of 32-bit floats to be compressed.
+        """
+        
         # Do some sanity checks
         assert data_array.dtype == np.float32
         assert data_array.shape[0] <= self.blockshape[0]
         assert data_array.shape[1] == len(self.xlines)
         assert data_array.shape[2] == len(self.samples)
-        self.numpy_chunk_converter.produce(data_array)
+        self.stream_producer.produce(data_array)
 
     def close(self):
         for header_array in self.header_info.headers_dict.values():
@@ -594,7 +607,7 @@ class StreamConverter(object):
             self.out_filehandle.write(
                 header_array.tobytes() + bytes(512 - len(header_array.tobytes()) % 512)
             )
-        hash = self.numpy_chunk_converter.hash_object.digest()
+        hash = self.stream_producer.hash_object.digest()
         with open(self.out_filehandle.name, "r+b") as f:
             f.seek(960)
             f.write(hash)
@@ -602,6 +615,6 @@ class StreamConverter(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self):
         self.close()
         return False
