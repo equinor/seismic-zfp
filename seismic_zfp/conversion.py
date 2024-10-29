@@ -590,8 +590,44 @@ class StreamConverter(object):
 
     def write(self, data_array):
         """
+        Compresses a 3D block of data with specified dimensions and constraints.
+
+        Parameters
+        ----------
         data_array: np.ndarray of dtype==np.float32
-            The 3D numpy array of 32-bit floats to be compressed.
+            The 3D numpy array of 32-bit floats to be compressed with dimensions representing:
+            - `data_array.shape[0]` as the inlines,
+            - `data_array.shape[1]` as the crosslines, and
+            - `data_array.shape[2]` as the samples.
+        
+        Constraints
+        -----------
+        The input `data_array` must satisfy the following conditions:
+        - `data_array.shape[0]` (inlines) should be **equal to `self.blockshape[0]`**, representing
+        the block's expected number of inlines, **except on the last call to this method**, where
+        `data_array.shape[0]` can be **less than or equal to `self.blockshape[0]`**.
+        - `data_array.shape[1]` (crosslines) must be **equal to `len(self.inlines)`**, indicating the
+        expected number of crosslines.
+        - `data_array.shape[2]` (samples) must be **equal to `len(self.samples)`**, defining the
+        required number of samples per inline-crossline pair.
+        
+        Raises
+        ------
+        AssertionError
+            If any of the shape constraints are not satisfied, an `AssertionError` is raised.
+        
+        Returns
+        -------
+        None
+            This method performs a write operation and does not return a value.
+        
+        Notes
+        -----
+        This method is part of the StreamConverter class, designed to write sequential blocks of data
+        in consecutive calls. Each call should write a chunk of data with `self.blockshape[0]` inlines.
+        The final call to this method may contain fewer inlines if the total number of inlines does not
+        divide evenly by `self.blockshape[0]`. This design ensures efficient streaming of data in
+        fixed-size chunks, except for the last chunk, which can be smaller.
         """
         
         # Do some sanity checks
