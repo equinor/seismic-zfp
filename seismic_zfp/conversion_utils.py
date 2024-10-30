@@ -498,6 +498,7 @@ class StreamProducer(object):
         t_write.daemon = True
         t_write.start()
         self.position = 0
+        self.out_filehandle = out_filehandle
 
     def produce(self, in_array):
         """
@@ -516,9 +517,10 @@ class StreamProducer(object):
 
         # Determine if padding is needed for the last chunk in the inline direction
         ilines_pad = 0
-        if self.position + chunk_shape[0] > n_ilines:
+        is_last_chunk = self.position + chunk_shape[0] >= n_ilines
+        if is_last_chunk:
             ilines_pad = self.blockshape[0] - chunk_shape[0]
-        self.position += chunk_shape[0]
+        self.position += self.blockshape[0]
 
         # Calculate padding for the current chunk
         padding = (
@@ -546,3 +548,8 @@ class StreamProducer(object):
                         z * self.blockshape[2] : (z + 1) * self.blockshape[2],
                     ].copy()
                     self.compression_queue.put(slice)
+
+        if is_last_chunk:
+            self.compression_queue.join()
+            self.writing_queue.join()
+            self.out_filehandle.flush()
