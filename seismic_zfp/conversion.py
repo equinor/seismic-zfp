@@ -599,7 +599,7 @@ class StreamConverter(object):
             - `data_array.shape[0]` as the inlines,
             - `data_array.shape[1]` as the crosslines, and
             - `data_array.shape[2]` as the samples.
-        
+
         Constraints
         -----------
         The input `data_array` must satisfy the following conditions:
@@ -610,17 +610,17 @@ class StreamConverter(object):
         expected number of crosslines.
         - `data_array.shape[2]` (samples) must be **equal to `len(self.samples)`**, defining the
         required number of samples per inline-crossline pair.
-        
+
         Raises
         ------
         AssertionError
             If any of the shape constraints are not satisfied, an `AssertionError` is raised.
-        
+
         Returns
         -------
         None
             This method performs a write operation and does not return a value.
-        
+
         Notes
         -----
         This method is part of the StreamConverter class, designed to write sequential blocks of data
@@ -629,7 +629,7 @@ class StreamConverter(object):
         divide evenly by `self.blockshape[0]`. This design ensures efficient streaming of data in
         fixed-size chunks, except for the last chunk, which can be smaller.
         """
-        
+
         # Do some sanity checks
         assert data_array.dtype == np.float32
         assert data_array.shape[0] <= self.blockshape[0]
