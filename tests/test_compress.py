@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from seismic_zfp.conversion import SeismicFileConverter, SegyConverter, SgzConverter, NumpyConverter
+from seismic_zfp.conversion import SeismicFileConverter, SegyConverter, SgzConverter, NumpyConverter, StreamConverter
 from seismic_zfp.sgzconstants import HEADER_DETECTION_CODES
 from seismic_zfp.read import SgzReader
 from seismic_zfp.headers import HeaderwordInfo
@@ -504,3 +504,52 @@ def test_compress_numpy_data(tmp_path):
 
     compress_numpy_and_compare_data(17, 0, 65, 8, 65, tmp_path, 8, 1e-2, blockshape=(32, 32, 4))
     compress_numpy_and_compare_data(801, 0, 9, 8, 13, tmp_path, 8, 1e-2, blockshape=(16, 16, 16))
+
+def compress_stream_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n_xlines,
+                                    tmp_path, bits_per_voxel, rtol, blockshape=(4, 4, -1)):
+
+    out_sgz = os.path.join(str(tmp_path), 'from-stream.sgz')
+    out_sgz_no_headers = os.path.join(str(tmp_path), 'from-stream_no_headers.sgz')
+
+    array, ilines, xlines, samples = generate_fake_seismic(n_ilines, n_xlines, n_samples,
+                                                           min_iline=min_iline, min_xline=min_xline)
+
+    trace_headers = {segyio.tracefield.TraceField.INLINE_3D:
+                     np.broadcast_to(np.expand_dims(ilines, axis=1), (n_ilines, n_xlines)),
+                     segyio.tracefield.TraceField.CROSSLINE_3D:
+                     np.broadcast_to(xlines, (n_ilines, n_xlines))}
+
+
+    with StreamConverter(out_sgz, ilines=ilines, xlines=xlines, samples=samples, bits_per_voxel=bits_per_voxel, blockshape=blockshape, trace_headers=trace_headers) as converter:
+        for i in range(0, array.shape[0], blockshape[0]):
+            end = min(i + blockshape[0], array.shape[0])
+            chunk = array[i:end, :, :]
+            converter.write(chunk)
+
+    with SgzReader(out_sgz) as reader:
+        # print(np.max(np.abs(reader.read_volume()-array)/np.abs(array)))
+        assert np.allclose(reader.ilines, ilines, rtol=rtol)
+        assert np.allclose(reader.xlines, xlines, rtol=rtol)
+        volume = reader.read_volume()
+        np.savetxt('array.csv', array.reshape(-1, array.shape[2]), delimiter=',')
+        np.savetxt('volume.csv', volume.reshape(-1, array.shape[2]), delimiter=',')
+        assert np.allclose(reader.read_volume(), array, rtol=rtol)
+        assert 20 == reader.get_file_source_code()
+
+    with NumpyConverter(array) as converter:
+        converter.run(out_sgz_no_headers, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+
+    with SgzReader(out_sgz_no_headers) as reader:
+        assert np.allclose(reader.ilines, np.arange(array.shape[0]), rtol=rtol)
+        assert np.allclose(reader.xlines, np.arange(array.shape[1]), rtol=rtol)
+        assert np.allclose(reader.read_volume(), array, rtol=rtol)
+        assert 20 == reader.get_file_source_code()
+
+def test_compress_stream(tmp_path):
+    compress_stream_and_compare_data(16, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(801, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(512, 0, 9, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(512, 0, 8, 8, 13, tmp_path, 8, 1e-3)
+
+    compress_stream_and_compare_data(17, 0, 65, 8, 65, tmp_path, 8, 1e-2, blockshape=(32, 32, 4))
+    compress_stream_and_compare_data(801, 0, 9, 8, 13, tmp_path, 8, 1e-2, blockshape=(16, 16, 16))
