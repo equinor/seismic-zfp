@@ -520,6 +520,11 @@ class StreamProducer(object):
         is_last_chunk = self.position + chunk_shape[0] >= n_ilines
         if is_last_chunk:
             ilines_pad = self.blockshape[0] - chunk_shape[0]
+        else:
+            if chunk_shape[0] != self.blockshape[0]:
+                raise ValueError(
+                    "Chunk size along the inline axis must be equal to the blockshape."
+                )
         self.position += self.blockshape[0]
 
         # Calculate padding for the current chunk
