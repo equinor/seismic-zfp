@@ -554,14 +554,23 @@ def compress_stream_and_compare_data(
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
 
-    with NumpyConverter(array) as converter:
-        converter.run(
-            out_sgz_no_headers, bits_per_voxel=bits_per_voxel, blockshape=blockshape
-        )
+    with StreamConverter(
+        out_sgz_no_headers,
+        ilines=ilines,
+        xlines=xlines,
+        samples=samples,
+        bits_per_voxel=bits_per_voxel,
+        blockshape=blockshape,
+        trace_headers=trace_headers,
+    ) as converter:
+        for i in range(0, array.shape[0], blockshape[0]):
+            end = min(i + blockshape[0], array.shape[0])
+            chunk = array[i:end, :, :]
+            converter.write(chunk)
 
     with SgzReader(out_sgz_no_headers) as reader:
-        assert np.allclose(reader.ilines, np.arange(array.shape[0]), rtol=rtol)
-        assert np.allclose(reader.xlines, np.arange(array.shape[1]), rtol=rtol)
+        assert np.allclose(reader.ilines, ilines, rtol=rtol)
+        assert np.allclose(reader.xlines, xlines, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
 
