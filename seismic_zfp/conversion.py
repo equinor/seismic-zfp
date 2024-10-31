@@ -644,15 +644,9 @@ class StreamConverter(object):
         self.stream_producer.produce(data_array)
 
     def close(self):
-        for header_array in self.header_info.headers_dict.values():
-            # Pad to 512-bytes for page blobs
-            self.out_filehandle.write(
-                header_array.tobytes() + bytes(512 - len(header_array.tobytes()) % 512)
-            )
-        hash = self.stream_producer.hash_object.digest()
-        with open(self.out_filehandle.name, "r+b") as f:
-            f.seek(960)
-            f.write(hash)
+        hash_bytes = self.stream_producer.hash_object.digest()
+        NumpyConverter.write_headers(self.header_info, self.out_filehandle)
+        NumpyConverter.write_hash(hash_bytes, self.out_filehandle)
 
     def __enter__(self):
         return self
