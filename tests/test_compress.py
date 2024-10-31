@@ -519,6 +519,7 @@ def compress_stream_and_compare_data(
 ):
 
     out_sgz = os.path.join(str(tmp_path), "from-stream.sgz")
+    out_sgz_numpy = os.path.join(str(tmp_path), "from-numpy.sgz")
     out_sgz_no_headers = os.path.join(str(tmp_path), "from-stream_no_headers.sgz")
 
     array, ilines, xlines, samples = generate_fake_seismic(
@@ -573,6 +574,15 @@ def compress_stream_and_compare_data(
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
+        stream_hash = reader.get_source_data_hash()
+
+    with NumpyConverter(array) as converter:
+        converter.run(out_sgz_numpy, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+
+    with SgzReader(out_sgz_numpy) as reader:
+        numpy_hash = reader.get_source_data_hash()
+
+    assert stream_hash == numpy_hash
 
 
 def test_compress_stream(tmp_path):
