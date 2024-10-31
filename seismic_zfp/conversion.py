@@ -488,7 +488,13 @@ class NumpyConverter(object):
 
 
 class StreamConverter(object):
-    """Compresses chunks of 3D numpy arrays as a stream to SGZ file(s)"""
+    """
+    Compresses a 3D numpy array to an SGZ file as a stream of chunks. 
+    Each chunk is a set of planes in the inline (iline) direction, enabling 
+    sequential compression and storage without loading the entire array into memory. 
+    The number of planes per chunk is determined by the iline dimension of the 
+    `blockshape` parameter, specifically `blockshape[0]`.
+    """
 
     def __init__(
         self,
