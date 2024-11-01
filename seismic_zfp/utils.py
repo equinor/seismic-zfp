@@ -25,6 +25,14 @@ class CubeWithAxes:
         self.samples = samples
 
 
+class Axes:
+    """Utility class to hold axes"""
+    def __init__(self, ilines, xlines, samples):
+        self.ilines = ilines
+        self.xlines = xlines
+        self.samples = samples
+
+
 class Geometry3d:
     """Lightweight place to keep track of IL/XL ranges"""
     def __init__(self, min_il, max_il, min_xl, max_xl, il_step=1, xl_step=1):
