@@ -505,6 +505,7 @@ class StreamConverter(object):
         bits_per_voxel=4,
         blockshape=(4, 4, -1),
         trace_headers={},
+        use_higher_samples_precision=False,
     ):
         """
         Parameters
@@ -537,6 +538,9 @@ class StreamConverter(object):
             key, value pairs pf:
                 - Member of segyio.tracefield.TraceField Enum
                 - 2D numpy array of integers in inline-major order, representing trace header values to be inserted
+
+        use_higher_samples_precision : bool, optional
+            Whether to use higher precision for sample interval and sample time. Default is False.
         """
         # Get ilines axis. If overspecified check consistency, and generate if unspecified.
         if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
@@ -592,6 +596,7 @@ class StreamConverter(object):
             self.header_info,
             self.geom,
             total_shape,
+            use_higher_samples_precision=use_higher_samples_precision
         )
 
     def write(self, data_array):

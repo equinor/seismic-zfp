@@ -50,7 +50,7 @@ def make_header_seismic_file(seismicfile, bits_per_voxel, blockshape, geom, head
     return buffer
 
 
-def make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom):
+def make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom, use_higher_samples_precision=False):
     """Generate header for SGZ file from numpy arrays representing axis and header values"""
 
     # Nothing clever to identify duplicated header arrays yet, just include everything we're given.
@@ -59,6 +59,11 @@ def make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom):
                          header_info, bits_per_voxel, blockshape, geom)
     # These 4 bytes indicate the data source for the SGZ file. Use 20 to indicate numpy.
     buffer[76:80] = int_to_bytes(20)
+    if use_higher_samples_precision:
+        # higher precision minimum sample time/depth
+        buffer[84:92] = double_to_bytes(source.samples[0])
+        # higher precision sample interval (μs/m)
+        buffer[92:100] = double_to_bytes(1000.0 * (source.samples[1] - source.samples[0]))
     return buffer
 
 
@@ -454,6 +459,7 @@ class StreamProducer(object):
         geom,
         total_shape,
         queue_size=16,
+        use_higher_samples_precision=False,
     ):
         """
         Parameters
@@ -474,11 +480,18 @@ class StreamProducer(object):
             Total shape of the full input array.
         queue_size : int, optional
             Maximum size of the compression and writing queues.
+        use_higher_samples_precision : bool, optional
+            Whether to use higher precision for sample interval and sample time.
         """
         self.total_shape = total_shape
         self.blockshape = blockshape
         self.header = make_header_numpy(
-            bits_per_voxel, blockshape, axes, header_info, geom
+            bits_per_voxel,
+            blockshape,
+            axes,
+            header_info,
+            geom,
+            use_higher_samples_precision=use_higher_samples_precision,
         )
         # Maxsize can be reduced for machines with little memory
         # ... or for files which are so big they might be very useful.
