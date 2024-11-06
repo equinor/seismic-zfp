@@ -540,7 +540,10 @@ class StreamConverter(object):
                 - 2D numpy array of integers in inline-major order, representing trace header values to be inserted
 
         use_higher_samples_precision : bool, optional
-            Whether to use higher precision for sample interval and sample time. Default is False.
+            Specifies whether to use higher precision for the sample interval and sample time. 
+            Default is `False`. When set to `True`, stores sample interval and sample time as 
+            64-bit floating-point numbers for increased precision. If `False`, they are stored 
+            as 32-bit integers.
         """
         # Get ilines axis. If overspecified check consistency, and generate if unspecified.
         if segyio.tracefield.TraceField.INLINE_3D in trace_headers:
