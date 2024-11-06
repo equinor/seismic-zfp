@@ -71,5 +71,5 @@ Storing whether trace header fields are duplicates of previous ones reduces the 
 
 **** Blockshape in IL direction is set to 1 for 2D files, also no bytes for 3D geometry between 4-40 are set.
 
-***** This value may be overidden to provide greater precision by bytes 3273–3280 in the SEG-Y header, or equivalent in ZGY file
+***** This value may be overidden to provide higher precision by bytes 3273–3280 in the SEG-Y header, or equivalent in ZGY file
 These bytes were allocated in rev 2.0 for "Extended sample interval", as an IEEE double-precision float.

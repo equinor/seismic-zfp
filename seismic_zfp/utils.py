@@ -77,7 +77,7 @@ def read_range_blob(file, offset, length):
     return file.download_blob(offset=offset, length=length).readall()
 
 
-def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=0):
+def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=0, min_sample=0):
     # Generate an array which looks a *bit* like an impulse-response test...
     ilines, xlines, samples = np.arange(n_ilines), np.arange(n_xlines), np.arange(n_samples)
     array_shape = (n_ilines, n_xlines, n_samples)
@@ -87,7 +87,7 @@ def generate_fake_seismic(n_ilines, n_xlines, n_samples, min_iline=0, min_xline=
     s = np.broadcast_to(samples - n_samples / 4, array_shape).astype(np.float32)
     array = 0.01 + (np.sin(0.1 + np.sqrt(2.0 + (i+0.01) ** 2 + x ** 2 + (s*0.75) ** 2) / 8.0) /
                           (0.1 * np.sqrt(2.0 + (i+0.01) ** 2 + x ** 2 + (s*0.50) ** 2)))
-    return array, ilines+min_iline, xlines+min_xline, samples
+    return array, ilines+min_iline, xlines+min_xline, samples+min_sample
 
 
 def pad(orig, multiple):

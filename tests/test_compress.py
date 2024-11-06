@@ -483,6 +483,7 @@ def compress_numpy_and_compare_data(n_samples, min_iline, n_ilines, min_xline, n
         # print(np.max(np.abs(reader.read_volume()-array)/np.abs(array)))
         assert np.allclose(reader.ilines, ilines, rtol=rtol)
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
+        assert np.allclose(reader.zslices, samples, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
 
@@ -507,6 +508,7 @@ def test_compress_numpy_data(tmp_path):
 
 
 def compress_stream_and_compare_data(
+    min_sample,
     n_samples,
     min_iline,
     n_ilines,
@@ -518,12 +520,13 @@ def compress_stream_and_compare_data(
     blockshape=(4, 4, -1),
 ):
 
-    out_sgz = os.path.join(str(tmp_path), "from-stream.sgz")
+    out_sgz_lower_samples_precision = os.path.join(str(tmp_path), "from-stream-lower-samples-precision.sgz")
+    out_sgz_higher_samples_precision = os.path.join(str(tmp_path), "from-stream-higher-samples-precision.sgz")
     out_sgz_numpy = os.path.join(str(tmp_path), "from-numpy.sgz")
     out_sgz_no_headers = os.path.join(str(tmp_path), "from-stream_no_headers.sgz")
 
     array, ilines, xlines, samples = generate_fake_seismic(
-        n_ilines, n_xlines, n_samples, min_iline=min_iline, min_xline=min_xline
+        n_ilines, n_xlines, n_samples, min_iline=min_iline, min_xline=min_xline, min_sample=min_sample
     )
 
     trace_headers = {
@@ -534,9 +537,10 @@ def compress_stream_and_compare_data(
             xlines, (n_ilines, n_xlines)
         ),
     }
+    lower_samples_precision = samples.astype(int)
 
     with StreamConverter(
-        out_sgz,
+        out_sgz_lower_samples_precision,
         ilines=ilines,
         xlines=xlines,
         samples=samples,
@@ -548,10 +552,31 @@ def compress_stream_and_compare_data(
             end = min(i + blockshape[0], array.shape[0])
             chunk = array[i:end, :, :]
             converter.write(chunk)
-
-    with SgzReader(out_sgz) as reader:
+    with SgzReader(out_sgz_lower_samples_precision) as reader:
         assert np.allclose(reader.ilines, ilines, rtol=rtol)
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
+        assert np.allclose(reader.zslices, lower_samples_precision, rtol=rtol)
+        assert np.allclose(reader.read_volume(), array, rtol=rtol)
+        assert 20 == reader.get_file_source_code()
+
+    with StreamConverter(
+        out_sgz_higher_samples_precision,
+        ilines=ilines,
+        xlines=xlines,
+        samples=samples,
+        bits_per_voxel=bits_per_voxel,
+        blockshape=blockshape,
+        trace_headers=trace_headers,
+        use_higher_samples_precision=True
+    ) as converter:
+        for i in range(0, array.shape[0], blockshape[0]):
+            end = min(i + blockshape[0], array.shape[0])
+            chunk = array[i:end, :, :]
+            converter.write(chunk)
+    with SgzReader(out_sgz_higher_samples_precision) as reader:
+        assert np.allclose(reader.ilines, ilines, rtol=rtol)
+        assert np.allclose(reader.xlines, xlines, rtol=rtol)
+        assert np.allclose(reader.zslices, samples, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
 
@@ -563,6 +588,7 @@ def compress_stream_and_compare_data(
         bits_per_voxel=bits_per_voxel,
         blockshape=blockshape,
         trace_headers=trace_headers,
+        use_higher_samples_precision=False
     ) as converter:
         for i in range(0, array.shape[0], blockshape[0]):
             end = min(i + blockshape[0], array.shape[0])
@@ -572,6 +598,7 @@ def compress_stream_and_compare_data(
     with SgzReader(out_sgz_no_headers) as reader:
         assert np.allclose(reader.ilines, ilines, rtol=rtol)
         assert np.allclose(reader.xlines, xlines, rtol=rtol)
+        assert np.allclose(reader.zslices, lower_samples_precision, rtol=rtol)
         assert np.allclose(reader.read_volume(), array, rtol=rtol)
         assert 20 == reader.get_file_source_code()
         stream_hash = reader.get_source_data_hash()
@@ -586,14 +613,15 @@ def compress_stream_and_compare_data(
 
 
 def test_compress_stream(tmp_path):
-    compress_stream_and_compare_data(16, 0, 8, 8, 12, tmp_path, 8, 1e-3)
-    compress_stream_and_compare_data(801, 0, 8, 8, 12, tmp_path, 8, 1e-3)
-    compress_stream_and_compare_data(512, 0, 9, 8, 12, tmp_path, 8, 1e-3)
-    compress_stream_and_compare_data(512, 0, 8, 8, 13, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(0, 16, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(2.5, 16, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(0, 801, 0, 8, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(0, 512, 0, 9, 8, 12, tmp_path, 8, 1e-3)
+    compress_stream_and_compare_data(0, 512, 0, 8, 8, 13, tmp_path, 8, 1e-3)
 
     compress_stream_and_compare_data(
-        17, 0, 65, 8, 65, tmp_path, 8, 1e-2, blockshape=(32, 32, 4)
+        0, 17, 0, 65, 8, 65, tmp_path, 8, 1e-2, blockshape=(32, 32, 4)
     )
     compress_stream_and_compare_data(
-        801, 0, 9, 8, 13, tmp_path, 8, 1e-2, blockshape=(16, 16, 16)
+        0, 801, 0, 9, 8, 13, tmp_path, 8, 1e-2, blockshape=(16, 16, 16)
     )
