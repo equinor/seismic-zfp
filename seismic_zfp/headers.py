@@ -143,11 +143,11 @@ class HeaderwordInfo:
         easting_inc_xl = (corners[2][0] - corners[0][0]) / (self.seismicfile.n_xlines - 1)
         northing_inc_xl = (corners[2][1] - corners[0][1]) / (self.seismicfile.n_xlines - 1)
 
-        cdp_x = np.round_(100.0 * (corners[0][0]
+        cdp_x = np.round(100.0 * (corners[0][0]
                                    + iline_idx * easting_inc_il
                                    + xline_idx * easting_inc_xl)
                           ).astype(np.intc)
-        cdp_y = np.round_(100.0 * (corners[0][1]
+        cdp_y = np.round(100.0 * (corners[0][1]
                                    + iline_idx * northing_inc_il
                                    + xline_idx * northing_inc_xl)
                           ).astype(np.intc)
