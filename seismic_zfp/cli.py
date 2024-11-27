@@ -1,5 +1,5 @@
 import click
-import pkg_resources
+import importlib.metadata
 
 from seismic_zfp.version import SeismicZfpVersion
 from seismic_zfp.conversion import SegyConverter, ZgyConverter, SgzConverter
@@ -92,7 +92,7 @@ def add_options(options):
 
 
 @click.group()
-@click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
+@click.version_option(version=SeismicZfpVersion(importlib.metadata.version('seismic_zfp')).to_string())
 def cli():
     """A simple command line interface for seismic-zfp."""
 
@@ -110,7 +110,7 @@ def cli():
 )
 @add_options(sgz_options)
 @add_options(segyconverter_options)
-@click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
+@click.version_option(version=SeismicZfpVersion(importlib.metadata.version('seismic_zfp')).to_string())
 def sgy2sgz(
         input_segy_file=None,
         output_sgz_file=None,
@@ -150,7 +150,7 @@ def sgy2sgz(
     type=click.Path(),
 )
 @add_options(zgy_options)
-@click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
+@click.version_option(version=SeismicZfpVersion(importlib.metadata.version('seismic_zfp')).to_string())
 def zgy2sgz(
         input_zgy_file=None,
         output_sgz_file=None,
@@ -175,7 +175,7 @@ def zgy2sgz(
     required=True,
     type=click.Path(),
 )
-@click.version_option(version=SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version).to_string())
+@click.version_option(version=SeismicZfpVersion(importlib.metadata.version('seismic_zfp')).to_string())
 def sgz2sgy(
         input_sgz_file=None,
         output_sgy_file=None,

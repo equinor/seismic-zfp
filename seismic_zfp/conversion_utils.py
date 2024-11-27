@@ -2,7 +2,7 @@ import zfpy
 import time
 import segyio
 from segyio.field import Field
-import pkg_resources
+import importlib.metadata
 from threading import Thread
 from queue import Queue
 import numpy as np
@@ -88,7 +88,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     header_blocks = 2
     buffer = bytearray(DISK_BLOCK_BYTES * header_blocks)
     buffer[0:4] = int_to_bytes(header_blocks)
-    version = SeismicZfpVersion(pkg_resources.get_distribution('seismic_zfp').version)
+    version = SeismicZfpVersion(importlib.metadata.version('seismic_zfp'))
 
     buffer[4:8] = int_to_bytes(len(samples))
     buffer[16:20] = np_float_to_bytes_signed(samples[0])
