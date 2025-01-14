@@ -231,6 +231,23 @@ def test_read_inline():
     compare_inline_number(SGZ_FILE_8, SGY_FILE, [1, 2, 3, 4, 5], tolerance=1e-10)
 
 
+def test_numpy_ints():
+    sgz = seismic_zfp.open(SGZ_FILE_8)
+    for int_type in [np.int8, np.int16, np.uint8, np.uint16, np.intp, np.uintp]:
+        val = int_type(1)
+
+        sgz.read_inline(val)
+        sgz.read_crossline(val)
+        sgz.read_anticorrelated_diagonal(val)
+        sgz.read_correlated_diagonal(val)
+        sgz.get_trace(val)
+
+        sgz.iline[sgz.ilines[val]]
+        sgz.xline[sgz.xlines[val]]
+        sgz.depth_slice[val]
+        sgz.trace[val]
+
+
 def compare_crossline(sgz_filename, sgy_filename, lines, tolerance):
     with segyio.open(sgy_filename) as segyfile:
         for preload in [True, False]:

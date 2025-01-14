@@ -150,6 +150,15 @@ def signed_int_to_bytes(bytes):
     return struct.pack('<i', bytes)
 
 
+def python_int(int_in):
+    if isinstance(int_in, int):
+        return int_in
+    elif isinstance(int_in, np.integer):
+        return int(int_in)
+    else:
+        raise TypeError("This function requires an integer argument")
+
+
 def define_blockshape_2d(bits_per_voxel, blockshape):
     assert blockshape[0] == 1
     return define_blockshape_3d(bits_per_voxel, blockshape)

@@ -114,3 +114,11 @@ def test_define_blockshape_3d():
 def test_get_chunk_cache_size():
     assert 2048 == get_chunk_cache_size(1000, 2000)
     assert 1024 == get_chunk_cache_size(5000, 511)
+
+
+def test_python_int():
+    assert 1 == python_int(1)
+    assert 1 == python_int(np.uint16(1))
+    assert 1 == python_int(np.int8(1))
+    with pytest.raises(TypeError):
+        python_int("1")

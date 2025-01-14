@@ -10,7 +10,7 @@ from .loader import SgzLoader2d, SgzLoader3d
 from .version import SeismicZfpVersion
 from .utils import (pad, bytes_to_double, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
                     coord_to_index, gen_coord_list, FileOffset, WrongDimensionalityError,
-                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length)
+                    get_correlated_diagonal_length, get_anticorrelated_diagonal_length, python_int)
 import seismic_zfp
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
 from .headers import HeaderwordInfo
@@ -383,6 +383,7 @@ class SgzReader(object):
         inline : numpy.ndarray of float32, shape: (n_xlines, n_samples)
             The specified inline, decompressed
         """
+        il_id = python_int(il_id)
         if self.is_2d:
             raise WrongDimensionalityError("Trying to read inlines from 2D file")
         if not 0 <= il_id < self.n_ilines:
@@ -426,6 +427,7 @@ class SgzReader(object):
         crossline : numpy.ndarray of float32, shape: (n_ilines, n_samples)
             The specified crossline, decompressed
         """
+        xl_id = python_int(xl_id)
         if self.is_2d:
             raise WrongDimensionalityError("Trying to read crosslines from 2D file")
         if not 0 <= xl_id < self.n_xlines:
@@ -469,6 +471,7 @@ class SgzReader(object):
         zslice : numpy.ndarray of float32, shape: (n_ilines, n_xlines)
             The specified zslice (time or depth, depending on file contents), decompressed
         """
+        zslice_id = python_int(zslice_id)
         if self.is_2d:
             raise WrongDimensionalityError("Trying to read zslices from 2D file")
         if not 0 <= zslice_id < self.n_samples:
@@ -518,6 +521,7 @@ class SgzReader(object):
             - Shape (n_diagonal_traces OR max_cd_idx-min_cd_idx, n_samples OR max_sample_idx-min_sample_idx)
             The specified cd_slice, decompressed.
         """
+        cd_id = python_int(cd_id)
         if self.is_2d:
             raise WrongDimensionalityError("Trying to read diagonal from 2D file")
         if not -self.n_xlines < cd_id < self.n_ilines:
@@ -582,6 +586,7 @@ class SgzReader(object):
             - Shape (n_diagonal_traces OR max_ad_idx-min_ad_idx, n_samples OR max_sample_idx-min_sample_idx)
             The specified ad_slice, decompressed.
         """
+        ad_id = python_int(ad_id)
         if self.is_2d:
             raise WrongDimensionalityError("Trying to read diagonal from 2D file")
         if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
@@ -793,6 +798,7 @@ class SgzReader(object):
         trace : numpy.ndarray of float32, shape (n_samples) or (max_sample_id - min_sample_id)
             A single trace, decompressed
         """
+        index = python_int(index)
         if self.is_2d:
             min_trace = self.blockshape[1] * (index // self.blockshape[1])
 
