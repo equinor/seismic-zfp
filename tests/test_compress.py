@@ -41,6 +41,7 @@ SGY_FILE_NEGATIVE_IL_XL = 'test_data/small_negative_il_xl.sgy'
 SGY_FILE_NEGATIVE_SAMPLES = 'test_data/small-negative-samples.sgy'
 SGY_FILE_TRACEHEADER_SAMPLERATE = 'test_data/small-traceheader-samplerate.sgy'
 SGY_FILE_DUPLICATE_TRACEHEADERS = 'test_data/small-duplicate-traceheaders.sgy'
+SGY_FILE_512 = 'test_data/tracecount512.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
 SGZ_FILE_2 = 'test_data/small_2bit.sgz'
 
@@ -319,6 +320,7 @@ def test_compress_headers(tmp_path):
     compress_compare_headers(SGY_FILE_2D, tmp_path, strict=False)
     compress_compare_headers(SGY_FILE_2D_CROSSLINE_3D, tmp_path, strict=False)
     compress_compare_headers(SGY_FILE_2D_INLINE_3D, tmp_path, strict=False)
+    compress_compare_headers(SGY_FILE_512, tmp_path)
 
 
 def test_compress_headers_errors(tmp_path):

@@ -111,7 +111,8 @@ class SeismicFileConverter(object):
         if header_detection != 'strip':
             for header_array in header_info.headers_dict.values():
                 # Pad to 512-bytes for page blobs
-                out_filehandle.write(header_array.tobytes() + bytes(512-len(header_array.tobytes()) % 512))
+                byte_array = header_array.tobytes()
+                out_filehandle.write(byte_array + bytes(pad(len(byte_array), 512) - len(byte_array)))
 
     @staticmethod
     def write_hash(hash, out_filehandle):
@@ -442,7 +443,8 @@ class NumpyConverter(object):
     def write_headers(header_info, out_filehandle):
         for header_array in header_info.headers_dict.values():
             # Pad to 512-bytes for page blobs
-            out_filehandle.write(header_array.tobytes() + bytes(512-len(header_array.tobytes()) % 512))
+            byte_array = header_array.tobytes()
+            out_filehandle.write(byte_array + bytes(pad(len(byte_array), 512) - len(byte_array)))
 
     @staticmethod
     def write_hash(hash, out_filehandle):

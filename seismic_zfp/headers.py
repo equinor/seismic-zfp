@@ -73,8 +73,8 @@ class HeaderwordInfo:
                 cdp_x, cdp_y, iline_headers, xline_headers = self.get_zgy_header_arrays()
 
                 # Keep them in memory until file is ready for them to be written
-                self.headers_dict = {181: cdp_x, 185: cdp_y, 189: iline_headers, 193: xline_headers}
-
+                self.headers_dict = collections.OrderedDict([(181, cdp_x), (185, cdp_y),
+                                                             (189, iline_headers), (193, xline_headers)])
             else:
                 raise RuntimeError("Only SEG-Y and ZGY files supported for header generation")
 
