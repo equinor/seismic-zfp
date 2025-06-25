@@ -122,3 +122,8 @@ def test_python_int():
     assert 1 == python_int(np.int8(1))
     with pytest.raises(TypeError):
         python_int("1")
+
+
+def test_get_range():
+    assert get_range([0,1,2]) == (0, 2, 1)
+    assert get_range([0]) == (0, 0, 0)
