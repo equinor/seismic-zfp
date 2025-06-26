@@ -125,5 +125,5 @@ def test_python_int():
 
 
 def test_get_range():
-    assert get_range([0,1,2]) == (0, 2, 1)
-    assert get_range([0]) == (0, 0, 0)
+    assert InferredGeometry3d.get_range([0,1,2]) == (0, 2, 1)
+    assert InferredGeometry3d.get_range([0]) == (0, 0, 0)
