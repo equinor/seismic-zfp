@@ -53,7 +53,11 @@ class InferredGeometry3d(Geometry3d):
 
     @staticmethod
     def get_range(ids):
-        return min(ids), max(ids), (max(ids) - min(ids)) // (len(ids) - 1)
+        if len(ids)>1:
+            step = (max(ids) - min(ids)) // (len(ids) - 1)
+        else:
+            step = 0 # For 3D cubes with only one inline or crossline
+        return min(ids), max(ids), step
 
     def __repr__(self):
         return f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
