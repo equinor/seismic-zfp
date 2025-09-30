@@ -9,6 +9,7 @@ from seismic_zfp.utils import int_to_bytes
 
 SGY_FILE = 'test_data/small.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
+SGZ_FILE_NOBIN = 'test_data/small_4bit_nobin.sgz'
 
 SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE_IRREG = 'test_data/small-irregular.sgz'
@@ -24,6 +25,15 @@ def test_decompress_data(tmp_path):
         converter.convert_to_segy(out_sgy)
 
     assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-8)
+
+
+def test_decompress_no_bin(tmp_path):
+    out_sgy = os.path.join(str(tmp_path), 'small_test_decompress_data.sgy')
+
+    with SgzConverter(SGZ_FILE_NOBIN) as converter:
+        converter.convert_to_segy(out_sgy)
+
+    assert np.allclose(segyio.tools.cube(out_sgy), segyio.tools.cube(SGY_FILE), rtol=1e-4)
 
 
 def test_decompress_2d_data(tmp_path):

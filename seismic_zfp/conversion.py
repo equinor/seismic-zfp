@@ -299,6 +299,13 @@ class SgzConverter(SgzReader):
             spec.samples = self.zslices
             spec.tracecount = self.tracecount
 
+        samples_per_trace = bytes_to_int(
+            self.headerbytes[DISK_BLOCK_BYTES + 3221: DISK_BLOCK_BYTES + 3223])
+        if samples_per_trace == 0:
+            new_headerbytes = bytearray(self.headerbytes)
+            new_headerbytes[DISK_BLOCK_BYTES + 3221: DISK_BLOCK_BYTES + 3223] = int_to_bytes(len(spec.samples))
+            self.headerbytes = bytes(new_headerbytes)
+
         # seimcic-zfp stores the binary header from the source SEG-Y file.
         # In case someone forgot to do this, give them IBM float
         data_sample_format_code = bytes_to_int(
