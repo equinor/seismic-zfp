@@ -54,8 +54,8 @@ Byte encoding is little-endian.
 |960-979 |bytes |Hash of input data
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---
-|4096-7295 |[SEG-Y](https://seg.org/Portals/0/SEG/News%20and%20Resources/Technical%20Standards/seg_y_rev2_0-mar2017.pdf)  | SEG-Y First textual header
-|7296-7695 |[SEG-Y](https://seg.org/Portals/0/SEG/News%20and%20Resources/Technical%20Standards/seg_y_rev2_0-mar2017.pdf)  | SEG-Y Binary header
+|4096-7295 |[SEG-Y](https://library.seg.org/pb-assets/technical-standards/seg_y_rev1-1686080991247.pdf)  | SEG-Y First textual header
+|7296-7695 |[SEG-Y](https://library.seg.org/pb-assets/technical-standards/seg_y_rev1-1686080991247.pdf)  | SEG-Y Binary header
 |7676-8191 |---  | --- Unused ---
 
 ** *Invariant* trace header values are stored in an 89x3 array of 4-byte entries, corresponding to [the 89 fields in SEG-Y trace headers](https://github.com/equinor/segyio/blob/master/python/segyio/tracefield.py). For each row the enties are:
