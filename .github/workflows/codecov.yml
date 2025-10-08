@@ -1,5 +1,7 @@
 name: Codecov
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   run:
     runs-on: ubuntu-latest
