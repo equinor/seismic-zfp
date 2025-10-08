@@ -1,4 +1,6 @@
 name: Run Tests
+permissions:
+  contents: read
 
 on:
   push:
