@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["windows-latest", "ubuntu-latest", "macos-latest"]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
     - uses: actions/checkout@v4
@@ -32,11 +32,11 @@ jobs:
         pip install pytest mock
 
     - name: Install seismic-zfp dependencies with VDS
-      if: matrix.os != 'macos-latest' && matrix.python-version != '3.12' && matrix.python-version != '3.13'
+      if: matrix.os != 'macos-latest' && matrix.python-version != '3.12' && matrix.python-version != '3.13'  && matrix.python-version != '3.14'
       run: pip install .[zgy,vds,xr,azure]
 
     - name: Install seismic-zfp dependencies without VDS
-      if: matrix.os == 'macos-latest' || (matrix.python-version == '3.12' || matrix.python-version == '3.13')
+      if: matrix.os == 'macos-latest' || (matrix.python-version == '3.12' || matrix.python-version == '3.13' || matrix.python-version == '3.14')
       run: pip install .[zgy,xr,azure]
 
     - name: Test with pytest
