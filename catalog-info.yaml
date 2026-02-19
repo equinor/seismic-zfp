@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: seismic-zfp
+  annotations:
+    github.com/project-slug: equinor/seismic-zfp
+spec:
+  type: other
+  lifecycle: unknown
+  owner: deli-team
