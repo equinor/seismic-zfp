@@ -4,7 +4,14 @@ metadata:
   name: seismic-zfp
   annotations:
     github.com/project-slug: equinor/seismic-zfp
+  links:
+    - url: https://computing.llnl.gov/projects/zfp
+      title: About ZFP compression
+    - url: https://github.com/equinor/seismic-zfp/blob/master/docs/EAGE_extended-abstract.pdf
+      title: EAGE Digital Paper
 spec:
   type: other
   lifecycle: unknown
   owner: deli-team
+  dependsOn:
+    - component:equinor/pyzgy
