@@ -1,6 +1,7 @@
 import pytest
 from click.testing import CliRunner
 from seismic_zfp.cli import cli
+from seismic_zfp.conversion import SegyConverter, ZgyConverter
 import os
 import warnings
 
@@ -68,6 +69,29 @@ def test_sgy2sgz_convert_bits_per_voxel():
     assert result.exit_code == 0
 
 
+def test_sgy2sgz_get_output_size():
+    input_file = os.path.join("test_data", "small.sgy")
+    input_file_absolute = os.path.abspath(input_file)
+    output_file = "small_4bit_converted.sgz"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with SegyConverter(input_file_absolute) as converter:
+            expected_size = converter.get_output_size(bits_per_voxel=4)
+
+        result = runner.invoke(
+            cli,
+            [
+                "sgy2sgz",
+                input_file_absolute,
+                output_file,
+                "--get-output-size",
+            ],
+        )
+        assert result.exit_code == 0
+        assert result.output.strip() == str(expected_size)
+        assert not os.path.exists(output_file)
+
+
 def test_sgy2sgz_convert_all_params():
     input_file = os.path.join("test_data", "small.sgy")
     input_file_absolute = os.path.abspath(input_file)
@@ -121,6 +145,30 @@ def test_zgy2sgz_convert_default():
         assert os.path.exists(output_file)
         assert os.stat(output_file).st_size > 0
     assert result.exit_code == 0
+
+
+@pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
+def test_zgy2sgz_get_output_size():
+    input_file = os.path.join("test_data", "zgy", "small-8bit.zgy")
+    input_file_absolute = os.path.abspath(input_file)
+    output_file = "small_4bit_converted_zgy.sgz"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with ZgyConverter(input_file_absolute) as converter:
+            expected_size = converter.get_output_size(bits_per_voxel=4)
+
+        result = runner.invoke(
+            cli,
+            [
+                "zgy2sgz",
+                input_file_absolute,
+                output_file,
+                "--get-output-size",
+            ],
+        )
+        assert result.exit_code == 0
+        assert result.output.strip() == str(expected_size)
+        assert not os.path.exists(output_file)
 
 
 @pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
