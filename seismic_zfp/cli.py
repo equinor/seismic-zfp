@@ -66,6 +66,15 @@ sgz_options = [
         ),
         show_default=True,
     ),
+    click.option(
+        "--get-output-size",
+        default=False,
+        is_flag=True,
+        help=(
+            "Estimate the SGZ output size in bytes without creating the output file."
+        ),
+        show_default=True,
+    ),
 ]
 zgy_options = [
     click.option(
@@ -76,6 +85,15 @@ zgy_options = [
             "The number of bits to use for storing each seismic voxel. "
             "Recommended using 4-bit, giving 8:1 compression. "
             "Negative value implies reciprocal: i.e. -2 ==> 1/2 bits per voxel"
+        ),
+        show_default=True,
+    ),
+    click.option(
+        "--get-output-size",
+        default=False,
+        is_flag=True,
+        help=(
+            "Estimate the SGZ output size in bytes without creating the output file."
         ),
         show_default=True,
     ),
@@ -105,7 +123,7 @@ def cli():
 )
 @click.argument(
     "output-sgz-file",
-    required=True,
+    required=False,
     type=click.Path(),
 )
 @add_options(sgz_options)
@@ -117,12 +135,15 @@ def sgy2sgz(
         bits_per_voxel=None,
         blockshape=None,
         reduce_iops=None,
+        get_output_size=False,
         min_il=None,
         max_il=None,
         min_xl=None,
         max_xl=None,
 ):
-    click.echo(f"Converting {input_segy_file} to {output_sgz_file}...")
+    if not get_output_size and output_sgz_file is None:
+        raise click.UsageError("OUTPUT_SGZ_FILE is required unless using --get-output-size")
+
     with SegyConverter(
             input_segy_file,
             min_il=min_il,
@@ -130,6 +151,15 @@ def sgy2sgz(
             min_xl=min_xl,
             max_xl=max_xl,
     ) as converter:
+        if get_output_size:
+            size_bytes = converter.get_output_size(
+                bits_per_voxel=bits_per_voxel,
+                blockshape=blockshape,
+            )
+            click.echo(size_bytes)
+            return
+
+        click.echo(f"Converting {input_segy_file} to {output_sgz_file}...")
         converter.run(
             output_sgz_file,
             bits_per_voxel=bits_per_voxel,
@@ -146,7 +176,7 @@ def sgy2sgz(
 )
 @click.argument(
     "output-sgz-file",
-    required=True,
+    required=False,
     type=click.Path(),
 )
 @add_options(zgy_options)
@@ -155,9 +185,20 @@ def zgy2sgz(
         input_zgy_file=None,
         output_sgz_file=None,
         bits_per_voxel=None,
+        get_output_size=False,
 ):
-    click.echo(f"Converting {input_zgy_file} to {output_sgz_file}...")
+    if not get_output_size and output_sgz_file is None:
+        raise click.UsageError("OUTPUT_SGZ_FILE is required unless using --get-output-size")
+
     with ZgyConverter(input_zgy_file) as converter:
+        if get_output_size:
+            size_bytes = converter.get_output_size(
+                bits_per_voxel=bits_per_voxel,
+            )
+            click.echo(size_bytes)
+            return
+
+        click.echo(f"Converting {input_zgy_file} to {output_sgz_file}...")
         converter.run(
             output_sgz_file,
             bits_per_voxel=bits_per_voxel,
