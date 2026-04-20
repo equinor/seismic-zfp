@@ -173,6 +173,113 @@ class SeismicFileConverter(object):
             msg = f"With searching comes loss,  and the presence of absence:  'My {file_ext}' not found."
             raise FileNotFoundError(msg)
 
+    def _calculate_compressed_data_size(self, bits_per_voxel, blockshape, seismic):
+        """Calculate compressed data size in disk blocks.
+
+        Parameters
+        ----------
+        bits_per_voxel : float
+            Compression bitrate
+        blockshape : tuple
+            Physical voxel shape per disk block (il, xl, z)
+        seismic : SeismicFile
+            Opened seismic file
+
+        Returns
+        -------
+        int
+            Compressed data length in disk blocks
+        """
+        if self.is_2d:
+            return int(((bits_per_voxel *
+                        pad(len(seismic.samples), blockshape[2]) *
+                        pad(self.geom.tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
+        else:
+            return int(((bits_per_voxel *
+                        pad(len(seismic.samples), blockshape[2]) *
+                        pad(len(self.geom.xlines), blockshape[1]) *
+                        pad(len(self.geom.ilines), blockshape[0])) // 8) // DISK_BLOCK_BYTES)
+
+    def _calculate_header_arrays_size(self, header_info):
+        """Calculate total size of header arrays in bytes.
+
+        Parameters
+        ----------
+        header_info : HeaderwordInfo
+            Header information object
+
+        Returns
+        -------
+        int
+            Total header arrays size in bytes (including 512-byte padding)
+        """
+        total_size = 0
+        for header_array in header_info.headers_dict.values():
+            byte_array = header_array.tobytes()
+            total_size += pad(len(byte_array), 512)
+        return total_size
+
+    def _get_store_headers_flag(self, seismic, header_detection):
+        """Determine whether headers should be stored.
+
+        Parameters
+        ----------
+        seismic : SeismicFile
+            Opened seismic file
+        header_detection : str
+            Header detection method
+
+        Returns
+        -------
+        bool
+            True if headers should be stored
+        """
+        store_headers = not(header_detection == 'strip')
+        if seismic.filetype == Filetype.ZGY:
+            store_headers = False
+        return store_headers
+
+    def get_output_size(self, bits_per_voxel=4, blockshape=None,
+                        reduce_iops=False, header_detection="heuristic"):
+        """Estimate the size (in bytes) of the SGZ file that would be created by run()
+
+        Parameters are the same as run() except out_filename.
+
+        Returns
+        -------
+        int
+            Estimated size in bytes of the output SGZ file
+        """
+        with SeismicFile.open(self.in_filename, self.filetype) as seismic:
+            if self.geom is None:
+                self.infer_geometry(seismic)
+            if self.is_2d:
+                if blockshape is None:
+                    blockshape = (1, 16, -1)
+                bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
+            else:
+                if blockshape is None:
+                    blockshape = (4, 4, -1)
+                bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
+
+            header_info = self.get_blank_header_info(seismic, header_detection)
+            store_headers = self._get_store_headers_flag(seismic, header_detection)
+
+            # Calculate compressed data size
+            compressed_data_length_diskblocks = self._calculate_compressed_data_size(bits_per_voxel, blockshape, seismic)
+
+            # Header size: 8192 bytes (2 disk blocks)
+            total_size = 2 * DISK_BLOCK_BYTES
+
+            # Compressed data size
+            total_size += compressed_data_length_diskblocks * DISK_BLOCK_BYTES
+
+            # Header arrays size
+            if store_headers or self.filetype is Filetype.ZGY:
+                total_size += self._calculate_header_arrays_size(header_info)
+
+            return total_size
+
     def run(self, out_filename, bits_per_voxel=4, blockshape=None,
             reduce_iops=False, header_detection="heuristic"):
         """General entrypoint for converting seismic files to SGZ
@@ -236,9 +343,7 @@ class SeismicFileConverter(object):
                 inline_set_bytes = blockshape[0]*(len(self.geom.xlines) * len(seismic.samples)) * 4
 
             header_info = self.get_blank_header_info(seismic, header_detection)
-            store_headers = not(header_detection == 'strip')
-            if seismic.filetype == Filetype.ZGY:
-                store_headers = False
+            store_headers = self._get_store_headers_flag(seismic, header_detection)
             max_queue_length = self.check_memory(inline_set_bytes=inline_set_bytes)
             with open(out_filename, 'wb') as out_file:
                 hash_bytes = run_conversion_loop(seismic, out_file, bits_per_voxel, blockshape, header_info, self.geom,

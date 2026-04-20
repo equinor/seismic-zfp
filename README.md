@@ -79,6 +79,8 @@ Full example code is provided [here](examples), but the following reference is u
 from seismic_zfp.conversion import SegyConverter, ZgyConverter, VdsConverter
 
 with SegyConverter("in.sgy") as converter:
+    # Estimate the output file size before compression
+    size_bytes = converter.get_output_size(bits_per_voxel=4)
     # Create a "standard" SGZ file with 8:1 compression, using in-memory method
     converter.run("out_standard.sgz", bits_per_voxel=4)
     # Create a "z-slice optimized" SGZ file

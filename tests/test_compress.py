@@ -341,6 +341,120 @@ def test_compress_source_data_hash(tmp_path):
     assert all(hash == hashes[0] for hash in hashes)
 
 
+def test_get_output_size_default(tmp_path):
+    """Test get_output_size with default parameters."""
+    out_sgz = os.path.join(str(tmp_path), 'test_size_default.sgz')
+
+    with SegyConverter(SGY_FILE) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=4)
+        converter.run(out_sgz, bits_per_voxel=4)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size
+
+
+@pytest.mark.parametrize("bits_per_voxel", [1, 2, 4, 8])
+def test_get_output_size_varying_bitrate(tmp_path, bits_per_voxel):
+    """Test get_output_size with different bits-per-voxel values."""
+    out_sgz = os.path.join(str(tmp_path), f'test_size_bpv{bits_per_voxel}.sgz')
+
+    with SegyConverter(SGY_FILE) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=bits_per_voxel)
+        converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size, \
+        f"Size mismatch for bits_per_voxel={bits_per_voxel}: estimated {estimated_size}, actual {actual_size}"
+
+
+@pytest.mark.parametrize("blockshape,bits_per_voxel", [((4, 4, -1), 4), ((64, 64, 4), 2)])
+def test_get_output_size_varying_blockshape(tmp_path, blockshape, bits_per_voxel):
+    """Test get_output_size with different blockshape values."""
+    out_sgz = os.path.join(str(tmp_path), f'test_size_blockshape_{blockshape[0]}.sgz')
+
+    with SegyConverter(SGY_FILE) as converter:
+        estimated_size = converter.get_output_size(blockshape=blockshape, bits_per_voxel=bits_per_voxel)
+        converter.run(out_sgz, blockshape=blockshape, bits_per_voxel=bits_per_voxel)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size, \
+        f"Size mismatch for blockshape={blockshape}, bits_per_voxel={bits_per_voxel}: estimated {estimated_size}, actual {actual_size}"
+
+
+@pytest.mark.parametrize("header_detection", ['heuristic', 'exhaustive', 'strip'])
+def test_get_output_size_varying_header_detection(tmp_path, header_detection):
+    """Test get_output_size with different header detection modes."""
+    out_sgz = os.path.join(str(tmp_path), f'test_size_hdr_{header_detection}.sgz')
+
+    with SegyConverter(SGY_FILE) as converter:
+        estimated_size = converter.get_output_size(header_detection=header_detection)
+        converter.run(out_sgz, header_detection=header_detection)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size, \
+        f"Size mismatch for header_detection={header_detection}: estimated {estimated_size}, actual {actual_size}"
+
+
+@pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
+def test_get_output_size_zgy_varying_bitrate(tmp_path):
+    """Test get_output_size with ZgyConverter for different bits-per-voxel values."""
+    for bits_per_voxel in [1, 2, 4]:
+        out_sgz = os.path.join(str(tmp_path), f'test_size_zgy_bpv{bits_per_voxel}.sgz')
+
+        with ZgyConverter(ZGY_FILE_8) as converter:
+            estimated_size = converter.get_output_size(bits_per_voxel=bits_per_voxel)
+            converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+        actual_size = os.path.getsize(out_sgz)
+        assert estimated_size == actual_size, \
+            f"ZGY: Size mismatch for bits_per_voxel={bits_per_voxel}: estimated {estimated_size}, actual {actual_size}"
+
+
+@pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
+@pytest.mark.parametrize("blockshape,bits_per_voxel", [((4, 4, -1), 4), ((64, 64, 4), 2)])
+def test_get_output_size_zgy_varying_blockshape(tmp_path, blockshape, bits_per_voxel):
+    """Test get_output_size with ZgyConverter for different blockshape values."""
+    out_sgz = os.path.join(str(tmp_path), f'test_size_zgy_blockshape_{blockshape[0]}.sgz')
+
+    with ZgyConverter(ZGY_FILE_8) as converter:
+        estimated_size = converter.get_output_size(blockshape=blockshape, bits_per_voxel=bits_per_voxel)
+        converter.run(out_sgz, blockshape=blockshape, bits_per_voxel=bits_per_voxel)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size, \
+        f"ZGY: Size mismatch for blockshape={blockshape}, bits_per_voxel={bits_per_voxel}: estimated {estimated_size}, actual {actual_size}"
+
+
+@pytest.mark.skipif(pyvds is None, reason="Requires pyvds")
+def test_get_output_size_vds_varying_bitrate(tmp_path):
+    """Test get_output_size with VdsConverter for different bits-per-voxel values."""
+    for bits_per_voxel in [1, 2, 4]:
+        out_sgz = os.path.join(str(tmp_path), f'test_size_vds_bpv{bits_per_voxel}.sgz')
+
+        with VdsConverter(VDS_FILE) as converter:
+            estimated_size = converter.get_output_size(bits_per_voxel=bits_per_voxel)
+            converter.run(out_sgz, bits_per_voxel=bits_per_voxel)
+
+        actual_size = os.path.getsize(out_sgz)
+        assert estimated_size == actual_size, \
+            f"VDS: Size mismatch for bits_per_voxel={bits_per_voxel}: estimated {estimated_size}, actual {actual_size}"
+
+
+@pytest.mark.skipif(pyvds is None, reason="Requires pyvds")
+@pytest.mark.parametrize("header_detection", ['heuristic', 'strip'])
+def test_get_output_size_vds_varying_header_detection(tmp_path, header_detection):
+    """Test get_output_size with VdsConverter for different header detection modes."""
+    out_sgz = os.path.join(str(tmp_path), f'test_size_vds_hdr_{header_detection}.sgz')
+
+    with VdsConverter(VDS_FILE) as converter:
+        estimated_size = converter.get_output_size(header_detection=header_detection)
+        converter.run(out_sgz, header_detection=header_detection)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size, \
+        f"VDS: Size mismatch for header_detection={header_detection}: estimated {estimated_size}, actual {actual_size}"
+
+
 def test_compress_crop(tmp_path):
     out_sgz = os.path.join(str(tmp_path), 'small_test_data.sgz')
 
