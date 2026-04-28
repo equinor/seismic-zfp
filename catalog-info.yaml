@@ -14,4 +14,4 @@ spec:
   lifecycle: unknown
   owner: deli-team
   dependsOn:
-    - component:equinor/pyzgy
+    - component:default/pyzgy
