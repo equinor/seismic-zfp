@@ -265,6 +265,14 @@ class SeismicFileConverter(object):
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = self._get_store_headers_flag(seismic, header_detection)
 
+            # Match the runtime behavior in seismic_file_producer(), which resizes
+            # header arrays to the inferred regular grid for unstructured SEG-Y.
+            if isinstance(self.geom, InferredGeometry3d):
+                for tracefield in header_info.headers_dict:
+                    header_info.headers_dict[tracefield] = np.zeros(
+                        len(self.geom.ilines) * len(self.geom.xlines), dtype=np.int32
+                    )
+
             # Calculate compressed data size
             compressed_data_length_diskblocks = self._calculate_compressed_data_size(bits_per_voxel, blockshape, seismic)
 

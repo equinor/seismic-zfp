@@ -381,6 +381,19 @@ def test_get_output_size_varying_blockshape(tmp_path, blockshape, bits_per_voxel
         f"Size mismatch for blockshape={blockshape}, bits_per_voxel={bits_per_voxel}: estimated {estimated_size}, actual {actual_size}"
 
 
+def test_get_output_size_irreg(tmp_path):
+    """Test get_output_size with different blockshape values."""
+    out_sgz = os.path.join(str(tmp_path), f'test_size_blockshape_.sgz')
+
+    with SegyConverter(SGY_FILE_IRREG) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=4)
+        converter.run(out_sgz, bits_per_voxel=4)
+
+    actual_size = os.path.getsize(out_sgz)
+    assert estimated_size == actual_size, \
+        f"Size mismatch: estimated {estimated_size}, actual {actual_size}"
+
+
 @pytest.mark.parametrize("header_detection", ['heuristic', 'exhaustive', 'strip'])
 def test_get_output_size_varying_header_detection(tmp_path, header_detection):
     """Test get_output_size with different header detection modes."""
