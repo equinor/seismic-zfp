@@ -131,8 +131,8 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
             buffer[32:36] = np_float_to_bytes_signed(xlines[1] - xlines[0])
             buffer[36:40] = np_float_to_bytes_signed(ilines[1] - ilines[0])
         else:
-            buffer[32:36] = np_float_to_bytes_signed(np.int32(geom.il_step))
-            buffer[36:40] = np_float_to_bytes_signed(np.int32(geom.xl_step))
+            buffer[32:36] = np_float_to_bytes_signed(np.int32(geom.xl_step))
+            buffer[36:40] = np_float_to_bytes_signed(np.int32(geom.il_step))
 
         padded_voxels = (pad(len(samples), blockshape_samples) *
                          pad(n_xl, blockshape[1]) *
