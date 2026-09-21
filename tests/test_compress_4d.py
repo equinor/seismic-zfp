@@ -245,8 +245,12 @@ def test_segy_converter_4d_lossless_roundtrip(tmp_path):
     assert info['tracecount'] == 125
     assert info['header_entry_bytes'] == 125 * 4
     assert np.allclose(info['volume'], cube, rtol=1e-6)
-    # Padding regions repeat edges rather than being zero
-    assert np.allclose(info['padded_volume'][5:, 0:5, 0:5, 0:36], np.repeat(cube[4:5], 3, axis=0), rtol=1e-6)
+    # Padding regions repeat edges rather than being zero, in all four dimensions
+    pv = info['padded_volume']
+    assert np.allclose(pv[5:, 0:5, 0:5, 0:36], np.repeat(cube[4:5], 3, axis=0), rtol=1e-6)
+    assert np.allclose(pv[0:5, 5:, 0:5, 0:36], np.repeat(cube[:, 4:5], 3, axis=1), rtol=1e-6)
+    assert np.allclose(pv[0:5, 0:5, 5:, 0:36], np.repeat(cube[:, :, 4:5], 3, axis=2), rtol=1e-6)
+    assert np.allclose(pv[0:5, 0:5, 0:5, 36:], np.repeat(cube[:, :, :, 35:36], 28, axis=3), rtol=1e-6)
     assert info['hash'] == sha1_of_cube(cube)
 
     with segyio.open(SGY_FILE_4D) as segyfile:
@@ -263,7 +267,8 @@ def test_segy_converter_4d_default_bitrate(tmp_path):
     info = parse_sgz_4d(out_sgz)
     assert info['blockshape'] == (4, 4, 4, 128)
     assert info['data_blocks'] == 2 * 2 * 2 * 1
-    assert np.allclose(info['volume'], cube, rtol=1e-3)
+    # Edge-repeated padding keeps the compressed blocks smooth: measured max rel. error ~1.4e-7
+    assert np.allclose(info['volume'], cube, rtol=1e-5)
 
 
 def test_segy_converter_4d_sliced_blockshape(tmp_path):
@@ -276,7 +281,8 @@ def test_segy_converter_4d_sliced_blockshape(tmp_path):
     info = parse_sgz_4d(out_sgz)
     assert info['blockshape'] == (8, 8, 4, 64)
     assert info['data_blocks'] == 1 * 1 * 2 * 1
-    assert np.allclose(info['volume'], cube, rtol=1e-2)
+    # Measured max rel. error ~5.5e-7 at 2 bpv
+    assert np.allclose(info['volume'], cube, rtol=1e-5)
     assert info['hash'] == sha1_of_cube(cube)
 
 

@@ -304,6 +304,7 @@ def io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_i
     traces_per_inline = n_xl_file * n_off_file
 
     for i in range(blockshape[0]):
+        # Padding planes repeat the last populated inline. Non Quod Maneat, Sed Quod Adimimus.
         il_ordinal = geom.ilines[0] + plane_set_id * blockshape[0] + min(i, planes_to_read - 1)
         start_trace = il_ordinal * traces_per_inline
         inline = seismicfile.trace.raw[start_trace:start_trace + traces_per_inline]
@@ -320,6 +321,7 @@ def io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_i
                     for tracefield, array in headers_dict.items():
                         array[t_store] = header[tracefield]
 
+        # Also repeat edge values across xl, offset and sample padding
         seismic_buffer[i, n_xl:, 0:n_off, 0:trace_length] = seismic_buffer[i, n_xl - 1:n_xl, 0:n_off, 0:trace_length]
         seismic_buffer[i, :, n_off:, 0:trace_length] = seismic_buffer[i, :, n_off - 1:n_off, 0:trace_length]
         seismic_buffer[i, :, :, trace_length:] = seismic_buffer[i, :, :, trace_length - 1:trace_length]
