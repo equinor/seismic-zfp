@@ -6,13 +6,13 @@ import numpy as np
 import segyio
 from segyio import _segyio
 
-from .loader import SgzLoader2d, SgzLoader3d
+from .loader import SgzLoader2d, SgzLoader3d, SgzLoader4d
 from .version import SeismicZfpVersion
 from .utils import (pad, bytes_to_double, bytes_to_int, bytes_to_signed_int, get_chunk_cache_size,
                     coord_to_index, gen_coord_list, FileOffset, WrongDimensionalityError,
                     get_correlated_diagonal_length, get_anticorrelated_diagonal_length, python_int)
 import seismic_zfp
-from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES
+from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TEXT_HEADER_BYTES, SGZ_4D_HEADER_OFFSET
 from .headers import HeaderwordInfo
 
 try:
@@ -141,11 +141,20 @@ class SgzReader(object):
         # Read useful info out of the SGZ header
         self.file_version = self.get_file_version()
         self.n_samples, self.n_xlines, self.n_ilines, self.rate, self.blockshape = self._parse_dimensions()
+        # A non-zero offset count identifies a prestack (4D) file, see docs/file-specification.md
+        self.n_offsets = bytes_to_int(self.headerbytes[SGZ_4D_HEADER_OFFSET:SGZ_4D_HEADER_OFFSET + 4])
 
         self.is_2d = self.blockshape[0] == 1
-        self.is_3d = not self.is_2d
+        self.is_4d = self.n_offsets > 0
+        self.is_3d = not (self.is_2d or self.is_4d)
 
-        if self.is_3d:
+        if self.is_4d:
+            # Blockshape is (il, xl, offset, sample), the offset dimension living in the 4D header block
+            self.blockshape = (self.blockshape[0], self.blockshape[1],
+                               bytes_to_int(self.headerbytes[SGZ_4D_HEADER_OFFSET + 12:SGZ_4D_HEADER_OFFSET + 16]),
+                               self.blockshape[2])
+
+        if self.is_3d or self.is_4d:
             self.zslices, self.xlines, self.ilines = self._parse_coordinates()
         else:
             # 2d file is certainly > v0.1.6
@@ -154,6 +163,14 @@ class SgzReader(object):
                                           sample_rate_ms,
                                           bytes_to_int(self.headerbytes[4:8])).astype('float')
 
+        if self.is_4d:
+            self.offsets = gen_coord_list(bytes_to_signed_int(self.headerbytes[SGZ_4D_HEADER_OFFSET + 4:
+                                                                              SGZ_4D_HEADER_OFFSET + 8]),
+                                          bytes_to_signed_int(self.headerbytes[SGZ_4D_HEADER_OFFSET + 8:
+                                                                              SGZ_4D_HEADER_OFFSET + 12]),
+                                          self.n_offsets).astype('intc')
+        else:
+            self.offsets = None
         self.compressed_data_diskblocks, self.header_entry_length_bytes, self.n_header_arrays = self._parse_data_sizes()
         self.data_start_bytes = self.n_header_blocks * DISK_BLOCK_BYTES
 
@@ -184,29 +201,36 @@ class SgzReader(object):
             self.shape_pad = (pad(self.n_ilines, self.blockshape[0]),
                               pad(self.n_xlines, self.blockshape[1]),
                               pad(self.n_samples, self.blockshape[2]))
+        else:
+            self.shape_pad = (pad(self.n_ilines, self.blockshape[0]),
+                              pad(self.n_xlines, self.blockshape[1]),
+                              pad(self.n_offsets, self.blockshape[2]),
+                              pad(self.n_samples, self.blockshape[3]))
 
         # These are useful units of measurement for SGZ files:
 
         # A 'compression unit' is the smallest decompressable piece of the SGZ file.
-        # It is always 4-samples x 4-xlines x 4-ilines in physical dimensions, but its size
-        # on disk will vary according to compression ratio.
+        # It is always 4-samples x 4-xlines x 4-ilines in physical dimensions (x 4-offsets for 4D),
+        # but its size on disk will vary according to compression ratio.
         if self.is_2d:
             self.unit_bytes = int((4*4) * self.rate) // 8
-        else:
+        elif self.is_3d:
             self.unit_bytes = int((4*4*4) * self.rate) // 8
+        else:
+            self.unit_bytes = int((4*4*4*4) * self.rate) // 8
 
         # A 'block' is a group of 'compression units' equal in size to a hardware disk block.
         # The 'compression units' may be arranged in any cuboid which matches the size of a disk block.
         # At the time of coding, standard commodity hardware uses 4kB disk blocks so check that
         # file has been written in using this convention.
-        self.block_bytes = int(self.blockshape[0] * self.blockshape[1] * self.blockshape[2] * self.rate) // 8
+        self.block_bytes = int(np.prod(self.blockshape) * self.rate) // 8
 
         assert self.block_bytes % self.unit_bytes == 0
         assert self.block_bytes == DISK_BLOCK_BYTES, f"block_bytes={self.block_bytes}, should be {DISK_BLOCK_BYTES}"
 
         # A 'chunk' is a group of one or more 'blocks' which span a complete set of traces.
-        # This will follow the xline and iline shape of a 'block'
-        self.chunk_bytes = self.block_bytes * (self.shape_pad[2] // self.blockshape[2])
+        # This will follow the xline and iline (and offset) shape of a 'block'
+        self.chunk_bytes = self.block_bytes * (self.shape_pad[-1] // self.blockshape[-1])
         assert self.chunk_bytes % self.block_bytes == 0
 
         # Placeholder. Don't read these if you're not going to use them
@@ -217,13 +241,14 @@ class SgzReader(object):
 
         # Split out responsibility for I/O and decompression
         if self.is_2d:
-            self.loader = SgzLoader2d(self.file, self.data_start_bytes, self.compressed_data_diskblocks,
-                                      self.shape_pad, self.blockshape, self.chunk_bytes, self.block_bytes,
-                                      self.unit_bytes, self.rate, self.local, preload)
+            loader_class = SgzLoader2d
+        elif self.is_4d:
+            loader_class = SgzLoader4d
         else:
-            self.loader = SgzLoader3d(self.file, self.data_start_bytes, self.compressed_data_diskblocks,
-                                      self.shape_pad, self.blockshape, self.chunk_bytes, self.block_bytes,
-                                      self.unit_bytes, self.rate, self.local, preload)
+            loader_class = SgzLoader3d
+        self.loader = loader_class(self.file, self.data_start_bytes, self.compressed_data_diskblocks,
+                                  self.shape_pad, self.blockshape, self.chunk_bytes, self.block_bytes,
+                                  self.unit_bytes, self.rate, self.local, preload)
 
         # Using default cache of 2048 chunks implies:
         #     - 1GB memory usage at 32KB uncompressed traces. Reduce for machines with memory constraints
@@ -236,10 +261,14 @@ class SgzReader(object):
             chunk_cache_size = get_chunk_cache_size(self.shape_pad[0] // self.blockshape[0],
                                                     self.shape_pad[1] // self.blockshape[1])
         self._read_containing_chunk_cached = lru_cache(maxsize=chunk_cache_size)(self._read_containing_chunk)
+        # Number of trace positions on the (padded-free) regular grid; equals tracecount for structured files
         if self.is_2d:
-            self.structured = False
+            self.n_grid_traces = self.tracecount
+        elif self.is_4d:
+            self.n_grid_traces = self.n_ilines * self.n_xlines * self.n_offsets
         else:
-            self.structured = (self.tracecount == self.n_ilines * self.n_xlines)
+            self.n_grid_traces = self.n_ilines * self.n_xlines
+        self.structured = False if self.is_2d else self.tracecount == self.n_grid_traces
 
         self.mask = None
 
@@ -247,7 +276,17 @@ class SgzReader(object):
         return f'SgzReader({self._filename})'
 
     def __str__(self):
-        if self.is_3d:
+        if self.is_4d:
+            return f'seismic-zfp 4d file {self._filename}, {self.file_version}:\n' \
+                   f'  compression ratio: {int(32/self.rate)}:1\n' \
+                   f'  inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
+                   f'  crosslines: {self.n_xlines} [{self.xlines[0]}, {self.xlines[-1]}]\n' \
+                   f'  offsets: {self.n_offsets} [{self.offsets[0]}, {self.offsets[-1]}]\n' \
+                   f'  samples: {self.n_samples} [{self.zslices[0]}, {self.zslices[-1]}]\n' \
+                   f'  traces: {self.tracecount}\n' \
+                   f'  Header arrays: {self.stored_header_keys}\n' \
+                   f'  Source data hash: {self.get_source_data_hash()}'
+        elif self.is_3d:
             return f'seismic-zfp 3d file {self._filename}, {self.file_version}:\n' \
                    f'  compression ratio: {int(32/self.rate)}:1\n' \
                    f'  inlines: {self.n_ilines} [{self.ilines[0]}, {self.ilines[-1]}]\n' \
@@ -388,6 +427,8 @@ class SgzReader(object):
             raise WrongDimensionalityError("Trying to read inlines from 2D file")
         if not 0 <= il_id < self.n_ilines:
             raise IndexError(self.range_error.format(il_id, 0, self.n_ilines - 1))
+        if self.is_4d:
+            return self._read_inline_4d(il_id)
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_il_set(4 * (il_id // 4))
             return decompressed[il_id % self.blockshape[0], 0:self.n_xlines, 0:self.n_samples]
@@ -432,6 +473,8 @@ class SgzReader(object):
             raise WrongDimensionalityError("Trying to read crosslines from 2D file")
         if not 0 <= xl_id < self.n_xlines:
             raise IndexError(self.range_error.format(xl_id, 0, self.n_xlines - 1))
+        if self.is_4d:
+            return self._read_crossline_4d(xl_id)
         if self.blockshape[0] == 4 and self.blockshape[1] == 4:
             decompressed = self.loader.read_and_decompress_xl_set(4 * (xl_id // 4))
             return decompressed[0:self.n_ilines, xl_id % self.blockshape[1], 0:self.n_samples]
@@ -476,6 +519,9 @@ class SgzReader(object):
             raise WrongDimensionalityError("Trying to read zslices from 2D file")
         if not 0 <= zslice_id < self.n_samples:
             raise IndexError(self.range_error.format(zslice_id, 0, self.n_samples - 1))
+        if self.is_4d:
+            return np.squeeze(self.read_subvolume_4d(0, self.n_ilines, 0, self.n_xlines, 0, self.n_offsets,
+                                                     zslice_id, zslice_id + 1), axis=3)
         blocks_per_dim = tuple(dim // size for dim, size in zip(self.shape_pad, self.blockshape))
         zslice_first_block_offset = zslice_id // self.blockshape[2]
 
@@ -522,8 +568,8 @@ class SgzReader(object):
             The specified cd_slice, decompressed.
         """
         cd_id = python_int(cd_id)
-        if self.is_2d:
-            raise WrongDimensionalityError("Trying to read diagonal from 2D file")
+        if not self.is_3d:
+            raise WrongDimensionalityError("Diagonals can only be read from 3D files")
         if not -self.n_xlines < cd_id < self.n_ilines:
             raise IndexError(self.range_error.format(cd_id, -self.n_xlines, self.n_ilines))
 
@@ -587,8 +633,8 @@ class SgzReader(object):
             The specified ad_slice, decompressed.
         """
         ad_id = python_int(ad_id)
-        if self.is_2d:
-            raise WrongDimensionalityError("Trying to read diagonal from 2D file")
+        if not self.is_3d:
+            raise WrongDimensionalityError("Diagonals can only be read from 3D files")
         if not 0 <= ad_id < self.n_ilines + self.n_xlines - 1:
             raise IndexError(self.range_error.format(ad_id, 0, self.n_ilines + self.n_xlines - 2))
 
@@ -647,8 +693,8 @@ class SgzReader(object):
         subplane : numpy.ndarray of float32, shape (max_trace - min_trace, max_z - min_z)
             The specified subplane, decompressed
         """
-        if self.is_3d:
-            raise WrongDimensionalityError("Trying to read subplane from 3D file")
+        if not self.is_2d:
+            raise WrongDimensionalityError("Subplanes can only be read from 2D files")
         upper_trace = self.shape_pad[1] if access_padding else self.tracecount
         upper_z = self.shape_pad[2] if access_padding else self.n_samples
 
@@ -700,6 +746,8 @@ class SgzReader(object):
         """
         if self.is_2d:
             raise WrongDimensionalityError("Trying to read subvolume from 2D file")
+        if self.is_4d:
+            raise WrongDimensionalityError("Trying to read subvolume from 4D file, use read_subvolume_4d")
         upper_il = self.shape_pad[0] if access_padding else self.n_ilines
         upper_xl = self.shape_pad[1] if access_padding else self.n_xlines
         upper_z = self.shape_pad[2] if access_padding else self.n_samples
@@ -738,11 +786,142 @@ class SgzReader(object):
         Returns
         -------
         volume : numpy.ndarray of float32, shape (n_ilines, n_xline, n_samples)
+            or (n_ilines, n_xlines, n_offsets, n_samples) for 4D files
             The whole volume, decompressed
         """
+        if self.is_4d:
+            return self.read_subvolume_4d(0, self.n_ilines, 0, self.n_xlines, 0, self.n_offsets, 0, self.n_samples)
         return self.read_subvolume(0, self.n_ilines,
                                    0, self.n_xlines,
                                    0, self.n_samples)
+
+    def _read_inline_4d(self, il_id):
+        if self.blockshape[0:3] == (4, 4, 4):
+            decompressed = self.loader.read_and_decompress_il_set(4 * (il_id // 4))
+            return decompressed[il_id % 4, 0:self.n_xlines, 0:self.n_offsets, 0:self.n_samples]
+        return np.squeeze(self.read_subvolume_4d(il_id, il_id + 1, 0, self.n_xlines,
+                                                 0, self.n_offsets, 0, self.n_samples), axis=0)
+
+    def _read_crossline_4d(self, xl_id):
+        if self.blockshape[0:3] == (4, 4, 4):
+            decompressed = self.loader.read_and_decompress_xl_set(4 * (xl_id // 4))
+            return decompressed[0:self.n_ilines, xl_id % 4, 0:self.n_offsets, 0:self.n_samples]
+        return np.squeeze(self.read_subvolume_4d(0, self.n_ilines, xl_id, xl_id + 1,
+                                                 0, self.n_offsets, 0, self.n_samples), axis=1)
+
+    def get_offset_index(self, offset_no):
+        """Get offset index from offset number"""
+        return coord_to_index(offset_no, self.offsets)
+
+    def read_gather_number(self, il_no, xl_no):
+        """Reads one gather from 4D SGZ file, by inline and crossline number
+
+        Returns
+        -------
+        gather : numpy.ndarray of float32, shape: (n_offsets, n_samples)
+        """
+        return self.read_gather(self.get_inline_index(il_no), self.get_crossline_index(xl_no))
+
+    def read_gather(self, il_id, xl_id):
+        """Reads one gather from 4D SGZ file, i.e. all offsets at one inline/crossline position
+
+        Parameters
+        ----------
+        il_id : int
+            The ordinal number of the inline in the file
+        xl_id : int
+            The ordinal number of the crossline in the file
+
+        Returns
+        -------
+        gather : numpy.ndarray of float32, shape: (n_offsets, n_samples)
+            The specified gather, decompressed
+        """
+        il_id, xl_id = python_int(il_id), python_int(xl_id)
+        if not self.is_4d:
+            raise WrongDimensionalityError("Gathers can only be read from 4D files")
+        if not 0 <= il_id < self.n_ilines:
+            raise IndexError(self.range_error.format(il_id, 0, self.n_ilines - 1))
+        if not 0 <= xl_id < self.n_xlines:
+            raise IndexError(self.range_error.format(xl_id, 0, self.n_xlines - 1))
+        return self.read_subvolume_4d(il_id, il_id + 1, xl_id, xl_id + 1,
+                                      0, self.n_offsets, 0, self.n_samples)[0, 0]
+
+    def read_offset_number(self, offset_no):
+        """Reads one common-offset volume from 4D SGZ file, by offset number
+
+        Returns
+        -------
+        volume : numpy.ndarray of float32, shape: (n_ilines, n_xlines, n_samples)
+        """
+        return self.read_offset(self.get_offset_index(offset_no))
+
+    def read_offset(self, offset_id):
+        """Reads one common-offset volume from 4D SGZ file
+
+        Parameters
+        ----------
+        offset_id : int
+            The ordinal number of the offset in the file
+
+        Returns
+        -------
+        volume : numpy.ndarray of float32, shape: (n_ilines, n_xlines, n_samples)
+            The specified common-offset volume, decompressed
+        """
+        offset_id = python_int(offset_id)
+        if not self.is_4d:
+            raise WrongDimensionalityError("Offset volumes can only be read from 4D files")
+        if not 0 <= offset_id < self.n_offsets:
+            raise IndexError(self.range_error.format(offset_id, 0, self.n_offsets - 1))
+        return np.squeeze(self.read_subvolume_4d(0, self.n_ilines, 0, self.n_xlines,
+                                                 offset_id, offset_id + 1, 0, self.n_samples), axis=2)
+
+    def read_subvolume_4d(self, min_il, max_il, min_xl, max_xl, min_offset, max_offset, min_z, max_z,
+                          access_padding=False, multithreading=True):
+        """Reads a sub-volume from 4D SGZ file
+
+        Parameters
+        ----------
+        min_il, max_il : int
+            Index range of inlines to get, max_il non inclusive
+        min_xl, max_xl : int
+            Index range of crosslines to get, max_xl non inclusive
+        min_offset, max_offset : int
+            Index range of offsets to get, max_offset non inclusive
+        min_z, max_z : int
+            Index range of samples to get, max_z non inclusive
+
+        access_padding : bool, optional
+            Functions which manage voxels used for padding themselves may relax bounds-checking to padded dimensions
+
+        multithreading : bool, optional
+            Request multithreaded decompression, should be turned off when doing individual chunk reads for get_trace
+
+        Returns
+        -------
+        subvolume : numpy.ndarray of float32,
+                    shape (max_il - min_il, max_xl - min_xl, max_offset - min_offset, max_z - min_z)
+            The specified subvolume, decompressed
+        """
+        if not self.is_4d:
+            raise WrongDimensionalityError("Trying to read 4D subvolume from non-4D file, use read_subvolume")
+        upper = self.shape_pad if access_padding else (self.n_ilines, self.n_xlines, self.n_offsets, self.n_samples)
+        ranges = ((min_il, max_il), (min_xl, max_xl), (min_offset, max_offset), (min_z, max_z))
+        for (lo, hi), limit in zip(ranges, upper):
+            if not (0 <= lo < limit and 0 < hi <= limit and hi > lo):
+                raise IndexError(self.range_error.format(lo, hi, 0, limit - 1))
+
+        if self.blockshape[0:3] == (4, 4, 4):
+            decompressed = self.loader.read_and_decompress_chunk_range(max_il, max_xl, max_offset, max_z,
+                                                                       min_il, min_xl, min_offset, min_z,
+                                                                       multithreading)
+            starts = tuple(lo % 4 for lo, _ in ranges)
+        else:
+            decompressed = self.loader.read_unshuffle_and_decompress_chunk_range(max_il, max_xl, max_offset, max_z,
+                                                                                 min_il, min_xl, min_offset, min_z)
+            starts = tuple(lo % b for (lo, _), b in zip(ranges, self.blockshape))
+        return decompressed[tuple(slice(s, s + hi - lo) for s, (lo, hi) in zip(starts, ranges))]
 
     def get_trace_by_coord(self, index, min_sample_no=None, max_sample_no=None):
         """Reads one trace from SGZ file, cropping referenced by sample coordinates
@@ -816,29 +995,47 @@ class SgzReader(object):
                 self.get_unstructured_mask()
                 index = int(np.arange(self.mask.shape[0])[self.mask != 0][index])
 
-            if not 0 <= index < self.n_ilines * self.n_xlines:
+            if not 0 <= index < self.n_grid_traces:
                 if platform.system() == 'Windows':
                     print('Yesterday it worked, Today it is not working, Windows is like that')
                 raise IndexError(self.range_error.format(index, 0, self.tracecount))
 
-            il, xl = index // self.n_xlines, index % self.n_xlines
-            min_il = self.blockshape[0] * (il // self.blockshape[0])
-            min_xl = self.blockshape[1] * (xl // self.blockshape[1])
             min_sample_id = 0 if min_sample_id is None else min_sample_id
             max_sample_id = self.n_samples if max_sample_id is None else max_sample_id
+            bs_z = self.blockshape[-1]
+            min_z = bs_z * (min_sample_id // bs_z)
+            max_z = bs_z * ((max_sample_id + bs_z - 1) // bs_z)
 
-            min_z = self.blockshape[2] * (min_sample_id // self.blockshape[2])
-            max_z = self.blockshape[2] * ((max_sample_id + self.blockshape[2] - 1) // self.blockshape[2])
+            if self.is_4d:
+                # Trace index runs (il, xl, offset) with offset fastest, as in a prestack SEG-Y
+                il, rem = divmod(index, self.n_xlines * self.n_offsets)
+                xl, offset = divmod(rem, self.n_offsets)
+            else:
+                il, xl = index // self.n_xlines, index % self.n_xlines
+                offset = None
+            min_il = self.blockshape[0] * (il // self.blockshape[0])
+            min_xl = self.blockshape[1] * (xl // self.blockshape[1])
 
             chunk = self._read_containing_chunk_cached(min_il, min_xl, min_z, max_z)
-            trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], min_sample_id-min_z:max_sample_id-min_z]
+            if self.is_4d:
+                trace = chunk[il % self.blockshape[0], xl % self.blockshape[1], offset,
+                              min_sample_id-min_z:max_sample_id-min_z]
+            else:
+                trace = chunk[il % self.blockshape[0], xl % self.blockshape[1],
+                              min_sample_id-min_z:max_sample_id-min_z]
             return np.squeeze(trace)
 
     def _read_containing_chunk(self, ref_il, ref_xl, min_z, max_z):
         assert ref_il % self.blockshape[0] == 0
         assert ref_xl % self.blockshape[1] == 0
-        assert min_z % self.blockshape[2] == 0
-        assert max_z % self.blockshape[2] == 0
+        assert min_z % self.blockshape[-1] == 0
+        assert max_z % self.blockshape[-1] == 0
+        if self.is_4d:
+            # All offsets of a block are contiguous on disk, and gathers are typically read together
+            return self.read_subvolume_4d(ref_il, ref_il + self.blockshape[0],
+                                          ref_xl, ref_xl + self.blockshape[1],
+                                          0, self.shape_pad[2],
+                                          min_z, max_z, access_padding=True, multithreading=False)
         return self.read_subvolume(ref_il, ref_il + self.blockshape[0],
                                    ref_xl, ref_xl + self.blockshape[1],
                                    min_z, max_z, access_padding=True, multithreading=False)
@@ -890,7 +1087,7 @@ class SgzReader(object):
             if k not in self.variant_headers:
                 offset = self.segy_traceheader_template[k]
                 if isinstance(offset, FileOffset) and k not in self.variant_headers:
-                    use_mask = self.is_3d and not (self.structured or self.include_padding)
+                    use_mask = not self.is_2d and not (self.structured or self.include_padding)
                     if use_mask:
                         self.get_unstructured_mask()
                     buffer = self.file.read_range(self.file, offset, self.header_entry_length_bytes)
@@ -929,6 +1126,8 @@ class SgzReader(object):
         header_array = self.get_tracefield_1d(tracefield)
         if self.is_2d:
             return header_array
+        elif self.is_4d:
+            return header_array.reshape((self.n_ilines, self.n_xlines, self.n_offsets))
         else:
             return header_array.reshape((self.n_ilines, self.n_xlines))
 
@@ -949,7 +1148,7 @@ class SgzReader(object):
         header : dict
             A single header as a dictionary of headerword-value pairs
         """
-        if self.is_3d and not 0 <= index < self.n_ilines * self.n_xlines:
+        if not self.is_2d and not 0 <= index < self.n_grid_traces:
             raise IndexError(self.range_error.format(index, 0, self.tracecount))
 
         header = self.segy_traceheader_template.copy()

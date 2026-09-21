@@ -21,6 +21,12 @@ class SegyioEmulator(SgzReader):
             self.depth_slice = ZsliceAccessor(self.file).__enter__()
             self.subvolume = SubvolumeAccessor(self.file).__enter__()
             self.unstructured = False
+        elif self.is_4d:
+            # segyio's prestack semantics (iline[il, offset], gather[il, xl]) are not emulated yet
+            self.iline = DimensionalityError("SEG-Y emulation does not yet support this for 4D files")
+            self.xline = DimensionalityError("SEG-Y emulation does not yet support this for 4D files")
+            self.depth_slice = DimensionalityError("SEG-Y emulation does not yet support this for 4D files")
+            self.unstructured = not self.structured
         else:
             self.iline = DimensionalityError()
             self.xline = DimensionalityError()
@@ -44,8 +50,8 @@ class SegyioEmulator(SgzReader):
 
 
 class DimensionalityError:
-    def __init__(self):
-        pass
+    def __init__(self, message="SEG-Y emulation does not support this for 2D files"):
+        self.message = message
 
     def __getitem__(self, item):
-        raise WrongDimensionalityError("SEG-Y emulation does not support this for 2D files")
+        raise WrongDimensionalityError(self.message)

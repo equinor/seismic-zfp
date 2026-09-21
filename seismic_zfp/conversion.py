@@ -454,6 +454,8 @@ class SgzConverter(SgzReader):
         return header
 
     def convert_to_segy(self, out_file):
+        if self.is_4d:
+            raise NotImplementedError("Conversion of 4D SGZ files to SEG-Y is not yet supported")
         if self.is_3d:
             spec = segyio.spec()
             spec.samples = self.zslices
