@@ -181,7 +181,7 @@ class MinimalInlineReader:
         return array_equal and headers_equal
 
     def read_line(self, i):
-        self.file.seek(SEGY_FILE_HEADER_BYTES + i * self.n_xl * (self.n_samp * 4 + 240), 0)
+        self.file.seek(SEGY_FILE_HEADER_BYTES + i * self.n_xl * (self.n_samp * 4 + SEGY_TRACE_HEADER_BYTES), 0)
         buf = self.file.read(self.n_xl * (self.n_samp * 4 + SEGY_TRACE_HEADER_BYTES))
         dt = np.dtype(np.float32).newbyteorder('>')
         array = np.frombuffer(buf, dtype=dt).reshape((self.n_xl, self.n_samp + 60))[:, 60:]
@@ -351,10 +351,9 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
         else:
             minimal_il_reader = MinimalInlineReader(seismicfile)
             seismicfile_shape = (len(seismicfile.ilines), len(seismicfile.xlines))
-            if minimal_il_reader.self_test() and seismicfile_shape == (n_ilines, n_xlines):
-                pass
-            else:
+            if not (minimal_il_reader.self_test() and seismicfile_shape == (n_ilines, n_xlines)):
                 warnings.warn("MinimalInlineReader failed self-test, using fallback", UserWarning)
+                minimal_il_reader = None
 
     # Loop over groups of 4 inlines
     n_plane_sets = padded_shape[0] // blockshape[0]
