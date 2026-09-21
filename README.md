@@ -48,6 +48,12 @@ Compression and reading follows the same pattern as 3D files, but segyio emulati
 following attributes: trace, header, samples, bin & text. However an additional funciton read_subplane() 
 is available for extracting horizontally and vertically contrained data.
 
+#### 4D (Prestack) SEG-Y Support ####
+As of v0.5.0 regular prestack SEG-Y files (inline-sorted, with the same offsets present at every IL/XL
+position, identified by the `offset` trace header) can be compressed. The offset axis is stored between
+the crossline and sample axes, and ZFP compresses the data in 4x4x4x4 units, so the blockshape becomes
+(il, xl, offset, z) with a default of (4, 4, 4, -1). Reading 4D SGZ files is not yet supported.
+
 
 #### Headers ####
 The [seismic-zfp (.SGZ) format](docs/file-specification.md) also allows for preservation of information in 
@@ -85,6 +91,10 @@ with SegyConverter("in.sgy") as converter:
     converter.run("out_standard.sgz", bits_per_voxel=4)
     # Create a "z-slice optimized" SGZ file
     converter.run("out_adv.sgz", bits_per_voxel=2, blockshape=(64, 64, 4))
+
+with SegyConverter("in_prestack.sgy", min_offset=0, max_offset=16) as converter:
+    # Prestack (4D) SEG-Y is detected automatically, blockshape is (il, xl, offset, z)
+    converter.run("out_4d.sgz", bits_per_voxel=4, blockshape=(4, 4, 4, -1))
                   
 with ZgyConverter("in_8-int.zgy") as converter:
     # 8-bit integer ZGY and 1-bit SGZ have similar quality

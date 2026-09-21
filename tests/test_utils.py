@@ -109,6 +109,47 @@ def test_define_blockshape_3d():
         define_blockshape_3d(-1, (4, 4, -1))
     with pytest.raises(AssertionError):
         define_blockshape_3d(1, (4, 4, 128))
+    with pytest.raises(AssertionError):
+        define_blockshape_3d(4, (4, 4, 4, -1))
+
+
+def test_define_blockshape_4d():
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, 4, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d("4", (4, 4, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, 4, 4, -1))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, 4, -1, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, -1, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (-1, 4, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(-1, (4, 4, 4, 128))
+    assert (8, (4, 4, 4, 64)) == define_blockshape_4d(8, (4, 4, 4, -1))
+    assert (2, (4, 4, 4, 256)) == define_blockshape_4d(2, (4, 4, 4, -1))
+    assert (2, (16, 16, 4, 16)) == define_blockshape_4d(-1, (16, 16, 4, 16))
+    assert (0.5, (4, 4, 4, 1024)) == define_blockshape_4d(-2, (4, 4, 4, -1))
+    assert (0.5, (4, 4, 4, 1024)) == define_blockshape_4d(0.5, (4, 4, 4, -1))
+
+    with pytest.raises(ValueError):
+        define_blockshape_4d(-1, (4, 4, 4, -1))
+    with pytest.raises(ValueError):
+        define_blockshape_4d(4, (4, 4, -1, -1))
+    with pytest.raises(AssertionError):
+        define_blockshape_4d(4, (4, 4, 4, 64))
+    with pytest.raises(AssertionError):
+        define_blockshape_4d(4, (4, 4, -1))
+    # 4D zfp units are 4x4x4x4, dimensions below 4 are not permitted
+    with pytest.raises(ValueError):
+        define_blockshape_4d(4, (1, 4, 16, -1))
+    with pytest.raises(ValueError):
+        define_blockshape_4d(4, (4, 4, 2, -1))
+
+
+def test_geometry_4d():
+    geom = Geometry4d(0, 5, 2, 7, 1, 4)
+    assert list(geom.ilines) == [0, 1, 2, 3, 4]
+    assert list(geom.xlines) == [2, 3, 4, 5, 6]
+    assert list(geom.offsets) == [1, 2, 3]
+    assert not isinstance(geom, Geometry3d)
+    assert not isinstance(geom, Geometry2d)
+    assert 'OFFSET:[1,4]' in repr(geom)
 
 
 def test_get_chunk_cache_size():

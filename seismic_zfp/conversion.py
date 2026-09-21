@@ -14,11 +14,13 @@ from .seismicfile import SeismicFile, Filetype
 from .utils import (pad,
                     define_blockshape_2d,
                     define_blockshape_3d,
+                    define_blockshape_4d,
                     bytes_to_int,
                     int_to_bytes,
                     Axes,
                     CubeWithAxes,
                     Geometry3d,
+                    Geometry4d,
                     InferredGeometry3d,
                     Geometry2d
                     )
@@ -33,7 +35,8 @@ class SeismicFileConverter(object):
     Because the SeismicFile class detects filetype based on extension this base class could be used most of the time.
     """
 
-    def __init__(self, in_filename, min_il=None, max_il=None, min_xl=None, max_xl=None):
+    def __init__(self, in_filename, min_il=None, max_il=None, min_xl=None, max_xl=None,
+                 min_offset=None, max_offset=None):
         """
         Parameters
         ----------
@@ -44,6 +47,11 @@ class SeismicFileConverter(object):
         min_il, max_il, min_xl, max_xl: int
             Cropping parameters to apply to input seismic cube
             Refers to IL/XL *ordinals* rather than numbers
+
+        min_offset, max_offset: int
+            Cropping parameters for the offset axis of prestack (4D) input
+            Refers to offset *ordinals* rather than numbers. Any 4D cropping
+            parameter left as None defaults to the full extent of that axis.
         """
         # Quia Ego Sic Dico
         self.in_filename = in_filename
@@ -51,12 +59,18 @@ class SeismicFileConverter(object):
         self.check_input_file_exists()
 
         self.geom = None
-        if all([min_il, max_il, min_xl, max_xl]):
-            self.geom = Geometry3d(min_il, max_il, min_xl, max_xl)
-        if self.geom is None:
-            with SeismicFile.open(self.in_filename, self.filetype) as seismic:
+        crop_4d = [min_il, max_il, min_xl, max_xl, min_offset, max_offset]
+        with SeismicFile.open(self.in_filename, self.filetype) as seismic:
+            if seismic.is_4d and any(p is not None for p in crop_4d):
+                self.geom = self.crop_geometry_4d(seismic, *crop_4d)
+            elif not seismic.is_4d and (min_offset is not None or max_offset is not None):
+                raise ValueError("Offset cropping is only applicable to prestack (4D) input")
+            elif not seismic.is_4d and all([min_il, max_il, min_xl, max_xl]):
+                self.geom = Geometry3d(min_il, max_il, min_xl, max_xl)
+            else:
                 self.detect_geometry(seismic)
         self.is_2d = isinstance(self.geom, Geometry2d)
+        self.is_4d = isinstance(self.geom, Geometry4d)
         self.mem_limit = psutil.virtual_memory().total
 
     def __enter__(self):
@@ -73,7 +87,9 @@ class SeismicFileConverter(object):
 
     def get_blank_header_info(self, seismic, header_detection):
         first_il_header_val = seismic.header[0][segyio.tracefield.TraceField.INLINE_3D]
-        if isinstance(self.geom, Geometry3d) and not isinstance(self.geom, InferredGeometry3d):
+        if isinstance(self.geom, Geometry4d):
+            n_traces = len(self.geom.ilines) * len(self.geom.xlines) * len(self.geom.offsets)
+        elif isinstance(self.geom, Geometry3d) and not isinstance(self.geom, InferredGeometry3d):
             # Regular 3D geometry, possibly cropped
             n_traces = len(self.geom.ilines) * len(self.geom.xlines)
         else:
@@ -142,7 +158,11 @@ class SeismicFileConverter(object):
         return max_queue_length
 
     def detect_geometry(self, seismic):
-        if seismic.unstructured:
+        if seismic.is_4d:
+            if not seismic.structured:
+                raise NotImplementedError("Prestack SEG-Y with irregular offsets per IL/XL is not yet supported")
+            self.geom = Geometry4d(0, len(seismic.ilines), 0, len(seismic.xlines), 0, len(seismic.offsets))
+        elif seismic.unstructured:
             first_header = seismic.header[0]
             last_header = seismic.header[-1]
             if (first_header[189], first_header[193], last_header[189], last_header[193]) == (0, 0, 0, 0):
@@ -167,6 +187,17 @@ class SeismicFileConverter(object):
         traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
         self.geom = InferredGeometry3d(traces_ref)
         print("... inferred geometry is:", self.geom)
+
+    @staticmethod
+    def crop_geometry_4d(seismic, min_il, max_il, min_xl, max_xl, min_offset, max_offset):
+        if not seismic.structured:
+            raise NotImplementedError("Prestack SEG-Y with irregular offsets per IL/XL is not yet supported")
+        return Geometry4d(0 if min_il is None else min_il,
+                          len(seismic.ilines) if max_il is None else max_il,
+                          0 if min_xl is None else min_xl,
+                          len(seismic.xlines) if max_xl is None else max_xl,
+                          0 if min_offset is None else min_offset,
+                          len(seismic.offsets) if max_offset is None else max_offset)
 
     def check_input_file_exists(self):
         if not os.path.exists(self.in_filename):
@@ -198,6 +229,12 @@ class SeismicFileConverter(object):
             return int(((bits_per_voxel *
                         pad(len(seismic.samples), blockshape[2]) *
                         pad(self.geom.tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
+        elif self.is_4d:
+            return int(((bits_per_voxel *
+                        pad(len(seismic.samples), blockshape[3]) *
+                        pad(len(self.geom.offsets), blockshape[2]) *
+                        pad(len(self.geom.xlines), blockshape[1]) *
+                        pad(len(self.geom.ilines), blockshape[0])) // 8) // DISK_BLOCK_BYTES)
         else:
             return int(((bits_per_voxel *
                         pad(len(seismic.samples), blockshape[2]) *
@@ -243,6 +280,16 @@ class SeismicFileConverter(object):
             store_headers = False
         return store_headers
 
+    def _define_blockshape(self, bits_per_voxel, blockshape):
+        """Resolve bits_per_voxel and blockshape for the detected geometry, applying the
+        default blockshape for its dimensionality if none is given."""
+        if self.is_2d:
+            return define_blockshape_2d(bits_per_voxel, (1, 16, -1) if blockshape is None else blockshape)
+        elif self.is_4d:
+            return define_blockshape_4d(bits_per_voxel, (4, 4, 4, -1) if blockshape is None else blockshape)
+        else:
+            return define_blockshape_3d(bits_per_voxel, (4, 4, -1) if blockshape is None else blockshape)
+
     def get_output_size(self, bits_per_voxel=4, blockshape=None,
                         reduce_iops=False, header_detection="heuristic"):
         """Estimate the size (in bytes) of the SGZ file that would be created by run()
@@ -257,14 +304,7 @@ class SeismicFileConverter(object):
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             if self.geom is None:
                 self.infer_geometry(seismic)
-            if self.is_2d:
-                if blockshape is None:
-                    blockshape = (1, 16, -1)
-                bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
-            else:
-                if blockshape is None:
-                    blockshape = (4, 4, -1)
-                bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
+            bits_per_voxel, blockshape = self._define_blockshape(bits_per_voxel, blockshape)
 
             header_info = self.get_blank_header_info(seismic, header_detection)
             store_headers = self._get_store_headers_flag(seismic, header_detection)
@@ -310,7 +350,7 @@ class SeismicFileConverter(object):
             - Recommended using 4-bit, giving 8:1 compression
             - Negative value implies reciprocal: i.e. -2 ==> 1/2 bits per voxel
 
-        blockshape: (int, int, int)
+        blockshape: (int, int, int) or (int, int, int, int)
             The physical shape of voxels compressed to one disk block.
             Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, 4th is redundant.
             - Specifying -1 for one of these will calculate that one
@@ -318,11 +358,14 @@ class SeismicFileConverter(object):
             - Each one must be a power of 2
             - (4, 4, -1) - default - is good for IL/XL reading
             - (64, 64, 4) is good for Z-Slice reading (requires 2-bit compression)
+            For prestack (4D) input the blockshape is (il, xl, offset, z), each
+            dimension must be at least 4, and the default is (4, 4, 4, -1).
 
         reduce_iops: bool
             Flag to indicate whether compression should attempt to minimize the number
             of iops required to read the input SEG-Y file by reading whole inlines including
             headers in one go. Falls back to segyio if incorrect. Useful under Windows.
+            Not supported for prestack (4D) input.
 
         header_detection: str
             One of the following options.
@@ -343,15 +386,12 @@ class SeismicFileConverter(object):
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             if self.geom is None:
                 self.infer_geometry(seismic)
+            bits_per_voxel, blockshape = self._define_blockshape(bits_per_voxel, blockshape)
             if self.is_2d:
-                if blockshape is None:
-                    blockshape = (1, 16, -1)
-                bits_per_voxel, blockshape = define_blockshape_2d(bits_per_voxel, blockshape)
                 inline_set_bytes = len(self.geom.traces) * len(seismic.samples) * 4
+            elif self.is_4d:
+                inline_set_bytes = blockshape[0] * len(self.geom.xlines) * len(self.geom.offsets) * len(seismic.samples) * 4
             else:
-                if blockshape is None:
-                    blockshape = (4, 4, -1)
-                bits_per_voxel, blockshape = define_blockshape_3d(bits_per_voxel, blockshape)
                 inline_set_bytes = blockshape[0]*(len(self.geom.xlines) * len(seismic.samples)) * 4
 
             header_info = self.get_blank_header_info(seismic, header_detection)

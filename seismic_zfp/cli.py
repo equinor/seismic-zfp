@@ -29,6 +29,16 @@ segyconverter_options = [
         type=click.INT,
         help=cropping_param_help,
     ),
+    click.option(
+        "--min-offset",
+        type=click.INT,
+        help="Offset-axis cropping parameter for prestack (4D) SEG-Y. Refers to offset ordinals.",
+    ),
+    click.option(
+        "--max-offset",
+        type=click.INT,
+        help="Offset-axis cropping parameter for prestack (4D) SEG-Y. Refers to offset ordinals.",
+    ),
 ]
 sgz_options = [
     click.option(
@@ -51,6 +61,16 @@ sgz_options = [
             "Can only specify 3 of blockshape (il,xl,z) and bits_per_voxel, "
             "4th is redundant."
             "(4, 4, -1) is default for 3D SEG-Y and (1, 16, -1) for 2D SEG-Y"
+        ),
+        show_default=True,
+    ),
+    click.option(
+        "--blockshape-4d",
+        type=click.Tuple([click.INT] * 4),
+        default=None,
+        help=(
+            "Blockshape (il,xl,offset,z) for prestack (4D) SEG-Y, each at least 4. "
+            "(4, 4, 4, -1) is default. Mutually exclusive with --blockshape."
         ),
         show_default=True,
     ),
@@ -134,15 +154,20 @@ def sgy2sgz(
         output_sgz_file=None,
         bits_per_voxel=None,
         blockshape=None,
+        blockshape_4d=None,
         reduce_iops=None,
         get_output_size=False,
         min_il=None,
         max_il=None,
         min_xl=None,
         max_xl=None,
+        min_offset=None,
+        max_offset=None,
 ):
     if not get_output_size and output_sgz_file is None:
         raise click.UsageError("OUTPUT_SGZ_FILE is required unless using --get-output-size")
+    if blockshape is not None and blockshape_4d is not None:
+        raise click.UsageError("Specify only one of --blockshape and --blockshape-4d")
 
     with SegyConverter(
             input_segy_file,
@@ -150,7 +175,16 @@ def sgy2sgz(
             max_il=max_il,
             min_xl=min_xl,
             max_xl=max_xl,
+            min_offset=min_offset,
+            max_offset=max_offset,
     ) as converter:
+        if converter.is_4d:
+            if blockshape is not None:
+                raise click.UsageError("Prestack (4D) SEG-Y requires --blockshape-4d rather than --blockshape")
+            blockshape = blockshape_4d
+        elif blockshape_4d is not None:
+            raise click.UsageError("--blockshape-4d is only applicable to prestack (4D) SEG-Y")
+
         if get_output_size:
             size_bytes = converter.get_output_size(
                 bits_per_voxel=bits_per_voxel,

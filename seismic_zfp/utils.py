@@ -40,6 +40,18 @@ class Geometry3d:
         self.xlines = range(min_xl, max_xl, xl_step)
 
 
+class Geometry4d:
+    """Lightweight place to keep track of IL/XL/offset ranges (ordinals) for prestack data"""
+    def __init__(self, min_il, max_il, min_xl, max_xl, min_offset, max_offset):
+        self.ilines = range(min_il, max_il)
+        self.xlines = range(min_xl, max_xl)
+        self.offsets = range(min_offset, max_offset)
+
+    def __repr__(self):
+        return (f'IL:[{self.ilines.start},{self.ilines.stop}] -- XL:[{self.xlines.start},{self.xlines.stop}]'
+                f' -- OFFSET:[{self.offsets.start},{self.offsets.stop}]')
+
+
 class InferredGeometry3d(Geometry3d):
     """Subclass used to signify irregular input SEG-Y"""
     def __init__(self, traces_ref):
@@ -169,7 +181,24 @@ def define_blockshape_2d(bits_per_voxel, blockshape):
 
 
 def define_blockshape_3d(bits_per_voxel, blockshape):
-    if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
+    assert len(blockshape) == 3
+    return _define_blockshape(bits_per_voxel, blockshape)
+
+
+def define_blockshape_4d(bits_per_voxel, blockshape):
+    assert len(blockshape) == 4
+    bits_per_voxel, blockshape = _define_blockshape(bits_per_voxel, blockshape)
+    # zfp compresses 4D data in 4x4x4x4 units, so no dimension may be smaller than that
+    if any(n < 4 for n in blockshape):
+        raise ValueError(f"All 4D blockshape dimensions must be at least 4, got {blockshape}")
+    return bits_per_voxel, blockshape
+
+
+def _define_blockshape(bits_per_voxel, blockshape):
+    """Resolve one -1 placeholder among blockshape dimensions and bits_per_voxel such that
+    the product fills one disk block exactly. Dimension-agnostic."""
+    blockshape = tuple(blockshape)
+    if sum([1 for n in blockshape + (bits_per_voxel,) if n == -1]) > 1:
         raise ValueError("Blockshape is underdefined")
 
     if isinstance(bits_per_voxel, str):
@@ -178,19 +207,14 @@ def define_blockshape_3d(bits_per_voxel, blockshape):
     bits_per_voxel = 1 / -bits_per_voxel if bits_per_voxel < -1 else bits_per_voxel
 
     if bits_per_voxel == -1:
-        bits_per_voxel = DISK_BLOCK_BYTES * 8 / (blockshape[0] * blockshape[1] * blockshape[2])
+        bits_per_voxel = DISK_BLOCK_BYTES * 8 / int(np.prod(blockshape))
+    elif -1 in blockshape:
+        i = blockshape.index(-1)
+        known_voxels = int(np.prod(blockshape[:i] + blockshape[i+1:]))
+        resolved = int(DISK_BLOCK_BYTES * 8 // (known_voxels * bits_per_voxel))
+        blockshape = blockshape[:i] + (resolved,) + blockshape[i+1:]
     else:
-        if blockshape[0] == -1:
-            blockshape = (int(DISK_BLOCK_BYTES * 8 //
-                              (blockshape[1] * blockshape[2] * bits_per_voxel)), blockshape[1], blockshape[2])
-        elif blockshape[1] == -1:
-            blockshape = (blockshape[0], int(DISK_BLOCK_BYTES * 8 //
-                          (blockshape[2] * blockshape[0] * bits_per_voxel)), blockshape[2])
-        elif blockshape[2] == -1:
-            blockshape = (blockshape[0], blockshape[1], int(DISK_BLOCK_BYTES * 8 //
-                                                            (blockshape[0] * blockshape[1] * bits_per_voxel)))
-        else:
-            assert(bits_per_voxel * blockshape[0] * blockshape[1] * blockshape[2] == DISK_BLOCK_BYTES * 8)
+        assert(bits_per_voxel * int(np.prod(blockshape)) == DISK_BLOCK_BYTES * 8)
     return bits_per_voxel, blockshape
 
 

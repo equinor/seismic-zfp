@@ -127,6 +127,70 @@ def test_sgy2sgz_convert_all_params():
     assert result.exit_code == 0
 
 
+def test_sgy2sgz_convert_4d_default():
+    input_file_absolute = os.path.abspath(os.path.join("test_data", "small-4d.sgy"))
+    output_file = "small-4d_4bit_converted.sgz"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with SegyConverter(input_file_absolute) as converter:
+            expected_size = converter.get_output_size(bits_per_voxel=4)
+        result = runner.invoke(cli, ["sgy2sgz", input_file_absolute, output_file])
+        assert result.exit_code == 0, result.output
+        assert os.stat(output_file).st_size == expected_size
+
+
+def test_sgy2sgz_convert_4d_all_params():
+    input_file_absolute = os.path.abspath(os.path.join("test_data", "small-4d.sgy"))
+    output_file = "small-4d_2bit_cropped.sgz"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with SegyConverter(input_file_absolute, min_il=1, max_il=4, min_offset=1, max_offset=4) as converter:
+            expected_size = converter.get_output_size(bits_per_voxel=2, blockshape=(8, 8, 4, 64))
+        result = runner.invoke(
+            cli,
+            ["sgy2sgz", input_file_absolute, output_file,
+             "--bits-per-voxel", "2",
+             "--blockshape-4d", "8", "8", "4", "64",
+             "--min-il", "1", "--max-il", "4",
+             "--min-offset", "1", "--max-offset", "4"],
+        )
+        assert result.exit_code == 0, result.output
+        assert os.stat(output_file).st_size == expected_size
+
+        result = runner.invoke(
+            cli,
+            ["sgy2sgz", input_file_absolute, "--get-output-size",
+             "--bits-per-voxel", "2", "--blockshape-4d", "8", "8", "4", "64",
+             "--min-il", "1", "--max-il", "4", "--min-offset", "1", "--max-offset", "4"],
+        )
+        assert result.exit_code == 0, result.output
+        assert result.output.strip() == str(expected_size)
+
+
+def test_sgy2sgz_blockshape_option_mismatches():
+    sgy_4d = os.path.abspath(os.path.join("test_data", "small-4d.sgy"))
+    sgy_3d = os.path.abspath(os.path.join("test_data", "small.sgy"))
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["sgy2sgz", sgy_4d, "out.sgz", "--blockshape", "4", "4", "-1"])
+        assert result.exit_code != 0
+        assert "--blockshape-4d" in result.output
+
+        result = runner.invoke(cli, ["sgy2sgz", sgy_3d, "out.sgz", "--blockshape-4d", "4", "4", "4", "-1"])
+        assert result.exit_code != 0
+        assert "only applicable to prestack" in result.output
+
+        result = runner.invoke(cli, ["sgy2sgz", sgy_4d, "out.sgz",
+                                     "--blockshape", "4", "4", "-1", "--blockshape-4d", "4", "4", "4", "-1"])
+        assert result.exit_code != 0
+        assert "only one of" in result.output
+
+        result = runner.invoke(cli, ["sgy2sgz", sgy_3d, "out.sgz", "--min-offset", "1"])
+        assert result.exit_code != 0
+        assert isinstance(result.exception, ValueError)
+        assert not os.path.exists("out.sgz")
+
+
 @pytest.mark.skipif(pyzgy is None, reason="Requires pyzgy")
 def test_zgy2sgz():
     runner = CliRunner()

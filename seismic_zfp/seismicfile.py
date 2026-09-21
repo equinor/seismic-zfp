@@ -51,9 +51,12 @@ class SeismicFile:
 
         if file_type == Filetype.SEGY:
             handle = segyio.open(filename, mode='r', strict=False)
+            handle.n_offsets = 1
             try:
                 metrics = handle.xfd.cube_metrics(189, 193)
-                handle.structured = (metrics['iline_count'] * metrics['xline_count']) == handle.tracecount
+                handle.n_offsets = metrics['offset_count']
+                regular_tracecount = metrics['iline_count'] * metrics['xline_count'] * metrics['offset_count']
+                handle.structured = regular_tracecount == handle.tracecount
             except RuntimeError:
                 handle.structured = False
         elif file_type == Filetype.ZGY:
@@ -61,16 +64,21 @@ class SeismicFile:
                 raise ImportError("File type requires pyzgy. Install optional dependency seismic-zfp[zgy] with pip.")
             handle = pyzgy.open(filename)
             handle.structured = True
+            handle.n_offsets = 1
         elif file_type == Filetype.VDS:
             if pyvds is None:
                 raise ImportError("File type requires pyvds. Install optional dependency seismic-zfp[vds] with pip.")
             handle = pyvds.open(filename)
             handle.structured = True
+            handle.n_offsets = 1
         elif file_type == Filetype.SGZ:
             handle = seismic_zfp.open(filename)
             handle.structured = True
+            handle.n_offsets = 1
 
         handle.filetype = file_type
         handle.filename = filename
+        # Prestack (gather) data has an offset axis in addition to IL/XL
+        handle.is_4d = handle.n_offsets > 1
 
         return handle

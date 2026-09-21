@@ -11,7 +11,8 @@ import hashlib
 
 from .version import SeismicZfpVersion
 from .seismicfile import Filetype
-from .sgzconstants import HEADER_DETECTION_CODES, DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES, SEGY_TRACE_HEADER_BYTES
+from .sgzconstants import (HEADER_DETECTION_CODES, DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES,
+                           SEGY_TRACE_HEADER_BYTES, SGZ_4D_HEADER_OFFSET)
 from .utils import (pad,
                     int_to_bytes,
                     signed_int_to_bytes,
@@ -22,6 +23,7 @@ from .utils import (pad,
                     CubeWithAxes,
                     InferredGeometry3d,
                     Geometry2d,
+                    Geometry4d,
                     )
 
 
@@ -33,7 +35,8 @@ def make_header_seismic_file(seismicfile, bits_per_voxel, blockshape, geom, head
                          seismicfile.tracecount,
                          header_info,
                          bits_per_voxel, blockshape, geom,
-                         unstructured=seismicfile.unstructured)
+                         unstructured=seismicfile.unstructured,
+                         offsets=seismicfile.offsets if isinstance(geom, Geometry4d) else None)
 
     # Just copy the bytes from the SEG-Y file header
     if seismicfile.filetype == Filetype.SEGY:
@@ -67,7 +70,8 @@ def make_header_numpy(bits_per_voxel, blockshape, source, header_info, geom, use
     return buffer
 
 
-def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, blockshape, geom, unstructured=False):
+def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, blockshape, geom,
+                unstructured=False, offsets=None):
     """Generate header for SGZ file
 
     Returns
@@ -79,6 +83,7 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
         First 4kB
         - Seismic cube dimensions
         - Compression settings (bitrate, disk block packing scheme)
+        - Offset axis dimensions & blockshape (4D files only, from byte 128)
         - Invariant SEG-Y trace header values
         - File location of varying SEG-Y trace header values
 
@@ -99,11 +104,15 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     else:
         bpv = int(bits_per_voxel)
 
+    is_4d = isinstance(geom, Geometry4d)
+    # Sample-direction blockshape is always the last dimension
+    blockshape_samples = blockshape[-1]
+
     if isinstance(geom, Geometry2d):
         # Length of the seismic amplitudes cube after compression
         n_il = n_xl = 0
         compressed_data_length_diskblocks = int(((bits_per_voxel *
-                                                  pad(len(samples), blockshape[2]) *
+                                                  pad(len(samples), blockshape_samples) *
                                                   pad(tracecount, blockshape[1])) // 8) // DISK_BLOCK_BYTES)
     else:
         n_xl = len(geom.xlines)
@@ -124,27 +133,37 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
             buffer[32:36] = np_float_to_bytes_signed(np.int32(geom.il_step))
             buffer[36:40] = np_float_to_bytes_signed(np.int32(geom.xl_step))
 
-        compressed_data_length_diskblocks = int(((bits_per_voxel *
-                                                  pad(len(samples), blockshape[2]) *
-                                                  pad(n_xl, blockshape[1]) *
-                                                  pad(n_il, blockshape[0])) // 8) // DISK_BLOCK_BYTES)
+        padded_voxels = (pad(len(samples), blockshape_samples) *
+                         pad(n_xl, blockshape[1]) *
+                         pad(n_il, blockshape[0]))
+        if is_4d:
+            n_offsets = len(geom.offsets)
+            padded_voxels *= pad(n_offsets, blockshape[2])
+            min_offset = offsets[geom.offsets[0]]
+            buffer[SGZ_4D_HEADER_OFFSET + 0:SGZ_4D_HEADER_OFFSET + 4] = int_to_bytes(n_offsets)
+            buffer[SGZ_4D_HEADER_OFFSET + 4:SGZ_4D_HEADER_OFFSET + 8] = np_float_to_bytes_signed(min_offset)
+            buffer[SGZ_4D_HEADER_OFFSET + 8:SGZ_4D_HEADER_OFFSET + 12] = np_float_to_bytes_signed(offsets[1] - offsets[0])
+            buffer[SGZ_4D_HEADER_OFFSET + 12:SGZ_4D_HEADER_OFFSET + 16] = int_to_bytes(blockshape[2])
+        compressed_data_length_diskblocks = int(((bits_per_voxel * padded_voxels) // 8) // DISK_BLOCK_BYTES)
 
     buffer[40:44] = signed_int_to_bytes(bpv)
     buffer[44:48] = int_to_bytes(blockshape[0])
     buffer[48:52] = int_to_bytes(blockshape[1])
-    buffer[52:56] = int_to_bytes(blockshape[2])
+    buffer[52:56] = int_to_bytes(blockshape_samples)
     buffer[56:60] = int_to_bytes(compressed_data_length_diskblocks)
 
     # Length of array storing one header value from every trace after compression
     if isinstance(geom, Geometry2d):
-        header_entry_length_bytes = (len(geom.traces) * 32) // 8
+        n_traces_regular = len(geom.traces)
+    elif is_4d:
+        n_traces_regular = n_il * n_xl * len(geom.offsets)
     else:
-        header_entry_length_bytes = (len(geom.xlines) * len(geom.ilines) * 32) // 8
-    buffer[60:64] = int_to_bytes(header_entry_length_bytes)
+        n_traces_regular = n_il * n_xl
+    buffer[60:64] = int_to_bytes((n_traces_regular * 32) // 8)
 
     # Number of trace header arrays stored after compressed seismic amplitudes
     buffer[64:68] = int_to_bytes(hw_info.get_header_array_count())
-    buffer[68:72] = int_to_bytes(tracecount if unstructured or isinstance(geom, Geometry2d) else n_il * n_xl)
+    buffer[68:72] = int_to_bytes(tracecount if unstructured or isinstance(geom, Geometry2d) else n_traces_regular)
     buffer[72:76] = int_to_bytes(version.encoding)
 
     # SEG-Y trace header info - 89 x 3 x 4 = 1068 bytes long
@@ -268,6 +287,42 @@ def unstructured_io_thread_func(blockshape, store_headers, headers_dict, geom, p
                 if store_headers:
                     for tracefield, array in headers_dict.items():
                         array[t_store] = header[tracefield]
+
+
+def io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
+                      seismic_buffer, seismicfile, trace_length):
+    """Fill seismic_buffer with blockshape[0] inlines of prestack data, shaped (il, xl, offset, sample)
+
+    Each inline is read with a single call as a contiguous run of traces, relying on
+    the (xline, offset) trace ordering within an inline of an inline-sorted prestack SEG-Y.
+    Padding planes repeat the last populated inline, and edges are repeated across padding.
+    """
+    n_xl_file, n_off_file = len(seismicfile.xlines), len(seismicfile.offsets)
+    n_xl, n_off = len(geom.xlines), len(geom.offsets)
+    xl_slice = slice(geom.xlines[0], geom.xlines[-1] + 1)
+    off_slice = slice(geom.offsets[0], geom.offsets[-1] + 1)
+    traces_per_inline = n_xl_file * n_off_file
+
+    for i in range(blockshape[0]):
+        il_ordinal = geom.ilines[0] + plane_set_id * blockshape[0] + min(i, planes_to_read - 1)
+        start_trace = il_ordinal * traces_per_inline
+        inline = seismicfile.trace.raw[start_trace:start_trace + traces_per_inline]
+        seismic_buffer[i, 0:n_xl, 0:n_off, 0:trace_length] = \
+            inline.reshape(n_xl_file, n_off_file, trace_length)[xl_slice, off_slice, :]
+
+        if store_headers and i < planes_to_read:
+            t_store_base = (plane_set_id * blockshape[0] + i) * n_xl * n_off
+            # segyio's header slice yields one Field reused in place, so consume it lazily
+            for t, header in enumerate(seismicfile.header[start_trace:start_trace + traces_per_inline]):
+                xl_ordinal, off_ordinal = divmod(t, n_off_file)
+                if xl_ordinal in geom.xlines and off_ordinal in geom.offsets:
+                    t_store = t_store_base + (xl_ordinal - geom.xlines[0]) * n_off + (off_ordinal - geom.offsets[0])
+                    for tracefield, array in headers_dict.items():
+                        array[t_store] = header[tracefield]
+
+        seismic_buffer[i, n_xl:, 0:n_off, 0:trace_length] = seismic_buffer[i, n_xl - 1:n_xl, 0:n_off, 0:trace_length]
+        seismic_buffer[i, :, n_off:, 0:trace_length] = seismic_buffer[i, :, n_off - 1:n_off, 0:trace_length]
+        seismic_buffer[i, :, :, trace_length:] = seismic_buffer[i, :, :, trace_length - 1:trace_length]
 
 
 def numpy_producer(queue, in_array, blockshape, hash_object):
@@ -395,6 +450,47 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
                     queue.put(slice)
 
 
+def seismic_file_producer_4d(queue, seismicfile, blockshape, store_headers,
+                             headers_dict, geom, hash_object, verbose=True):
+    """Reads prestack data from input file inline-set by inline-set, and puts it in the queue for compression"""
+    n_ilines, n_xlines, n_offsets = len(geom.ilines), len(geom.xlines), len(geom.offsets)
+    trace_length = len(seismicfile.samples)
+    padded_shape = (pad(n_ilines, blockshape[0]),
+                    pad(n_xlines, blockshape[1]),
+                    pad(n_offsets, blockshape[2]),
+                    pad(trace_length, blockshape[3]))
+
+    n_plane_sets = padded_shape[0] // blockshape[0]
+    start_time = time.time()
+    for plane_set_id in range(n_plane_sets):
+        if verbose:
+            progress_printer(start_time, plane_set_id / n_plane_sets)
+        planes_to_read = min(blockshape[0], n_ilines - plane_set_id * blockshape[0])
+
+        # Need to allocate at every step as this is being sent to another thread
+        seismic_buffer = np.zeros((blockshape[0],) + padded_shape[1:], dtype=np.float32)
+
+        io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
+                          seismic_buffer, seismicfile, trace_length)
+
+        for i in range(planes_to_read):
+            hash_object.update(seismic_buffer[i, 0:n_xlines, 0:n_offsets, 0:trace_length].copy())
+
+        # zfp orders 4x4x4x4 units sample-fastest, so a whole inline-set compresses
+        # directly to consecutive disk blocks only when the trace dimensions are all 4
+        if blockshape[0:3] == (4, 4, 4):
+            queue.put(seismic_buffer)
+        else:
+            for x in range(padded_shape[1] // blockshape[1]):
+                for o in range(padded_shape[2] // blockshape[2]):
+                    for z in range(padded_shape[3] // blockshape[3]):
+                        slice = seismic_buffer[:,
+                                               x * blockshape[1]: (x + 1) * blockshape[1],
+                                               o * blockshape[2]: (o + 1) * blockshape[2],
+                                               z * blockshape[3]: (z + 1) * blockshape[3]].copy()
+                        queue.put(slice)
+
+
 def compressor(queue_in, queue_out, bits_per_voxel):
     """Fetches sets of inlines and compresses them"""
     while True:
@@ -436,6 +532,11 @@ def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
         numpy_producer(compression_queue, source.data_array, blockshape, hash_object)
     elif isinstance(geom, Geometry2d):
         seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
+                                 header_info.headers_dict, geom, hash_object)
+    elif isinstance(geom, Geometry4d):
+        if reduce_iops:
+            warnings.warn("MinimalInlineReader is not supported for 4D SEG-Y, using segyio", UserWarning)
+        seismic_file_producer_4d(compression_queue, source, blockshape, store_headers,
                                  header_info.headers_dict, geom, hash_object)
     else:
         seismic_file_producer(compression_queue, source, blockshape, store_headers,
