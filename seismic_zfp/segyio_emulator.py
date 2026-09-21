@@ -1,6 +1,7 @@
 from .read import SgzReader
 from .accessors import InlineAccessor, CrosslineAccessor, ZsliceAccessor, \
-                       HeaderAccessor, TraceAccessor, SubvolumeAccessor
+                       HeaderAccessor, TraceAccessor, SubvolumeAccessor, \
+                       InlineAccessor4d, CrosslineAccessor4d, ZsliceAccessor4d, GatherAccessor
 from .utils import WrongDimensionalityError
 
 
@@ -20,17 +21,21 @@ class SegyioEmulator(SgzReader):
             self.xline = CrosslineAccessor(self.file).__enter__()
             self.depth_slice = ZsliceAccessor(self.file).__enter__()
             self.subvolume = SubvolumeAccessor(self.file).__enter__()
+            self.gather = DimensionalityError("SEG-Y emulation only supports gather for 4D files")
             self.unstructured = False
         elif self.is_4d:
-            # segyio's prestack semantics (iline[il, offset], gather[il, xl]) are not emulated yet
-            self.iline = DimensionalityError("SEG-Y emulation does not yet support this for 4D files")
-            self.xline = DimensionalityError("SEG-Y emulation does not yet support this for 4D files")
-            self.depth_slice = DimensionalityError("SEG-Y emulation does not yet support this for 4D files")
+            # As segyio: iline/xline/depth_slice of a prestack file give the first offset unless one is specified
+            self.iline = InlineAccessor4d(self.file).__enter__()
+            self.xline = CrosslineAccessor4d(self.file).__enter__()
+            self.depth_slice = ZsliceAccessor4d(self.file).__enter__()
+            self.gather = GatherAccessor(self.file).__enter__()
+            self.subvolume = DimensionalityError("SEG-Y emulation does not yet support subvolume for 4D files")
             self.unstructured = not self.structured
         else:
             self.iline = DimensionalityError()
             self.xline = DimensionalityError()
             self.depth_slice = DimensionalityError()
+            self.gather = DimensionalityError()
             self.unstructured = True
 
     def __enter__(self):
@@ -45,6 +50,11 @@ class SegyioEmulator(SgzReader):
             self.xline.__exit__(*exc)
             self.depth_slice.__exit__(*exc)
             self.subvolume.__exit__(*exc)
+        elif self.is_4d:
+            self.iline.__exit__(*exc)
+            self.xline.__exit__(*exc)
+            self.depth_slice.__exit__(*exc)
+            self.gather.__exit__(*exc)
 
         self.close_sgz_file()
 

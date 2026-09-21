@@ -130,3 +130,90 @@ class TraceAccessor(Accessor):
         self.len_object = self.tracecount
         self.keys_object = range(self.tracecount)
         self.values_function = self.get_trace
+
+
+class PrestackLineAccessor(SliceAccessor):
+    """Emulates segyio's iline/xline for prestack files: [line] gives the first offset,
+    [line, offset] a specific one, and slices on either yield one array per combination"""
+
+    def _expand(self, subscript, coords):
+        if isinstance(subscript, slice):
+            start = int(coords[0]) if subscript.start is None else subscript.start
+            stop = int(coords[-1] + 1) if subscript.stop is None else subscript.stop
+            step = int(coords[1] - coords[0]) if subscript.step is None else subscript.step
+            return list(range(start, stop, step))
+        return [subscript]
+
+    def __getitem__(self, subscript):
+        line, offset = subscript if isinstance(subscript, tuple) else (subscript, self.offsets[0])
+        if isinstance(line, slice) or isinstance(offset, slice):
+            return [self.values_function(l, o) for l in self._expand(line, self.keys_object)
+                    for o in self._expand(offset, self.offsets)]
+        return self.values_function(line, offset)
+
+
+class InlineAccessor4d(PrestackLineAccessor):
+    def __init__(self, file):
+        super(Accessor, self).__init__(file)
+        self.len_object = self.n_ilines
+        self.keys_object = self.ilines
+
+    def values_function(self, il_no, offset_no):
+        il_id, offset_id = self.get_inline_index(il_no), self.get_offset_index(offset_no)
+        return self.read_subvolume_4d(il_id, il_id + 1, 0, self.n_xlines,
+                                      offset_id, offset_id + 1, 0, self.n_samples)[0, :, 0, :]
+
+
+class CrosslineAccessor4d(PrestackLineAccessor):
+    def __init__(self, file):
+        super(Accessor, self).__init__(file)
+        self.len_object = self.n_xlines
+        self.keys_object = self.xlines
+
+    def values_function(self, xl_no, offset_no):
+        xl_id, offset_id = self.get_crossline_index(xl_no), self.get_offset_index(offset_no)
+        return self.read_subvolume_4d(0, self.n_ilines, xl_id, xl_id + 1,
+                                      offset_id, offset_id + 1, 0, self.n_samples)[:, 0, 0, :]
+
+
+class ZsliceAccessor4d(Accessor):
+    """segyio's depth_slice returns the first offset for prestack files"""
+    def __init__(self, file):
+        super(Accessor, self).__init__(file)
+        self.len_object = self.n_samples
+        self.keys_object = self.zslices
+
+    def values_function(self, zslice_id):
+        if not 0 <= zslice_id < self.n_samples:
+            raise IndexError(self.range_error.format(zslice_id, 0, self.n_samples - 1))
+        return self.read_subvolume_4d(0, self.n_ilines, 0, self.n_xlines, 0, 1, zslice_id, zslice_id + 1)[:, :, 0, 0]
+
+
+class GatherAccessor(PrestackLineAccessor):
+    """Emulates segyio's gather: [il, xl] gives all offsets as (n_offsets, n_samples), [il, xl, offset]
+    a single trace and [il, xl, offset_slice] the selected offsets. Slices on il/xl yield a list."""
+    def __init__(self, file):
+        super(Accessor, self).__init__(file)
+        self.len_object = self.n_ilines * self.n_xlines
+        self.keys_object = self.ilines
+
+    def __getitem__(self, subscript):
+        if not isinstance(subscript, tuple) or not 2 <= len(subscript) <= 3:
+            raise TypeError("gather requires [iline, crossline] or [iline, crossline, offset]")
+        il, xl = subscript[0], subscript[1]
+        offset = subscript[2] if len(subscript) == 3 else slice(None)
+        if isinstance(il, slice) or isinstance(xl, slice):
+            return [self.values_function(i, x, offset) for i in self._expand(il, self.ilines)
+                    for x in self._expand(xl, self.xlines)]
+        return self.values_function(il, xl, offset)
+
+    def values_function(self, il_no, xl_no, offset):
+        il_id, xl_id = self.get_inline_index(il_no), self.get_crossline_index(xl_no)
+        if isinstance(offset, slice):
+            offset_ids = [self.get_offset_index(o) for o in self._expand(offset, self.offsets)]
+            gather = self.read_subvolume_4d(il_id, il_id + 1, xl_id, xl_id + 1,
+                                            offset_ids[0], offset_ids[-1] + 1, 0, self.n_samples)[0, 0]
+            return gather[::offset_ids[1] - offset_ids[0]] if len(offset_ids) > 1 else gather
+        offset_id = self.get_offset_index(offset)
+        return self.read_subvolume_4d(il_id, il_id + 1, xl_id, xl_id + 1,
+                                      offset_id, offset_id + 1, 0, self.n_samples)[0, 0, 0]

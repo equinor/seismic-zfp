@@ -10,12 +10,47 @@ from seismic_zfp.utils import WrongDimensionalityError
 
 SGY_FILE_4D = 'test_data/small-4d.sgy'
 SGY_FILE_4D_IRREG = 'test_data/small-4d-irregular.sgy'
+SGZ_FILE_4D = 'test_data/small-4d_4bit.sgz'
 SGY_FILE_3D = 'test_data/small.sgy'
 SGZ_FILE_3D = 'test_data/small_4bit.sgz'
 SGZ_FILE_2D = 'test_data/small-2d.sgz'
 
 IL, XL, OFFSET = segyio.TraceField.INLINE_3D, segyio.TraceField.CROSSLINE_3D, segyio.TraceField.offset
 MISSING_4D = [(4, 4, o) for o in range(5)] + [(1, 2, 0), (2, 0, 4)]
+
+
+# --- Stored reference file: guards against symmetric regressions in writer and reader -----------------
+
+def test_stored_4d_file_reads_correctly():
+    cube = segyio.tools.cube(SGY_FILE_4D)
+    with SgzReader(SGZ_FILE_4D) as reader:
+        assert reader.is_4d and reader.structured
+        assert reader.blockshape == (4, 4, 4, 128)
+        assert reader.rate == 4
+        assert (reader.n_ilines, reader.n_xlines, reader.n_offsets, reader.n_samples) == (5, 5, 5, 36)
+        assert np.array_equal(reader.offsets, [1, 2, 3, 4, 5])
+        assert reader.get_source_data_hash() == '79a52b641244ae2435032bfff6e918782f775683'
+        assert np.allclose(reader.read_volume(), cube, rtol=1e-5)
+        assert np.allclose(reader.read_gather(2, 3), cube[2, 3], rtol=1e-5)
+        assert np.allclose(reader.read_offset(4), cube[:, :, 4], rtol=1e-5)
+        with segyio.open(SGY_FILE_4D) as segyfile:
+            for i in range(0, 125, 7):
+                assert np.allclose(reader.get_trace(i), segyfile.trace[i], rtol=1e-5)
+                assert reader.gen_trace_header(i) == segyfile.header[i]
+
+
+def test_stored_4d_file_reproduced_by_converter(tmp_path):
+    """Writer output must be byte-identical to the committed file, except for the library version"""
+    out_sgz = os.path.join(str(tmp_path), 'small-4d_4bit.sgz')
+    with SegyConverter(SGY_FILE_4D) as converter:
+        converter.run(out_sgz, bits_per_voxel=4)
+    with open(SGZ_FILE_4D, 'rb') as f:
+        stored = bytearray(f.read())
+    with open(out_sgz, 'rb') as f:
+        fresh = bytearray(f.read())
+    assert len(fresh) == len(stored) == 42496
+    stored[72:76] = fresh[72:76] = bytes(4)   # encoded version number
+    assert fresh == stored
 
 # (name, source SEG-Y, bits_per_voxel, blockshape, tolerance)
 # Lossy layouts on the irregular file smear around the zero-filled holes, hence the looser tolerances
@@ -37,14 +72,38 @@ def reference_cube(sgy_file):
     return cube
 
 
+_converted = {}
+
+
+def build_layout(param, tmp_path_factory):
+    """Convert once per layout for the module, whichever fixture asks first"""
+    name, sgy_file, bits_per_voxel, blockshape, tolerance = param
+    if name not in _converted:
+        out_sgz = os.path.join(str(tmp_path_factory.mktemp('sgz4d')), name + '.sgz')
+        with SegyConverter(sgy_file) as converter:
+            converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
+        _converted[name] = dict(name=name, sgy=sgy_file, sgz=out_sgz, cube=reference_cube(sgy_file), tol=tolerance,
+                                blockshape=blockshape or (4, 4, 4, 32768 // (64 * bits_per_voxel)))
+    return _converted[name]
+
+
 @pytest.fixture(scope='module', params=LAYOUTS, ids=[layout[0] for layout in LAYOUTS])
 def layout(request, tmp_path_factory):
-    name, sgy_file, bits_per_voxel, blockshape, tolerance = request.param
-    out_sgz = os.path.join(str(tmp_path_factory.mktemp('sgz4d')), name + '.sgz')
-    with SegyConverter(sgy_file) as converter:
-        converter.run(out_sgz, bits_per_voxel=bits_per_voxel, blockshape=blockshape)
-    return dict(name=name, sgy=sgy_file, sgz=out_sgz, cube=reference_cube(sgy_file), tol=tolerance,
-                blockshape=blockshape or (4, 4, 4, 32768 // (64 * bits_per_voxel)))
+    return build_layout(request.param, tmp_path_factory)
+
+
+REGULAR_LAYOUTS = [layout for layout in LAYOUTS if layout[1] == SGY_FILE_4D]
+IRREGULAR_LAYOUTS = [layout for layout in LAYOUTS if layout[1] == SGY_FILE_4D_IRREG]
+
+
+@pytest.fixture(scope='module', params=REGULAR_LAYOUTS, ids=[layout[0] for layout in REGULAR_LAYOUTS])
+def regular_layout(request, tmp_path_factory):
+    return build_layout(request.param, tmp_path_factory)
+
+
+@pytest.fixture(scope='module', params=IRREGULAR_LAYOUTS, ids=[layout[0] for layout in IRREGULAR_LAYOUTS])
+def irregular_layout(request, tmp_path_factory):
+    return build_layout(request.param, tmp_path_factory)
 
 
 @pytest.fixture(params=[False, True], ids=['ondisk', 'preload'])
@@ -265,9 +324,75 @@ def test_segyio_emulator_4d(layout):
         assert sgzfile.header[3] == segyfile.header[3]
         assert np.array_equal(sgzfile.attributes(OFFSET), segyfile.attributes(OFFSET)[:]) or not sgzfile.structured
         assert np.array_equal(sgzfile.samples, segyfile.samples)
-        for accessor in (sgzfile.iline, sgzfile.xline, sgzfile.depth_slice):
-            with pytest.raises(WrongDimensionalityError, match="4D"):
-                accessor[0]
+        assert np.array_equal(sgzfile.offsets, [1, 2, 3, 4, 5])
+        with pytest.raises(WrongDimensionalityError, match="4D"):
+            sgzfile.subvolume[11:13, 21:23, 0:10]
+
+
+def test_segyio_emulator_4d_matches_segyio_prestack_accessors(regular_layout):
+    """iline/xline/depth_slice/gather behave as segyio does for a prestack file"""
+    layout = regular_layout
+    tol = layout['tol']
+    with seismic_zfp.open(layout['sgz']) as sgz, segyio.open(layout['sgy']) as sgy:
+        assert len(sgz.iline) == len(sgy.iline) and len(sgz.xline) == len(sgy.xline)
+        assert len(sgz.depth_slice) == len(sgy.depth_slice)
+        for il in sgy.ilines:
+            assert np.allclose(sgz.iline[il], sgy.iline[il], **tol)             # first offset
+            for off in sgy.offsets:
+                assert np.allclose(sgz.iline[il, off], sgy.iline[il, off], **tol)
+        for xl in sgy.xlines:
+            assert np.allclose(sgz.xline[xl], sgy.xline[xl], **tol)
+            assert np.allclose(sgz.xline[xl, 4], sgy.xline[xl, 4], **tol)
+        for z in range(36):
+            assert np.allclose(sgz.depth_slice[z], sgy.depth_slice[z], **tol)   # first offset
+        for il in sgy.ilines:
+            for xl in sgy.xlines:
+                assert np.allclose(sgz.gather[il, xl], sgy.gather[il, xl], **tol)
+                assert np.allclose(sgz.gather[il, xl, 3], sgy.gather[il, xl, 3], **tol)
+                assert np.allclose(sgz.gather[il, xl, 2:5], sgy.gather[il, xl, 2:5], **tol)
+                assert np.allclose(sgz.gather[il, xl, 1:6:2], sgy.gather[il, xl, 1:6:2], **tol)
+
+        # Slices produce one array per combination, in the same order as segyio
+        for sgz_result, sgy_result in ((sgz.iline[12:14], sgy.iline[12:14]),
+                                       (sgz.iline[12:14, 2:4], sgy.iline[12:14, 2:4]),
+                                       (sgz.iline[:, 5], sgy.iline[:, 5]),
+                                       (sgz.xline[22:25:2, :], sgy.xline[22:25:2, :]),
+                                       (sgz.gather[12:14, 21], sgy.gather[12:14, 21]),
+                                       (sgz.gather[11, 21:23], sgy.gather[11, 21:23]),
+                                       (sgz.gather[12:14, 21:23], sgy.gather[12:14, 21:23]),
+                                       (sgz.gather[12:14, 21, 2:4], sgy.gather[12:14, 21, 2:4]),
+                                       (sgz.gather[12:14, 21:23, 3], sgy.gather[12:14, 21:23, 3]),
+                                       (sgz.gather[:, :], sgy.gather[:, :])):
+            # segyio's line generators reuse one buffer, so copy each item as it is yielded
+            sgz_list, sgy_list = list(sgz_result), [b.copy() for b in sgy_result]
+            assert len(sgz_list) == len(sgy_list)
+            for a, b in zip(sgz_list, sgy_list):
+                assert a.shape == b.shape
+                assert np.allclose(a, b, **tol)
+
+        for bad_call in (lambda: sgz.iline[11, 9], lambda: sgz.iline[10], lambda: sgz.xline[21, 0],
+                         lambda: sgz.gather[11, 26], lambda: sgz.gather[16, 21, 1], lambda: sgz.depth_slice[36]):
+            with pytest.raises(IndexError):
+                bad_call()
+        with pytest.raises(TypeError):
+            sgz.gather[11]
+
+
+def test_segyio_emulator_4d_irregular_first_offset(irregular_layout):
+    """Irregular files still provide first-offset lines; missing traces read as zero"""
+    layout = irregular_layout
+    cube = layout['cube']
+    with seismic_zfp.open(layout['sgz']) as sgz:
+        assert np.allclose(sgz.iline[12], cube[1, :, 0, :], **layout['tol'])
+        assert np.allclose(sgz.xline[21, 5], cube[:, 0, 4, :], **layout['tol'])
+        assert np.allclose(sgz.gather[15, 25], np.zeros((5, 36)), atol=layout['tol'].get('atol', 1e-6))
+        assert np.allclose(sgz.depth_slice[0], cube[:, :, 0, 0], **layout['tol'])
+
+
+def test_segyio_emulator_3d_has_no_gather():
+    with seismic_zfp.open(SGZ_FILE_3D) as sgzfile:
+        with pytest.raises(WrongDimensionalityError):
+            sgzfile.gather[1, 20]
 
 
 def test_sgz_converter_to_segy_rejected(layout):
