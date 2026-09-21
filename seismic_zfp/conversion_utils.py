@@ -111,9 +111,10 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
         n_il = len(geom.ilines)
         buffer[12:16] = int_to_bytes(n_il)
 
-        min_xl = np.int32(geom.min_xl) if unstructured else xlines[0]
+        # geom holds ordinals into the source axes, which may be cropped
+        min_xl = np.int32(geom.min_xl) if unstructured else xlines[geom.xlines[0]]
         buffer[20:24] = np_float_to_bytes_signed(min_xl)
-        min_il = np.int32(geom.min_il) if unstructured else ilines[0]
+        min_il = np.int32(geom.min_il) if unstructured else ilines[geom.ilines[0]]
         buffer[24:28] = np_float_to_bytes_signed(min_il)
 
         if not unstructured:
@@ -218,14 +219,15 @@ def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, 
                    seismic_buffer, seismicfile, minimal_il_reader, trace_length):
     for i in range(blockshape[0]):
         headers = []
-        start_trace = (plane_set_id * blockshape[0] + i) * len(seismicfile.xlines) + geom.xlines[0]
+        il_ordinal = geom.ilines[0] + plane_set_id * blockshape[0] + i
+        start_trace = il_ordinal * len(seismicfile.xlines) + geom.xlines[0]
         if i < planes_to_read:
             if minimal_il_reader is not None:
                 headers, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] \
-                    = minimal_il_reader.read_line(plane_set_id * blockshape[0] + i)
+                    = minimal_il_reader.read_line(il_ordinal)
             else:
                 seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(
-                    seismicfile.iline[seismicfile.ilines[geom.ilines[0] + plane_set_id * blockshape[0] + i]]
+                    seismicfile.iline[seismicfile.ilines[il_ordinal]]
                 )[geom.xlines[0]:geom.xlines[-1]+1, :]
                 if store_headers:
                     headers = seismicfile.header[start_trace: start_trace + len(geom.xlines)]
@@ -239,11 +241,11 @@ def io_thread_func(blockshape, store_headers, headers_dict, geom, plane_set_id, 
 
         else:
             # Repeat last plane across padding to give better compression accuracy
+            last_populated_inline_number = geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1
             if minimal_il_reader is not None:
                 _, seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] \
-                    = minimal_il_reader.read_line(plane_set_id * blockshape[0] + planes_to_read - 1)
+                    = minimal_il_reader.read_line(last_populated_inline_number)
             else:
-                last_populated_inline_number = geom.ilines[0] + plane_set_id * blockshape[0] + planes_to_read - 1
                 last_populated_inline = seismicfile.iline[seismicfile.ilines[last_populated_inline_number]]
                 il_shape = (slice(geom.xlines[0], geom.xlines[-1] + 1), slice(None))
                 seismic_buffer[i, 0:len(geom.xlines), 0:trace_length] = np.asarray(last_populated_inline)[il_shape]

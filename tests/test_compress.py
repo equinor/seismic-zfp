@@ -477,8 +477,37 @@ def test_compress_crop(tmp_path):
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
         assert reader.structured
+        with segyio.open(SGY_FILE) as segyfile:
+            assert np.array_equal(reader.ilines, segyfile.ilines[1:4])
+            assert np.array_equal(reader.xlines, segyfile.xlines[1:3])
+            for i in range(reader.tracecount):
+                assert reader.gen_trace_header(i)[189] == reader.ilines[i // 2]
+                assert reader.gen_trace_header(i)[193] == reader.xlines[i % 2]
 
     assert np.allclose(sgz_data, segyio.tools.cube(SGY_FILE)[1:4, 1:3, :], rtol=1e-8)
+
+
+def test_compress_crop_header_arrays_sized_to_crop(tmp_path):
+    # 512 traces: full-size header arrays (2048 bytes) straddle several 512-byte
+    # pages, so a crop must size its header arrays to the cropped tracecount
+    # for the footer offsets in the SGZ header to be correct.
+    out_sgz = os.path.join(str(tmp_path), 'tracecount512_crop.sgz')
+    with SegyConverter(SGY_FILE_512, min_il=2, max_il=14, min_xl=3, max_xl=30) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=8)
+        converter.run(out_sgz, bits_per_voxel=8)
+
+    assert os.path.getsize(out_sgz) == estimated_size
+
+    with segyio.open(SGY_FILE_512) as segyfile:
+        with SgzReader(out_sgz) as reader:
+            assert reader.tracecount == 12 * 27
+            assert np.array_equal(reader.ilines, segyfile.ilines[2:14])
+            assert np.array_equal(reader.xlines, segyfile.xlines[3:30])
+            reader.read_variant_headers()
+            for i in range(reader.tracecount):
+                segy_trace = (2 + i // 27) * 32 + 3 + i % 27
+                assert reader.gen_trace_header(i) == segyfile.header[segy_trace]
+            assert np.allclose(reader.read_volume(), segyio.tools.cube(SGY_FILE_512)[2:14, 3:30, :], rtol=1e-6)
 
 
 def test_compress_unstructured_decimated(tmp_path):

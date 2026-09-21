@@ -73,7 +73,11 @@ class SeismicFileConverter(object):
 
     def get_blank_header_info(self, seismic, header_detection):
         first_il_header_val = seismic.header[0][segyio.tracefield.TraceField.INLINE_3D]
-        n_traces = seismic.tracecount if seismic.structured or first_il_header_val == 0 else 0
+        if isinstance(self.geom, Geometry3d) and not isinstance(self.geom, InferredGeometry3d):
+            # Regular 3D geometry, possibly cropped
+            n_traces = len(self.geom.ilines) * len(self.geom.xlines)
+        else:
+            n_traces = seismic.tracecount if seismic.structured or first_il_header_val == 0 else 0
         if header_detection == 'heuristic':
             return HeaderwordInfo(n_traces=n_traces,
                                   seismicfile=seismic,
