@@ -9,11 +9,12 @@ import zfpy
 import pytest
 
 from seismic_zfp.conversion import SegyConverter
-from seismic_zfp.conversion_utils import make_header_seismic_file, io_thread_func_4d, seismic_file_producer_4d
+from seismic_zfp.conversion_utils import (make_header_seismic_file, io_thread_func_4d, seismic_file_producer_4d,
+                                          unstructured_io_thread_func_4d)
 from seismic_zfp.headers import HeaderwordInfo
 from seismic_zfp.seismicfile import SeismicFile
 from seismic_zfp.sgzconstants import DISK_BLOCK_BYTES, SGZ_4D_HEADER_OFFSET, HEADER_DETECTION_CODES
-from seismic_zfp.utils import (Geometry4d, Geometry3d, bytes_to_int, bytes_to_signed_int,
+from seismic_zfp.utils import (Geometry4d, Geometry3d, InferredGeometry4d, bytes_to_int, bytes_to_signed_int,
                                define_blockshape_4d, pad)
 
 SGY_FILE_4D = 'test_data/small-4d.sgy'
@@ -366,6 +367,144 @@ def test_segy_converter_3d_files_not_4d():
     for sgy in (SGY_FILE, 'test_data/small-2d.sgy', 'test_data/small-irregular.sgy'):
         with SegyConverter(sgy) as converter:
             assert not converter.is_4d
+
+
+# --- Irregular (unstructured) prestack input -------------------------------------------------------
+
+SGY_FILE_4D_IRREG = 'test_data/small-4d-irregular.sgy'
+# Traces removed from small-4d.sgy to make the irregular file, as (il, xl, offset) *ordinals*
+MISSING_4D = [(4, 4, o) for o in range(5)] + [(1, 2, 0), (2, 0, 4)]
+
+
+def irregular_reference():
+    """Regular reference cube with missing traces zeroed, plus a boolean mask of present traces"""
+    cube = segyio.tools.cube(SGY_FILE_4D).copy()
+    present = np.ones(cube.shape[:3], dtype=bool)
+    for il, xl, off in MISSING_4D:
+        cube[il, xl, off] = 0
+        present[il, xl, off] = False
+    return cube, present
+
+
+def test_irregular_4d_test_data_is_as_documented():
+    cube_full = segyio.tools.cube(SGY_FILE_4D)
+    with segyio.open(SGY_FILE_4D_IRREG, strict=False) as irregular, segyio.open(SGY_FILE_4D) as regular:
+        assert irregular.tracecount == 125 - len(MISSING_4D)
+        assert irregular.unstructured
+        triples = set(zip(irregular.attributes(IL)[:].tolist(), irregular.attributes(XL)[:].tolist(),
+                          irregular.attributes(OFFSET)[:].tolist()))
+        expected_missing = {(regular.ilines[il], regular.xlines[xl], regular.offsets[off]) for il, xl, off in MISSING_4D}
+        assert triples.isdisjoint(expected_missing)
+        assert len(triples) == irregular.tracecount
+        for i, h in enumerate(irregular.header):
+            il, xl, off = h[IL] - 11, h[XL] - 21, h[OFFSET] - 1
+            assert np.array_equal(irregular.trace[i], cube_full[il, xl, off])
+
+
+def test_segy_converter_4d_irregular_geometry_inference():
+    with SegyConverter(SGY_FILE_4D_IRREG) as converter:
+        assert converter.is_4d
+        assert converter.geom is None   # Only inferred when needed
+        converter.get_output_size(bits_per_voxel=16)
+        geom = converter.geom
+    assert isinstance(geom, InferredGeometry4d)
+    assert list(geom.ilines) == [11, 12, 13, 14, 15]
+    assert list(geom.xlines) == [21, 22, 23, 24, 25]
+    assert list(geom.offsets) == [1, 2, 3, 4, 5]
+    assert len(geom.traces_ref) == 118
+    assert (15, 25, 1) not in geom.traces_ref
+    assert geom.traces_ref[(11, 21, 1)] == 0
+
+
+def test_segy_converter_4d_irregular_roundtrip(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-irregular-16bit.sgz')
+    with SegyConverter(SGY_FILE_4D_IRREG) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=16)
+        converter.run(out_sgz, bits_per_voxel=16)
+    assert os.path.getsize(out_sgz) == estimated_size
+
+    cube, present = irregular_reference()
+    info = parse_sgz_4d(out_sgz)
+    # Enclosing regular grid is described in the header, actual trace count signals irregularity
+    assert (info['n_il'], info['n_xl'], info['n_offsets'], info['n_samples']) == (5, 5, 5, 36)
+    assert (info['min_il'], info['min_xl'], info['min_offset'], info['offset_step']) == (11, 21, 1, 1)
+    assert info['tracecount'] == 118
+    assert info['header_entry_bytes'] == 125 * 4   # header arrays span the full grid
+    assert info['blockshape'] == (4, 4, 4, 32)
+
+    volume = info['volume']
+    assert np.allclose(volume[present], cube[present], rtol=1e-5)
+    # Missing traces are zero-filled; fixed-rate compression smears a little into single holes
+    assert np.all(volume[4, 4] == 0)
+    assert np.abs(volume[~present]).max() < 1e-3
+
+    # Header arrays are laid out on the full grid with zeros at missing positions
+    hdr = info['header_arrays']
+    assert set(hdr.keys()) == {OFFSET, IL, XL}
+    grid_il = np.repeat([11, 12, 13, 14, 15], 25)
+    grid_xl = np.tile(np.repeat([21, 22, 23, 24, 25], 5), 5)
+    grid_off = np.tile([1, 2, 3, 4, 5], 25)
+    flat_present = present.reshape(-1)
+    assert np.array_equal(hdr[IL], np.where(flat_present, grid_il, 0))
+    assert np.array_equal(hdr[XL], np.where(flat_present, grid_xl, 0))
+    assert np.array_equal(hdr[OFFSET], np.where(flat_present, grid_off, 0))
+    assert np.count_nonzero(hdr[IL]) == 118
+
+    # Hash is over the zero-filled grid, as fed to the compressor
+    assert info['hash'] == sha1_of_cube(cube)
+
+
+def test_segy_converter_4d_irregular_sliced_blockshape(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-irregular-2bit.sgz')
+    with SegyConverter(SGY_FILE_4D_IRREG) as converter:
+        converter.run(out_sgz, bits_per_voxel=2, blockshape=(8, 8, 4, 64))
+    cube, present = irregular_reference()
+    info = parse_sgz_4d(out_sgz)
+    assert info['data_blocks'] == 2
+    assert info['tracecount'] == 118
+    # Padding beyond the grid repeats edges, including the zeroed corner gather
+    pv = info['padded_volume']
+    assert np.allclose(pv[5:, 4, :, 0:36], 0, atol=1e-3)
+    assert np.allclose(pv[4, 5:, :, 0:36], 0, atol=1e-3)
+    assert np.allclose(pv[0:4, 5:, 0:5, 0:36], np.repeat(cube[0:4, 4:5], 3, axis=1), rtol=1e-2)
+
+
+def test_segy_converter_4d_irregular_strip_headers(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-irregular-strip.sgz')
+    with SegyConverter(SGY_FILE_4D_IRREG) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=16, header_detection='strip')
+        converter.run(out_sgz, bits_per_voxel=16, header_detection='strip')
+    assert os.path.getsize(out_sgz) == estimated_size
+    info = parse_sgz_4d(out_sgz)
+    assert info['n_header_arrays'] == 0
+    cube, present = irregular_reference()
+    assert np.allclose(info['volume'][present], cube[present], rtol=1e-5)
+
+
+def test_segy_converter_4d_irregular_crop_rejected():
+    with pytest.raises(NotImplementedError):
+        SegyConverter(SGY_FILE_4D_IRREG, min_offset=1)
+
+
+def test_unstructured_io_thread_func_4d_partial_plane_set():
+    cube, present = irregular_reference()
+    with SegyConverter(SGY_FILE_4D_IRREG) as converter, SeismicFile.open(SGY_FILE_4D_IRREG) as seismic:
+        converter.infer_geometry(seismic)
+        geom = converter.geom
+        headers_dict = blank_headers_dict(125)
+        buffer = np.zeros((4, 8, 8, 128), dtype=np.float32)
+        # Second plane-set holds only inline ordinal 4, which contains the missing corner gather
+        unstructured_io_thread_func_4d((4, 4, 4, 128), True, headers_dict, geom, 1, 1, buffer, seismic, 36)
+
+    for i in range(4):
+        assert np.array_equal(buffer[i, 0:5, 0:5, 0:36], cube[4])
+    assert np.all(buffer[:, 4, :, :] == 0)   # missing corner gather and its xl-edge padding
+    assert np.all(buffer[:, 5:, :, :] == 0)
+    assert np.array_equal(buffer[0, 0:5, 5:, 0:36], np.repeat(cube[4, :, 4:5], 3, axis=1))
+    for tf, grid in ((IL, np.repeat([11, 12, 13, 14, 15], 25)),):
+        assert np.array_equal(headers_dict[tf][100:120], grid[100:120])
+        assert np.all(headers_dict[tf][120:125] == 0)
+        assert np.all(headers_dict[tf][0:100] == 0)
 
 
 def test_make_header_4d():

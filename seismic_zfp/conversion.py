@@ -22,6 +22,7 @@ from .utils import (pad,
                     Geometry3d,
                     Geometry4d,
                     InferredGeometry3d,
+                    InferredGeometry4d,
                     Geometry2d
                     )
 
@@ -61,6 +62,8 @@ class SeismicFileConverter(object):
         self.geom = None
         crop_4d = [min_il, max_il, min_xl, max_xl, min_offset, max_offset]
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
+            # Irregular files have no geometry until infer_geometry() runs, so take this from the file
+            self.is_4d = seismic.is_4d
             if seismic.is_4d and any(p is not None for p in crop_4d):
                 self.geom = self.crop_geometry_4d(seismic, *crop_4d)
             elif not seismic.is_4d and (min_offset is not None or max_offset is not None):
@@ -70,7 +73,6 @@ class SeismicFileConverter(object):
             else:
                 self.detect_geometry(seismic)
         self.is_2d = isinstance(self.geom, Geometry2d)
-        self.is_4d = isinstance(self.geom, Geometry4d)
         self.mem_limit = psutil.virtual_memory().total
 
     def __enter__(self):
@@ -159,9 +161,13 @@ class SeismicFileConverter(object):
 
     def detect_geometry(self, seismic):
         if seismic.is_4d:
-            if not seismic.structured:
-                raise NotImplementedError("Prestack SEG-Y with irregular offsets per IL/XL is not yet supported")
-            self.geom = Geometry4d(0, len(seismic.ilines), 0, len(seismic.xlines), 0, len(seismic.offsets))
+            if seismic.structured:
+                self.geom = Geometry4d(0, len(seismic.ilines), 0, len(seismic.xlines), 0, len(seismic.offsets))
+            else:
+                # We have an irregular prestack SEG-Y
+                print("Prestack SEG-Y file is unstructured and no geometry provided. "
+                      "Determining this may take some time...")
+                self.geom = None
         elif seismic.unstructured:
             first_header = seismic.header[0]
             last_header = seismic.header[-1]
@@ -184,14 +190,18 @@ class SeismicFileConverter(object):
                 self.geom = Geometry3d(0, len(seismic.ilines), 0, len(seismic.xlines))
 
     def infer_geometry(self, seismic):
-        traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
-        self.geom = InferredGeometry3d(traces_ref)
+        if self.is_4d:
+            traces_ref = {(h[189], h[193], h[37]): i for i, h in enumerate(seismic.header)}
+            self.geom = InferredGeometry4d(traces_ref)
+        else:
+            traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
+            self.geom = InferredGeometry3d(traces_ref)
         print("... inferred geometry is:", self.geom)
 
     @staticmethod
     def crop_geometry_4d(seismic, min_il, max_il, min_xl, max_xl, min_offset, max_offset):
         if not seismic.structured:
-            raise NotImplementedError("Prestack SEG-Y with irregular offsets per IL/XL is not yet supported")
+            raise NotImplementedError("Cropping of irregular prestack SEG-Y is not supported")
         return Geometry4d(0 if min_il is None else min_il,
                           len(seismic.ilines) if max_il is None else max_il,
                           0 if min_xl is None else min_xl,

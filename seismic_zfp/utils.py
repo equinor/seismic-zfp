@@ -42,10 +42,11 @@ class Geometry3d:
 
 class Geometry4d:
     """Lightweight place to keep track of IL/XL/offset ranges (ordinals) for prestack data"""
-    def __init__(self, min_il, max_il, min_xl, max_xl, min_offset, max_offset):
-        self.ilines = range(min_il, max_il)
-        self.xlines = range(min_xl, max_xl)
-        self.offsets = range(min_offset, max_offset)
+    def __init__(self, min_il, max_il, min_xl, max_xl, min_offset, max_offset,
+                 il_step=1, xl_step=1, offset_step=1):
+        self.ilines = range(min_il, max_il, il_step)
+        self.xlines = range(min_xl, max_xl, xl_step)
+        self.offsets = range(min_offset, max_offset, offset_step)
 
     def __repr__(self):
         return (f'IL:[{self.ilines.start},{self.ilines.stop}] -- XL:[{self.xlines.start},{self.xlines.stop}]'
@@ -73,6 +74,30 @@ class InferredGeometry3d(Geometry3d):
 
     def __repr__(self):
         return f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
+
+
+class InferredGeometry4d(Geometry4d):
+    """Subclass used to signify irregular prestack input SEG-Y.
+
+    Unlike Geometry4d the ilines/xlines/offsets ranges hold IL/XL/offset *numbers* rather than
+    ordinals, spanning the regular grid which encloses every trace in traces_ref.
+    """
+    def __init__(self, traces_ref):
+        self.traces_ref = traces_ref
+        il_ids = set([k[0] for k in traces_ref.keys()])
+        xl_ids = set([k[1] for k in traces_ref.keys()])
+        offset_ids = set([k[2] for k in traces_ref.keys()])
+        self.min_il, self.max_il, self.il_step = InferredGeometry3d.get_range(il_ids)
+        self.min_xl, self.max_xl, self.xl_step = InferredGeometry3d.get_range(xl_ids)
+        self.min_offset, self.max_offset, self.offset_step = InferredGeometry3d.get_range(offset_ids)
+        # A step of 0 signifies a single value on that axis, which range() cannot express
+        super().__init__(self.min_il, self.max_il + 1, self.min_xl, self.max_xl + 1,
+                         self.min_offset, self.max_offset + 1,
+                         il_step=self.il_step or 1, xl_step=self.xl_step or 1, offset_step=self.offset_step or 1)
+
+    def __repr__(self):
+        return (f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
+                f' -- OFFSET:[{self.min_offset},{self.max_offset},{self.offset_step}]')
 
 
 class Geometry2d:

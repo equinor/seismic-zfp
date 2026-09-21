@@ -24,6 +24,7 @@ from .utils import (pad,
                     InferredGeometry3d,
                     Geometry2d,
                     Geometry4d,
+                    InferredGeometry4d,
                     )
 
 
@@ -139,10 +140,13 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
         if is_4d:
             n_offsets = len(geom.offsets)
             padded_voxels *= pad(n_offsets, blockshape[2])
-            min_offset = offsets[geom.offsets[0]]
+            if unstructured:
+                min_offset, offset_step = np.int32(geom.min_offset), np.int32(geom.offset_step)
+            else:
+                min_offset, offset_step = offsets[geom.offsets[0]], offsets[1] - offsets[0]
             buffer[SGZ_4D_HEADER_OFFSET + 0:SGZ_4D_HEADER_OFFSET + 4] = int_to_bytes(n_offsets)
             buffer[SGZ_4D_HEADER_OFFSET + 4:SGZ_4D_HEADER_OFFSET + 8] = np_float_to_bytes_signed(min_offset)
-            buffer[SGZ_4D_HEADER_OFFSET + 8:SGZ_4D_HEADER_OFFSET + 12] = np_float_to_bytes_signed(offsets[1] - offsets[0])
+            buffer[SGZ_4D_HEADER_OFFSET + 8:SGZ_4D_HEADER_OFFSET + 12] = np_float_to_bytes_signed(offset_step)
             buffer[SGZ_4D_HEADER_OFFSET + 12:SGZ_4D_HEADER_OFFSET + 16] = int_to_bytes(blockshape[2])
         compressed_data_length_diskblocks = int(((bits_per_voxel * padded_voxels) // 8) // DISK_BLOCK_BYTES)
 
@@ -327,6 +331,37 @@ def io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_i
         seismic_buffer[i, :, :, trace_length:] = seismic_buffer[i, :, :, trace_length - 1:trace_length]
 
 
+def unstructured_io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
+                                   seismic_buffer, seismicfile, trace_length):
+    """Fill seismic_buffer with blockshape[0] inlines of irregular prestack data, shaped (il, xl, offset, sample)
+
+    Traces are located through geom.traces_ref, so any (il, xl, offset) position without a trace
+    is left as zeros, and its header array entries remain zero. Padding outside the enclosing
+    regular grid repeats edges, as for regular input.
+    """
+    n_xl, n_off = len(geom.xlines), len(geom.offsets)
+    for i in range(planes_to_read):
+        il_id = plane_set_id * blockshape[0] + i
+        il_num = geom.ilines[il_id]
+        for xl_id, xl_num in enumerate(geom.xlines):
+            for off_id, off_num in enumerate(geom.offsets):
+                trace_id = geom.traces_ref.get((il_num, xl_num, off_num))
+                if trace_id is None:
+                    continue
+                seismic_buffer[i, xl_id, off_id, 0:trace_length] = seismicfile.trace[trace_id]
+                if store_headers:
+                    header = seismicfile.header[trace_id]
+                    t_store = (il_id * n_xl + xl_id) * n_off + off_id
+                    for tracefield, array in headers_dict.items():
+                        array[t_store] = header[tracefield]
+
+    for i in range(blockshape[0]):
+        if i >= planes_to_read:
+            seismic_buffer[i] = seismic_buffer[planes_to_read - 1]
+        seismic_buffer[i, n_xl:, 0:n_off, 0:trace_length] = seismic_buffer[i, n_xl - 1:n_xl, 0:n_off, 0:trace_length]
+        seismic_buffer[i, :, n_off:, 0:trace_length] = seismic_buffer[i, :, n_off - 1:n_off, 0:trace_length]
+        seismic_buffer[i, :, :, trace_length:] = seismic_buffer[i, :, :, trace_length - 1:trace_length]
+
 def numpy_producer(queue, in_array, blockshape, hash_object):
     """Copies plane-sets from input array, and puts them in the queue for writing to disk"""
     n_ilines, n_xlines, trace_length = in_array.shape
@@ -472,8 +507,12 @@ def seismic_file_producer_4d(queue, seismicfile, blockshape, store_headers,
         # Need to allocate at every step as this is being sent to another thread
         seismic_buffer = np.zeros((blockshape[0],) + padded_shape[1:], dtype=np.float32)
 
-        io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
-                          seismic_buffer, seismicfile, trace_length)
+        if isinstance(geom, InferredGeometry4d):
+            unstructured_io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id,
+                                           planes_to_read, seismic_buffer, seismicfile, trace_length)
+        else:
+            io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
+                              seismic_buffer, seismicfile, trace_length)
 
         for i in range(planes_to_read):
             hash_object.update(seismic_buffer[i, 0:n_xlines, 0:n_offsets, 0:trace_length].copy())

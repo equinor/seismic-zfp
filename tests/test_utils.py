@@ -152,6 +152,32 @@ def test_geometry_4d():
     assert 'OFFSET:[1,4]' in repr(geom)
 
 
+def test_inferred_geometry_4d():
+    # Decimated IL, regular XL, offsets 100..400 step 100, with two positions missing
+    traces_ref = {(il, xl, off): i for i, (il, xl, off) in enumerate(
+        (il, xl, off) for il in (10, 12, 14) for xl in (5, 6) for off in (100, 200, 300, 400)
+        if (il, xl, off) not in [(12, 6, 100), (14, 5, 400)])}
+    geom = InferredGeometry4d(traces_ref)
+    assert isinstance(geom, Geometry4d)
+    assert not isinstance(geom, Geometry3d)
+    assert list(geom.ilines) == [10, 12, 14]
+    assert list(geom.xlines) == [5, 6]
+    assert list(geom.offsets) == [100, 200, 300, 400]
+    assert (geom.min_il, geom.max_il, geom.il_step) == (10, 14, 2)
+    assert (geom.min_xl, geom.max_xl, geom.xl_step) == (5, 6, 1)
+    assert (geom.min_offset, geom.max_offset, geom.offset_step) == (100, 400, 100)
+    assert geom.traces_ref[(10, 5, 100)] == 0
+    assert (12, 6, 100) not in geom.traces_ref
+    assert repr(geom) == 'IL:[10,14,2] -- XL:[5,6,1] -- OFFSET:[100,400,100]'
+
+
+def test_inferred_geometry_4d_single_valued_axis():
+    traces_ref = {(il, 7, off): 0 for il in (1, 2) for off in (10, 20, 30)}
+    geom = InferredGeometry4d(traces_ref)
+    assert list(geom.xlines) == [7]
+    assert geom.xl_step == 0
+
+
 def test_get_chunk_cache_size():
     assert 2048 == get_chunk_cache_size(1000, 2000)
     assert 1024 == get_chunk_cache_size(5000, 511)
