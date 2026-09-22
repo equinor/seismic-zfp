@@ -7,11 +7,18 @@ These are a set of small Python programs which demonstrate usage of seismic-zfp,
    - Reading individual traces
    - Reading subvolumes
    - Reading file/trace headers
+   - Reading gathers from 4D (prestack) files
    
    Usage usually follows a pattern like this:
    
    ```shell
    python example.py [FILE_ROOT] [ITEM_NO]
+   ```
+
+   The 4D example draws several gathers side by side, as a prestack viewer would:
+
+   ```shell
+   python read-inline-4d.py [FILE_ROOT] [LINE_NO] [FIRST_XL_ORDINAL] [N_GATHERS]
    ```
 
 
