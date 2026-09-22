@@ -178,6 +178,28 @@ def test_inferred_geometry_4d_single_valued_axis():
     assert geom.xl_step == 0
 
 
+def test_inferred_geometry_4d_trace_index():
+    # Inline-sorted with IL step 2 and offsets step 100; (12, 6, 100) missing; trace 9 belongs to inline 14
+    keys = [(il, xl, off) for il in (10, 12, 14) for xl in (5, 6) for off in (100, 200)]
+    keys.remove((12, 6, 100))
+    geom = InferredGeometry4d({key: i for i, key in enumerate(keys)})
+    assert np.array_equal(geom.inline_trace_ids(0), [0, 1, 2, 3])
+    assert np.array_equal(geom.inline_trace_ids(1), [4, 5, 6])
+    assert np.array_equal(geom.inline_trace_ids(2), [7, 8, 9, 10])
+    assert len(geom.inline_trace_ids(3)) == 0
+    xl_ids, off_ids = geom.trace_ordinals(geom.inline_trace_ids(1))
+    assert np.array_equal(xl_ids, [0, 0, 1])
+    assert np.array_equal(off_ids, [0, 1, 1])
+
+    # Offset-sorted: an inline's traces are spread through the file
+    keys = [(il, xl, off) for off in (100, 200) for il in (10, 12) for xl in (5, 6)]
+    geom = InferredGeometry4d({key: i for i, key in enumerate(keys)})
+    assert np.array_equal(geom.inline_trace_ids(0), [0, 1, 4, 5])
+    xl_ids, off_ids = geom.trace_ordinals(geom.inline_trace_ids(0))
+    assert np.array_equal(xl_ids, [0, 1, 0, 1])
+    assert np.array_equal(off_ids, [0, 0, 1, 1])
+
+
 def test_get_chunk_cache_size():
     assert 2048 == get_chunk_cache_size(1000, 2000)
     assert 1024 == get_chunk_cache_size(5000, 511)

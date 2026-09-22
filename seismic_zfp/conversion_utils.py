@@ -177,8 +177,17 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     return buffer
 
 
-def read_trace_header_fields(seismicfile, tracefields):
-    """Read one or more 4-byte trace header fields from every trace of a SEG-Y file
+def _trace_header_field_widths():
+    """Byte width of each SEG-Y trace header field, from the spacing of segyio's TraceField positions"""
+    positions = [int(tf) for tf in segyio.TraceField.enums()[0:89]]
+    return {pos: (4 if nxt - pos == 4 else 2) for pos, nxt in zip(positions, positions[1:] + [positions[-1] + 2])}
+
+
+TRACE_HEADER_FIELD_WIDTHS = _trace_header_field_widths()
+
+
+def read_trace_header_fields(seismicfile, tracefields, start=0, stop=None):
+    """Read trace header fields from a range of traces of a SEG-Y file
 
     segyio's attributes() seeks to every trace once per field, which is slow for files with
     millions of traces. Fixed-length traces allow a single strided pass over a memory map instead.
@@ -186,21 +195,25 @@ def read_trace_header_fields(seismicfile, tracefields):
 
     Returns
     -------
-    dict of {tracefield: numpy.ndarray of int32, shape (tracecount,)}
+    dict of {tracefield: numpy.ndarray of int32, shape (stop - start,)}
     """
     tracecount = seismicfile.tracecount
+    stop = tracecount if stop is None else stop
     data_bytes = os.path.getsize(seismicfile.filename) - SEGY_FILE_HEADER_BYTES
     if (seismicfile.filetype != Filetype.SEGY or tracecount == 0 or data_bytes % tracecount != 0
             or data_bytes // tracecount < SEGY_TRACE_HEADER_BYTES):
-        return {tf: seismicfile.attributes(tf)[:] for tf in tracefields}
+        return {tf: seismicfile.attributes(tf)[start:stop] for tf in tracefields}
 
     trace_bytes = data_bytes // tracecount
-    headers = np.memmap(seismicfile.filename, dtype=np.uint8, mode='r', offset=SEGY_FILE_HEADER_BYTES,
-                        shape=(tracecount, trace_bytes))[:, 0:SEGY_TRACE_HEADER_BYTES]
+    headers = np.memmap(seismicfile.filename, dtype=np.uint8, mode='r',
+                        offset=SEGY_FILE_HEADER_BYTES + start * trace_bytes,
+                        shape=(stop - start, trace_bytes))[:, 0:SEGY_TRACE_HEADER_BYTES]
     values = {}
     for tf in tracefields:
-        start = int(tf) - 1   # tracefield enums are 1-based byte positions
-        values[tf] = np.ascontiguousarray(headers[:, start:start + 4]).view('>i4').ravel().astype(np.int32)
+        position = int(tf)   # tracefield enums are 1-based byte positions
+        width = TRACE_HEADER_FIELD_WIDTHS[position]
+        column = np.ascontiguousarray(headers[:, position - 1:position - 1 + width])
+        values[tf] = column.view('>i4' if width == 4 else '>i2').ravel().astype(np.int32)
     del headers
     return values
 
@@ -364,25 +377,40 @@ def unstructured_io_thread_func_4d(blockshape, store_headers, headers_dict, geom
                                    seismic_buffer, seismicfile, trace_length):
     """Fill seismic_buffer with blockshape[0] inlines of irregular prestack data, shaped (il, xl, offset, sample)
 
-    Traces are located through geom.traces_ref, so any (il, xl, offset) position without a trace
-    is left as zeros, and its header array entries remain zero. Padding outside the enclosing
-    regular grid repeats edges, as for regular input.
+    An inline's traces are read as one contiguous slab and scattered to their (xl, offset) grid
+    positions, so any position without a trace is left as zeros, and its header array entries
+    remain zero. Padding outside the enclosing regular grid repeats edges, as for regular input.
     """
     n_xl, n_off = len(geom.xlines), len(geom.offsets)
     for i in range(planes_to_read):
         il_id = plane_set_id * blockshape[0] + i
-        il_num = geom.ilines[il_id]
-        for xl_id, xl_num in enumerate(geom.xlines):
-            for off_id, off_num in enumerate(geom.offsets):
-                trace_id = geom.traces_ref.get((il_num, xl_num, off_num))
-                if trace_id is None:
-                    continue
+        trace_ids = geom.inline_trace_ids(il_id)
+        if len(trace_ids) == 0:
+            continue
+        xl_ids, off_ids = geom.trace_ordinals(trace_ids)
+        start, stop = int(trace_ids[0]), int(trace_ids[-1]) + 1
+
+        # Inline-sorted files hold an inline's traces contiguously. If traces of other inlines are
+        # interleaved (or the file is not inline-sorted at all), a slab would be mostly foreign traces.
+        contiguous = stop - start <= 2 * len(trace_ids)
+        if contiguous:
+            slab = seismicfile.trace.raw[start:stop]
+            seismic_buffer[i, xl_ids, off_ids, 0:trace_length] = slab[trace_ids - start]
+        else:
+            for trace_id, xl_id, off_id in zip(trace_ids.tolist(), xl_ids.tolist(), off_ids.tolist()):
                 seismic_buffer[i, xl_id, off_id, 0:trace_length] = seismicfile.trace[trace_id]
-                if store_headers:
+
+        if store_headers and headers_dict:
+            t_store = il_id * n_xl * n_off + xl_ids * n_off + off_ids
+            if contiguous:
+                fields = read_trace_header_fields(seismicfile, list(headers_dict.keys()), start, stop)
+                for tracefield, array in headers_dict.items():
+                    array[t_store] = fields[tracefield][trace_ids - start]
+            else:
+                for n, trace_id in enumerate(trace_ids.tolist()):
                     header = seismicfile.header[trace_id]
-                    t_store = (il_id * n_xl + xl_id) * n_off + off_id
                     for tracefield, array in headers_dict.items():
-                        array[t_store] = header[tracefield]
+                        array[t_store[n]] = header[tracefield]
 
     for i in range(blockshape[0]):
         if i >= planes_to_read:

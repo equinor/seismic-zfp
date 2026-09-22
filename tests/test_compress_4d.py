@@ -484,7 +484,8 @@ def test_segy_converter_4d_irregular_strip_headers(tmp_path):
 def test_read_trace_header_fields_matches_segyio():
     import glob
     from seismic_zfp.conversion_utils import read_trace_header_fields
-    fields = [189, 193, 37, 181, 185, 1, 5]
+    # 4-byte and 2-byte fields, including sample count / interval and the last field
+    fields = [189, 193, 37, 181, 185, 1, 5, 29, 71, 115, 117, 229]
     checked = 0
     for sgy in sorted(glob.glob('test_data/**/*.sgy', recursive=True)):
         with SeismicFile.open(sgy) as seismic:
@@ -492,6 +493,10 @@ def test_read_trace_header_fields_matches_segyio():
             for tf in fields:
                 assert values[tf].dtype == np.int32
                 assert np.array_equal(values[tf], seismic.attributes(tf)[:]), (sgy, tf)
+            # Sub-range
+            partial = read_trace_header_fields(seismic, [189, 115], start=1, stop=min(4, seismic.tracecount))
+            assert np.array_equal(partial[189], seismic.attributes(189)[1:4])
+            assert np.array_equal(partial[115], seismic.attributes(115)[1:4])
             checked += 1
     assert checked > 10
 
@@ -507,6 +512,39 @@ def test_read_trace_header_fields_falls_back_for_non_segy():
 def test_segy_converter_4d_irregular_crop_rejected():
     with pytest.raises(NotImplementedError):
         SegyConverter(SGY_FILE_4D_IRREG, min_offset=1)
+
+
+def test_segy_converter_4d_irregular_offset_sorted(tmp_path):
+    """An irregular prestack file that is not inline-sorted: each inline's traces are scattered
+    through the file, so the slab read is abandoned for per-trace reads, with identical results"""
+    sgy_sorted = os.path.join(str(tmp_path), 'small-4d-offset-sorted.sgy')
+    with segyio.open(SGY_FILE_4D, ignore_geometry=True) as src:
+        headers = [(h[IL], h[XL], h[OFFSET], i) for i, h in enumerate(src.header)]
+        order = [i for il, xl, off, i in sorted(headers, key=lambda k: (k[2], k[0], k[1])) if (il, xl, off) != (13, 23, 3)]
+        spec = segyio.spec()
+        spec.format, spec.samples, spec.tracecount = src.format, src.samples, len(order)
+        with segyio.create(sgy_sorted, spec) as dst:
+            dst.text[0], dst.bin = src.text[0], src.bin
+            for n, i in enumerate(order):
+                dst.header[n], dst.trace[n] = src.header[i], src.trace[i]
+
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-offset-sorted.sgz')
+    with SegyConverter(sgy_sorted) as converter:
+        assert converter.is_4d
+        converter.run(out_sgz, bits_per_voxel=16)
+        trace_ids = converter.geom.inline_trace_ids(0)
+        assert trace_ids[-1] - trace_ids[0] + 1 > 2 * len(trace_ids)   # non-contiguous, fallback path taken
+
+    cube = segyio.tools.cube(SGY_FILE_4D).copy()
+    cube[2, 2, 2] = 0
+    info = parse_sgz_4d(out_sgz)
+    assert info['tracecount'] == 124
+    present = np.ones((5, 5, 5), dtype=bool)
+    present[2, 2, 2] = False
+    assert np.allclose(info['volume'][present], cube[present], rtol=1e-4)
+    assert info['hash'] == sha1_of_cube(cube)
+    grid_off = np.tile([1, 2, 3, 4, 5], 25)
+    assert np.array_equal(info['header_arrays'][OFFSET], np.where(present.reshape(-1), grid_off, 0))
 
 
 SGY_FILE_4D_IRREG_NOMETRICS = 'test_data/small-4d-irregular-nometrics.sgy'

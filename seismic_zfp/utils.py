@@ -94,10 +94,35 @@ class InferredGeometry4d(Geometry4d):
         super().__init__(self.min_il, self.max_il + 1, self.min_xl, self.max_xl + 1,
                          self.min_offset, self.max_offset + 1,
                          il_step=self.il_step or 1, xl_step=self.xl_step or 1, offset_step=self.offset_step or 1)
+        self._trace_ordinals = None
 
     def __repr__(self):
         return (f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
                 f' -- OFFSET:[{self.min_offset},{self.max_offset},{self.offset_step}]')
+
+    def _build_trace_ordinals(self):
+        """Per-trace (il, xl, offset) grid ordinals, indexed by trace number. -1 marks traces absent from traces_ref."""
+        n_traces = max(self.traces_ref.values()) + 1
+        ordinals = np.full((3, n_traces), -1, dtype=np.int32)
+        steps = (self.il_step or 1, self.xl_step or 1, self.offset_step or 1)
+        mins = (self.min_il, self.min_xl, self.min_offset)
+        for (il, xl, offset), i in self.traces_ref.items():
+            ordinals[0, i] = (il - mins[0]) // steps[0]
+            ordinals[1, i] = (xl - mins[1]) // steps[1]
+            ordinals[2, i] = (offset - mins[2]) // steps[2]
+        self._trace_ordinals = ordinals
+
+    def inline_trace_ids(self, il_id):
+        """Trace numbers of every trace on inline ordinal il_id, in file order"""
+        if self._trace_ordinals is None:
+            self._build_trace_ordinals()
+        return np.flatnonzero(self._trace_ordinals[0] == il_id)
+
+    def trace_ordinals(self, trace_ids):
+        """(xl_ids, offset_ids) grid ordinals for the given trace numbers"""
+        if self._trace_ordinals is None:
+            self._build_trace_ordinals()
+        return self._trace_ordinals[1, trace_ids], self._trace_ordinals[2, trace_ids]
 
 
 class Geometry2d:
