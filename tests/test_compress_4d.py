@@ -481,9 +481,62 @@ def test_segy_converter_4d_irregular_strip_headers(tmp_path):
     assert np.allclose(info['volume'][present], cube[present], rtol=1e-5)
 
 
+def test_read_trace_header_fields_matches_segyio():
+    import glob
+    from seismic_zfp.conversion_utils import read_trace_header_fields
+    fields = [189, 193, 37, 181, 185, 1, 5]
+    checked = 0
+    for sgy in sorted(glob.glob('test_data/**/*.sgy', recursive=True)):
+        with SeismicFile.open(sgy) as seismic:
+            values = read_trace_header_fields(seismic, fields)
+            for tf in fields:
+                assert values[tf].dtype == np.int32
+                assert np.array_equal(values[tf], seismic.attributes(tf)[:]), (sgy, tf)
+            checked += 1
+    assert checked > 10
+
+
+def test_read_trace_header_fields_falls_back_for_non_segy():
+    from seismic_zfp.conversion_utils import read_trace_header_fields
+    with SeismicFile.open('test_data/small_4bit.sgz') as sgz:
+        values = read_trace_header_fields(sgz, [189, 193])
+        assert np.array_equal(values[189], sgz.attributes(189)[:])
+        assert len(values[193]) == sgz.tracecount
+
+
 def test_segy_converter_4d_irregular_crop_rejected():
     with pytest.raises(NotImplementedError):
         SegyConverter(SGY_FILE_4D_IRREG, min_offset=1)
+
+
+SGY_FILE_4D_IRREG_NOMETRICS = 'test_data/small-4d-irregular-nometrics.sgy'
+MISSING_4D_NOMETRICS = [(0, 1, o) for o in (2, 3, 4)]
+
+
+def test_segy_converter_4d_irregular_without_segyio_metrics(tmp_path):
+    """Regression: an irregular prestack file for which segyio cannot determine geometry was
+    converted as irregular 3D, keeping only one trace per IL/XL position"""
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-irregular-nometrics.sgz')
+    with SegyConverter(SGY_FILE_4D_IRREG_NOMETRICS) as converter:
+        assert converter.is_4d
+        estimated_size = converter.get_output_size(bits_per_voxel=16)
+        assert isinstance(converter.geom, InferredGeometry4d)
+        assert list(converter.geom.offsets) == [1, 2, 3, 4, 5]
+        converter.run(out_sgz, bits_per_voxel=16)
+    assert os.path.getsize(out_sgz) == estimated_size
+
+    cube = segyio.tools.cube(SGY_FILE_4D).copy()
+    present = np.ones(cube.shape[:3], dtype=bool)
+    for il, xl, off in MISSING_4D_NOMETRICS:
+        cube[il, xl, off] = 0
+        present[il, xl, off] = False
+    info = parse_sgz_4d(out_sgz)
+    assert (info['n_il'], info['n_xl'], info['n_offsets']) == (5, 5, 5)
+    assert info['tracecount'] == 122
+    # Three adjacent holes in the first block: measured max rel. error 2.3e-5 on present traces
+    assert np.allclose(info['volume'][present], cube[present], rtol=1e-4)
+    assert np.abs(info['volume'][~present]).max() < 1e-2
+    assert np.count_nonzero(info['header_arrays'][IL]) == 122
 
 
 def test_unstructured_io_thread_func_4d_partial_plane_set():

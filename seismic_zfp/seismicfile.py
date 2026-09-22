@@ -2,6 +2,7 @@ import os
 from enum import Enum
 import warnings
 
+import numpy as np
 import segyio
 import seismic_zfp
 
@@ -31,6 +32,29 @@ class SeismicFile:
         pass
 
     @staticmethod
+    def count_offsets_irregular(handle, max_traces=10000):
+        """Number of distinct offsets in an irregular SEG-Y, judged from the leading trace headers.
+
+        A file is prestack when some IL/XL position holds several traces with different offsets.
+        The count only signals dimensionality; the offset axis itself is inferred from all traces
+        when the geometry is built. Positions with INLINE_3D == CROSSLINE_3D == 0 are ignored,
+        as those identify 2D data.
+        """
+        n = min(handle.tracecount, max_traces)
+        il = handle.attributes(189)[0:n]
+        xl = handle.attributes(193)[0:n]
+        offset = handle.attributes(37)[0:n]
+        positioned = (il != 0) | (xl != 0)
+        if not np.any(positioned):
+            return 1
+        gathers = {}
+        for i, x, o in zip(il[positioned].tolist(), xl[positioned].tolist(), offset[positioned].tolist()):
+            gathers.setdefault((i, x), set()).add(o)
+        if max(len(offsets) for offsets in gathers.values()) == 1:
+            return 1
+        return len(set(offset[positioned].tolist()))
+
+    @staticmethod
     def open(filename, file_type=None):
         handle = None
         if file_type is None:
@@ -51,14 +75,19 @@ class SeismicFile:
 
         if file_type == Filetype.SEGY:
             handle = segyio.open(filename, mode='r', strict=False)
+            handle.structured = False
             handle.n_offsets = 1
             try:
                 metrics = handle.xfd.cube_metrics(189, 193)
-                handle.n_offsets = metrics['offset_count']
                 regular_tracecount = metrics['iline_count'] * metrics['xline_count'] * metrics['offset_count']
                 handle.structured = regular_tracecount == handle.tracecount
-            except RuntimeError:
-                handle.structured = False
+                if handle.structured:
+                    handle.n_offsets = metrics['offset_count']
+            except (RuntimeError, ValueError):
+                pass
+            if not handle.structured:
+                # segyio's metrics are unreliable for irregular files, so look at the headers directly
+                handle.n_offsets = SeismicFile.count_offsets_irregular(handle)
         elif file_type == Filetype.ZGY:
             if pyzgy is None:
                 raise ImportError("File type requires pyzgy. Install optional dependency seismic-zfp[zgy] with pip.")

@@ -1,3 +1,4 @@
+import os
 import zfpy
 import time
 import segyio
@@ -174,6 +175,34 @@ def make_header(ilines, xlines, samples, tracecount, hw_info, bits_per_voxel, bl
     buffer[980:2048] = hw_info.to_buffer()   # Start at 980 to end at 2048
 
     return buffer
+
+
+def read_trace_header_fields(seismicfile, tracefields):
+    """Read one or more 4-byte trace header fields from every trace of a SEG-Y file
+
+    segyio's attributes() seeks to every trace once per field, which is slow for files with
+    millions of traces. Fixed-length traces allow a single strided pass over a memory map instead.
+    Falls back to segyio if the file is not a plain fixed-trace-length SEG-Y.
+
+    Returns
+    -------
+    dict of {tracefield: numpy.ndarray of int32, shape (tracecount,)}
+    """
+    tracecount = seismicfile.tracecount
+    data_bytes = os.path.getsize(seismicfile.filename) - SEGY_FILE_HEADER_BYTES
+    if (seismicfile.filetype != Filetype.SEGY or tracecount == 0 or data_bytes % tracecount != 0
+            or data_bytes // tracecount < SEGY_TRACE_HEADER_BYTES):
+        return {tf: seismicfile.attributes(tf)[:] for tf in tracefields}
+
+    trace_bytes = data_bytes // tracecount
+    headers = np.memmap(seismicfile.filename, dtype=np.uint8, mode='r', offset=SEGY_FILE_HEADER_BYTES,
+                        shape=(tracecount, trace_bytes))[:, 0:SEGY_TRACE_HEADER_BYTES]
+    values = {}
+    for tf in tracefields:
+        start = int(tf) - 1   # tracefield enums are 1-based byte positions
+        values[tf] = np.ascontiguousarray(headers[:, start:start + 4]).view('>i4').ravel().astype(np.int32)
+    del headers
+    return values
 
 
 class MinimalInlineReader:

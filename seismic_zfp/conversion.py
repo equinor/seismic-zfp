@@ -7,7 +7,7 @@ import time
 import psutil
 
 from .headers import HeaderwordInfo
-from .conversion_utils import run_conversion_loop, StreamProducer
+from .conversion_utils import run_conversion_loop, StreamProducer, read_trace_header_fields
 from .read import SgzReader
 from .sgzconstants import DISK_BLOCK_BYTES, SEGY_FILE_HEADER_BYTES
 from .seismicfile import SeismicFile, Filetype
@@ -191,8 +191,9 @@ class SeismicFileConverter(object):
 
     def infer_geometry(self, seismic):
         if self.is_4d:
-            traces_ref = {(h[189], h[193], h[37]): i for i, h in enumerate(seismic.header)}
-            self.geom = InferredGeometry4d(traces_ref)
+            fields = read_trace_header_fields(seismic, [189, 193, 37])
+            keys = zip(fields[189].tolist(), fields[193].tolist(), fields[37].tolist())
+            self.geom = InferredGeometry4d({key: i for i, key in enumerate(keys)})
         else:
             traces_ref = {(h[189], h[193]): i for i, h in enumerate(seismic.header)}
             self.geom = InferredGeometry3d(traces_ref)

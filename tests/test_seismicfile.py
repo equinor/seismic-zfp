@@ -23,6 +23,7 @@ VDS_FILE = 'test_data/vds/small.vds'
 SGY_FILE = 'test_data/small.sgy'
 SGY_FILE_4D = 'test_data/small-4d.sgy'
 SGY_FILE_4D_IRREG = 'test_data/small-4d-irregular.sgy'
+SGY_FILE_4D_IRREG_NOMETRICS = 'test_data/small-4d-irregular-nometrics.sgy'
 SGY_FILE_2D = 'test_data/small-2d.sgy'
 SGY_FILE_IRREG = 'test_data/small-irregular.sgy'
 SGZ_FILE = 'test_data/small_8bit.sgz'
@@ -48,6 +49,29 @@ def test_segy_4d_irregular_is_unstructured_and_4d():
         assert seismic.unstructured
         assert seismic.n_offsets == 5
         assert seismic.is_4d
+
+
+def test_segy_4d_irregular_detected_without_segyio_metrics():
+    """segyio's cube_metrics raises on this file, as it does on real irregular prestack data"""
+    import segyio
+    with segyio.open(SGY_FILE_4D_IRREG_NOMETRICS, strict=False, ignore_geometry=True) as segyfile:
+        with pytest.raises((RuntimeError, ValueError)):
+            segyfile.xfd.cube_metrics(189, 193)
+    with seismicfile.SeismicFile.open(SGY_FILE_4D_IRREG_NOMETRICS) as seismic:
+        assert not seismic.structured
+        assert seismic.n_offsets == 5
+        assert seismic.is_4d
+
+
+def test_count_offsets_irregular_scans_limited_headers():
+    with seismicfile.SeismicFile.open(SGY_FILE_4D_IRREG_NOMETRICS) as seismic:
+        # First gather alone shows 5 offsets; the truncated second gather shows 2
+        assert seismicfile.SeismicFile.count_offsets_irregular(seismic, max_traces=5) == 5
+        assert seismicfile.SeismicFile.count_offsets_irregular(seismic, max_traces=7) == 5
+    with seismicfile.SeismicFile.open(SGY_FILE_IRREG) as seismic:
+        assert seismicfile.SeismicFile.count_offsets_irregular(seismic) == 1
+    with seismicfile.SeismicFile.open(SGY_FILE_2D) as seismic:
+        assert seismicfile.SeismicFile.count_offsets_irregular(seismic) == 1
 
 
 def test_segy_irregular_is_unstructured_not_4d():
