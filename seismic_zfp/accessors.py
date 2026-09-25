@@ -134,7 +134,8 @@ class TraceAccessor(Accessor):
 
 class PrestackLineAccessor(SliceAccessor):
     """Emulates segyio's iline/xline for prestack files: [line] gives the first offset,
-    [line, offset] a specific one, and slices on either yield one array per combination"""
+    [line, offset] a specific one, and slices on either give a generator of one array per
+    combination, lines outermost and offsets innermost, as segyio does"""
 
     def _expand(self, subscript, coords):
         if isinstance(subscript, slice):
@@ -147,8 +148,8 @@ class PrestackLineAccessor(SliceAccessor):
     def __getitem__(self, subscript):
         line, offset = subscript if isinstance(subscript, tuple) else (subscript, self.offsets[0])
         if isinstance(line, slice) or isinstance(offset, slice):
-            return [self.values_function(l, o) for l in self._expand(line, self.keys_object)
-                    for o in self._expand(offset, self.offsets)]
+            return (self.values_function(l, o) for l in self._expand(line, self.keys_object)
+                    for o in self._expand(offset, self.offsets))
         return self.values_function(line, offset)
 
 
@@ -191,7 +192,7 @@ class ZsliceAccessor4d(Accessor):
 
 class GatherAccessor(PrestackLineAccessor):
     """Emulates segyio's gather: [il, xl] gives all offsets as (n_offsets, n_samples), [il, xl, offset]
-    a single trace and [il, xl, offset_slice] the selected offsets. Slices on il/xl yield a list."""
+    a single trace and [il, xl, offset_slice] the selected offsets. Slices on il/xl give a generator."""
     def __init__(self, file):
         super(Accessor, self).__init__(file)
         self.len_object = self.n_ilines * self.n_xlines
@@ -203,8 +204,8 @@ class GatherAccessor(PrestackLineAccessor):
         il, xl = subscript[0], subscript[1]
         offset = subscript[2] if len(subscript) == 3 else slice(None)
         if isinstance(il, slice) or isinstance(xl, slice):
-            return [self.values_function(i, x, offset) for i in self._expand(il, self.ilines)
-                    for x in self._expand(xl, self.xlines)]
+            return (self.values_function(i, x, offset) for i in self._expand(il, self.ilines)
+                    for x in self._expand(xl, self.xlines))
         return self.values_function(il, xl, offset)
 
     def values_function(self, il_no, xl_no, offset):

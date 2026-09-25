@@ -1,4 +1,5 @@
 import os
+import types
 import numpy as np
 import segyio
 import pytest
@@ -352,7 +353,7 @@ def test_segyio_emulator_4d_matches_segyio_prestack_accessors(regular_layout):
                 assert np.allclose(sgz.gather[il, xl, 2:5], sgy.gather[il, xl, 2:5], **tol)
                 assert np.allclose(sgz.gather[il, xl, 1:6:2], sgy.gather[il, xl, 1:6:2], **tol)
 
-        # Slices produce one array per combination, in the same order as segyio
+        # Slices produce a generator of one array per combination, in the same order as segyio
         for sgz_result, sgy_result in ((sgz.iline[12:14], sgy.iline[12:14]),
                                        (sgz.iline[12:14, 2:4], sgy.iline[12:14, 2:4]),
                                        (sgz.iline[:, 5], sgy.iline[:, 5]),
@@ -363,6 +364,8 @@ def test_segyio_emulator_4d_matches_segyio_prestack_accessors(regular_layout):
                                        (sgz.gather[12:14, 21, 2:4], sgy.gather[12:14, 21, 2:4]),
                                        (sgz.gather[12:14, 21:23, 3], sgy.gather[12:14, 21:23, 3]),
                                        (sgz.gather[:, :], sgy.gather[:, :])):
+            assert isinstance(sgz_result, types.GeneratorType)
+            assert isinstance(sgy_result, types.GeneratorType)
             # segyio's line generators reuse one buffer, so copy each item as it is yielded
             sgz_list, sgy_list = list(sgz_result), [b.copy() for b in sgy_result]
             assert len(sgz_list) == len(sgy_list)
