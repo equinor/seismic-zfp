@@ -487,6 +487,28 @@ def test_compress_crop(tmp_path):
     assert np.allclose(sgz_data, segyio.tools.cube(SGY_FILE)[1:4, 1:3, :], rtol=1e-8)
 
 
+@pytest.mark.parametrize("crop, expected", [
+    # Ordinal 0 is a valid crop bound, not "unspecified"
+    (dict(min_il=0, max_il=2, min_xl=0, max_xl=3), (slice(0, 2), slice(0, 3))),
+    # Unspecified bounds default to the full extent of that axis
+    (dict(max_il=3), (slice(0, 3), slice(None))),
+    (dict(min_xl=2), (slice(None), slice(2, None))),
+])
+def test_compress_crop_zero_and_partial_bounds(tmp_path, crop, expected):
+    out_sgz = os.path.join(str(tmp_path), 'small_crop.sgz')
+    with SegyConverter(SGY_FILE, **crop) as converter:
+        converter.run(out_sgz, bits_per_voxel=16)
+    with segyio.open(SGY_FILE) as segyfile, SgzReader(out_sgz) as reader:
+        assert np.array_equal(reader.ilines, segyfile.ilines[expected[0]])
+        assert np.array_equal(reader.xlines, segyfile.xlines[expected[1]])
+        assert np.allclose(reader.read_volume(), segyio.tools.cube(SGY_FILE)[expected], rtol=1e-8)
+
+
+def test_compress_crop_irregular_rejected():
+    with pytest.raises(NotImplementedError):
+        SegyConverter(SGY_FILE_IRREG, min_il=0, max_il=2)
+
+
 def test_compress_crop_header_arrays_sized_to_crop(tmp_path):
     # 512 traces: full-size header arrays (2048 bytes) straddle several 512-byte
     # pages, so a crop must size its header arrays to the cropped tracecount

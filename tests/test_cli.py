@@ -2,6 +2,7 @@ import pytest
 from click.testing import CliRunner
 from seismic_zfp.cli import cli
 from seismic_zfp.conversion import SegyConverter, ZgyConverter
+from seismic_zfp.read import SgzReader
 import os
 import warnings
 
@@ -98,6 +99,8 @@ def test_sgy2sgz_convert_all_params():
     output_file = "small_2bit_converted_64_64_-1.sgz"
     runner = CliRunner()
     with runner.isolated_filesystem():
+        with SegyConverter(input_file_absolute, min_il=0, max_il=4, min_xl=0, max_xl=3) as converter:
+            expected_size = converter.get_output_size(bits_per_voxel=2, blockshape=(64, 64, -1))
         result = runner.invoke(
             cli,
             [
@@ -122,9 +125,10 @@ def test_sgy2sgz_convert_all_params():
                 "3",
             ],
         )
-        assert os.path.exists(output_file)
-        assert os.stat(output_file).st_size > 0
-    assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
+        assert os.stat(output_file).st_size == expected_size
+        with SgzReader(output_file) as reader:
+            assert (reader.n_ilines, reader.n_xlines) == (4, 3)
 
 
 def test_sgy2sgz_convert_4d_default():

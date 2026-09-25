@@ -51,8 +51,9 @@ class SeismicFileConverter(object):
 
         min_offset, max_offset: int
             Cropping parameters for the offset axis of prestack (4D) input
-            Refers to offset *ordinals* rather than numbers. Any 4D cropping
-            parameter left as None defaults to the full extent of that axis.
+            Refers to offset *ordinals* rather than numbers.
+
+        Any cropping parameter left as None defaults to the full extent of that axis.
         """
         # Quia Ego Sic Dico
         self.in_filename = in_filename
@@ -60,16 +61,14 @@ class SeismicFileConverter(object):
         self.check_input_file_exists()
 
         self.geom = None
-        crop_4d = [min_il, max_il, min_xl, max_xl, min_offset, max_offset]
+        crop = [min_il, max_il, min_xl, max_xl, min_offset, max_offset]
         with SeismicFile.open(self.in_filename, self.filetype) as seismic:
             # Irregular files have no geometry until infer_geometry() runs, so take this from the file
             self.is_4d = seismic.is_4d
-            if seismic.is_4d and any(p is not None for p in crop_4d):
-                self.geom = self.crop_geometry_4d(seismic, *crop_4d)
-            elif not seismic.is_4d and (min_offset is not None or max_offset is not None):
+            if not seismic.is_4d and (min_offset is not None or max_offset is not None):
                 raise ValueError("Offset cropping is only applicable to prestack (4D) input")
-            elif not seismic.is_4d and all([min_il, max_il, min_xl, max_xl]):
-                self.geom = Geometry3d(min_il, max_il, min_xl, max_xl)
+            if any(p is not None for p in crop):
+                self.geom = self.crop_geometry(seismic, *crop)
             else:
                 self.detect_geometry(seismic)
         self.is_2d = isinstance(self.geom, Geometry2d)
@@ -200,15 +199,19 @@ class SeismicFileConverter(object):
         print("... inferred geometry is:", self.geom)
 
     @staticmethod
-    def crop_geometry_4d(seismic, min_il, max_il, min_xl, max_xl, min_offset, max_offset):
+    def crop_geometry(seismic, min_il, max_il, min_xl, max_xl, min_offset=None, max_offset=None):
+        """Geometry from crop ordinals, with None meaning the full extent of that axis"""
         if not seismic.structured:
-            raise NotImplementedError("Cropping of irregular prestack SEG-Y is not supported")
-        return Geometry4d(0 if min_il is None else min_il,
-                          len(seismic.ilines) if max_il is None else max_il,
-                          0 if min_xl is None else min_xl,
-                          len(seismic.xlines) if max_xl is None else max_xl,
-                          0 if min_offset is None else min_offset,
-                          len(seismic.offsets) if max_offset is None else max_offset)
+            raise NotImplementedError("Cropping of irregular SEG-Y is not supported")
+        il_xl = (0 if min_il is None else min_il,
+                 len(seismic.ilines) if max_il is None else max_il,
+                 0 if min_xl is None else min_xl,
+                 len(seismic.xlines) if max_xl is None else max_xl)
+        if seismic.is_4d:
+            return Geometry4d(*il_xl,
+                              0 if min_offset is None else min_offset,
+                              len(seismic.offsets) if max_offset is None else max_offset)
+        return Geometry3d(*il_xl)
 
     def check_input_file_exists(self):
         if not os.path.exists(self.in_filename):
