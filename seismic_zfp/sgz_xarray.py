@@ -53,11 +53,20 @@ class SeismicZfpBackendEntrypoint(BackendEntrypoint):
 
         sgz_reader = SgzReader(filename_or_obj)
 
-        shape = (sgz_reader.n_ilines, sgz_reader.n_xlines, sgz_reader.n_samples)
-        backend_array = SeismicZfpBackendArray(shape, np.float32, sgz_reader.read_subvolume)
+        if sgz_reader.is_4d:
+            shape = (sgz_reader.n_ilines, sgz_reader.n_xlines, sgz_reader.n_offsets, sgz_reader.n_samples)
+            dims = ("il", "xl", "offset", "z")
+            read_subvolume = sgz_reader.read_subvolume_4d
+            coords = {"il": sgz_reader.ilines, "xl": sgz_reader.xlines,
+                      "offset": sgz_reader.offsets, "z": sgz_reader.zslices}
+        else:
+            shape = (sgz_reader.n_ilines, sgz_reader.n_xlines, sgz_reader.n_samples)
+            dims = ("il", "xl", "z")
+            read_subvolume = sgz_reader.read_subvolume
+            coords = {"il": sgz_reader.ilines, "xl": sgz_reader.xlines, "z": sgz_reader.zslices}
 
-        vars = {"data": (("il", "xl", "z"), indexing.LazilyIndexedArray(backend_array))}
-        coords = {"il": sgz_reader.ilines, "xl": sgz_reader.xlines, "z": sgz_reader.zslices}
+        backend_array = SeismicZfpBackendArray(shape, np.float32, read_subvolume)
+        vars = {"data": (dims, indexing.LazilyIndexedArray(backend_array))}
 
         ds = xr.Dataset(data_vars=vars, coords=coords)
         ds.set_close(sgz_reader.close)

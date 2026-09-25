@@ -22,6 +22,14 @@ These are a set of small Python programs which demonstrate usage of seismic-zfp,
    python read-subvolume-4d.py [FILE_ROOT] [IL_SLICE] [XL_SLICE] [OFFSET_SLICE] [SAMPLE_SLICE]
    ```
 
+   SGZ files can also be opened with `xarray.open_dataset`, giving lazy label-based selection over
+   (il, xl, z) or, for 4D files, (il, xl, offset, z):
+
+   ```shell
+   python read-as-xarray.py [FILE_ROOT] [LINE_NO]
+   python read-as-xarray-4d.py [FILE_ROOT] [INLINE] [CROSSLINE] [OFFSET]
+   ```
+
 
    
 ### Writing SGZ files

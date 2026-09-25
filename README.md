@@ -52,7 +52,9 @@ is available for extracting horizontally and vertically contrained data.
 As of v0.5.0 regular prestack SEG-Y files (inline-sorted, with the same offsets present at every IL/XL
 position, identified by the `offset` trace header) can be compressed. The offset axis is stored between
 the crossline and sample axes, and ZFP compresses the data in 4x4x4x4 units, so the blockshape becomes
-(il, xl, offset, z) with a default of (4, 4, 4, -1). Reading 4D SGZ files is not yet supported.
+(il, xl, offset, z) with a default of (4, 4, 4, -1). 4D SGZ files can be read through `SgzReader`
+(`read_gather`, `read_offset`, `read_subvolume_4d`), the segyio-like interface (`gather`, `iline[il, offset]`,
+`subvolume`) and xarray, and can be converted back to SEG-Y.
 
 
 #### Headers ####
@@ -152,6 +154,18 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
                                   XL_NO_START:XL_NO_STOP:XL_NO_STEP,
                                   SAMP_NO_START:SAMP_NO_STOP:SAMP_NO_STEP]
     header_arr = sgzfile.get_tracefield_values(segyio.tracefield.TraceField.NStackedTraces)
+```
+
+#### Open SGZ files with xarray ####
+seismic-zfp registers an xarray backend, so SGZ files open lazily as a Dataset with a single `data`
+variable over dimensions (il, xl, z), or (il, xl, offset, z) for 4D files, with coordinates in line
+numbers, offset values and sample times. Only the part of the file covering a selection is decompressed.
+```python
+import xarray as xr
+with xr.open_dataset("in.sgz") as ds:
+    inline = ds.data.sel(il=IL_NO).to_numpy()
+    gather = ds.data.sel(il=IL_NO, xl=XL_NO).to_numpy()              # 4D files
+    stack = ds.data.sel(il=IL_NO).mean(dim="offset").to_numpy()      # 4D files
 ```
 
 ## Command Line Interface
