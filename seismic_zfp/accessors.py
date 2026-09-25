@@ -10,15 +10,15 @@ class SubvolumeAccessor(SgzReader):
 
         self.zslices_int = self.zslices.astype('intc')
 
-        self.axes_message = f"Inline {self.ilines[0]}:" \
-                            f"{self.ilines[-1]}:" \
-                            f"{self.ilines[1] - self.ilines[0]}, " \
-                            f"Crossline {self.xlines[0]}:" \
-                            f"{self.xlines[-1] + self.xlines[1] - self.xlines[0]}:" \
-                            f"{ self.xlines[1] - self.xlines[0]}, " \
-                            f"Samples {self.zslices_int[0]}:" \
-                            f"{self.zslices_int[-1] + self.zslices_int[1] - self.zslices_int[0]}:" \
-                            f"{self.zslices_int[1] - self.zslices_int[0]}"
+        self.axes_message = (f"Inline {self._axis_message(self.ilines)}, "
+                             f"Crossline {self._axis_message(self.xlines)}, "
+                             f"Samples {self._axis_message(self.zslices_int)}")
+
+    @staticmethod
+    def _axis_message(coords):
+        """start:stop:step of an axis, with stop exclusive as in the subscripts"""
+        step = coords[1] - coords[0]
+        return f"{coords[0]}:{coords[-1] + step}:{step}"
 
     def __getitem__(self, subscripts):
         il, xl, z = subscripts
@@ -55,6 +55,34 @@ class SubvolumeAccessor(SgzReader):
             raise IndexError(f"{coord_name} stop {subscript.stop} out of range. Axes are {self.axes_message}")
         if subscript.step is not None and not subscript.step % (coords[1] - coords[0]) == 0:
             raise IndexError(f"{coord_name} step {subscript.step} invalid. Axes are {self.axes_message}")
+
+
+class SubvolumeAccessor4d(SubvolumeAccessor):
+    """subvolume[il, xl, offset, z] for prestack files, all four subscripts being slices in coordinate
+    units (line numbers, offset values, sample times), as for the 3D SubvolumeAccessor. Unlike gather,
+    a range of samples may be requested, and the offsets may be restricted to a subset."""
+
+    def __init__(self, file):
+        super(SubvolumeAccessor, self).__init__(file)
+        self.zslices_int = self.zslices.astype('intc')
+        self.axes_message = (f"Inline {self._axis_message(self.ilines)}, "
+                             f"Crossline {self._axis_message(self.xlines)}, "
+                             f"Offset {self._axis_message(self.offsets)}, "
+                             f"Samples {self._axis_message(self.zslices_int)}")
+
+    def __getitem__(self, subscripts):
+        if not isinstance(subscripts, tuple) or len(subscripts) != 4:
+            raise TypeError("4D subvolume requires [iline, crossline, offset, sample] slices")
+        axes = ((self.ilines, "Inline"), (self.xlines, "Crossline"),
+                (self.offsets, "Offset"), (self.zslices_int, "Samples"))
+        bounds = []
+        for subscript, (coords, name) in zip(subscripts, axes):
+            self._check_subscripts(subscript, coords, name)
+            bounds.append(self._get_index_subscripts(subscript, coords))
+        (il_start, il_step, il_stop), (xl_start, xl_step, xl_stop), \
+            (off_start, off_step, off_stop), (z_start, z_step, z_stop) = bounds
+        return self.read_subvolume_4d(il_start, il_stop, xl_start, xl_stop,
+                                      off_start, off_stop, z_start, z_stop)[::il_step, ::xl_step, ::off_step, ::z_step]
 
 
 class Accessor(SgzReader, Mapping):

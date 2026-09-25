@@ -1,7 +1,7 @@
 from .read import SgzReader
 from .accessors import InlineAccessor, CrosslineAccessor, ZsliceAccessor, \
                        HeaderAccessor, TraceAccessor, SubvolumeAccessor, \
-                       InlineAccessor4d, CrosslineAccessor4d, ZsliceAccessor4d, GatherAccessor
+                       InlineAccessor4d, CrosslineAccessor4d, ZsliceAccessor4d, GatherAccessor, SubvolumeAccessor4d
 from .utils import WrongDimensionalityError
 
 
@@ -29,7 +29,7 @@ class SegyioEmulator(SgzReader):
             self.xline = CrosslineAccessor4d(self.file).__enter__()
             self.depth_slice = ZsliceAccessor4d(self.file).__enter__()
             self.gather = GatherAccessor(self.file).__enter__()
-            self.subvolume = DimensionalityError("SEG-Y emulation does not yet support subvolume for 4D files")
+            self.subvolume = SubvolumeAccessor4d(self.file).__enter__()
             self.unstructured = not self.structured
         else:
             self.iline = DimensionalityError()
@@ -55,6 +55,7 @@ class SegyioEmulator(SgzReader):
             self.xline.__exit__(*exc)
             self.depth_slice.__exit__(*exc)
             self.gather.__exit__(*exc)
+            self.subvolume.__exit__(*exc)
 
         self.close_sgz_file()
 

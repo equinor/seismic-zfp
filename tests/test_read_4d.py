@@ -326,8 +326,44 @@ def test_segyio_emulator_4d(layout):
         assert np.array_equal(sgzfile.attributes(OFFSET), segyfile.attributes(OFFSET)[:]) or not sgzfile.structured
         assert np.array_equal(sgzfile.samples, segyfile.samples)
         assert np.array_equal(sgzfile.offsets, [1, 2, 3, 4, 5])
-        with pytest.raises(WrongDimensionalityError, match="4D"):
-            sgzfile.subvolume[11:13, 21:23, 0:10]
+
+
+def test_segyio_emulator_4d_subvolume(layout):
+    """subvolume[il, xl, offset, z] in coordinate units, with steps, on the (il, xl, offset, sample) cube"""
+    cube, tol = layout['cube'], layout['tol']
+    with seismic_zfp.open(layout['sgz']) as sgz:
+        # ilines 11..15, xlines 21..25, offsets 1..5, samples 0..35 (1 ms)
+        assert np.allclose(sgz.subvolume[:, :, :, :], cube, **tol)
+        assert np.allclose(sgz.subvolume[12:14, 22:25, 2:4, 10:20], cube[1:3, 1:4, 1:3, 10:20], **tol)
+        assert np.allclose(sgz.subvolume[11:16:2, 21:26:2, 1:6:2, 0:36:3], cube[::2, ::2, ::2, ::3], **tol)
+        assert np.allclose(sgz.subvolume[13:14, 23:24, :, 5:6], cube[2:3, 2:3, :, 5:6], **tol)
+        # Explicit stop one step beyond the last coordinate means "to the end"
+        assert np.allclose(sgz.subvolume[11:16, 21:26, 1:6, 0:36], cube, **tol)
+        # Restricting offsets is the point of subvolume over gather
+        near = sgz.subvolume[11:16, 21:26, 1:3, :]
+        assert near.shape == (5, 5, 2, 36)
+        assert np.allclose(near, cube[:, :, 0:2, :], **tol)
+        assert np.allclose(sgz.subvolume[11:16, 21:26, 5:6, :][:, :, 0, :], sgz.read_offset(4), **tol)
+
+        # Any multiple of the axis step is a valid step: offsets 1 and 4
+        assert np.allclose(sgz.subvolume[11:13, 21:23, 1:5:3, 0:10], cube[0:2, 0:2, 0:4:3, 0:10], **tol)
+
+        for bad in (lambda: sgz.subvolume[11:13, 21:23, 0:10],           # 3 subscripts
+                    lambda: sgz.subvolume[11:13, 21:23, 0:2, 0:10],      # offset 0 does not exist
+                    lambda: sgz.subvolume[11:13, 21:23, 1:7, 0:10],      # offset stop beyond range
+                    lambda: sgz.subvolume[10:13, 21:23, 1:3, 0:10],      # inline start below range
+                    lambda: sgz.subvolume[11:13, 21:23, 1:3, 0:40]):     # sample stop beyond range
+            with pytest.raises((IndexError, TypeError)):
+                bad()
+        with pytest.raises(IndexError, match="Offset"):
+            sgz.subvolume[11:13, 21:23, 0:2, 0:10]
+
+
+def test_segyio_emulator_3d_subvolume_unchanged():
+    with seismic_zfp.open(SGZ_FILE_3D) as sgz:
+        assert sgz.subvolume[1:3, 20:22, 0:8].shape == (2, 2, 2)
+        with pytest.raises(WrongDimensionalityError):
+            sgz.gather[1, 20]
 
 
 def test_segyio_emulator_4d_matches_segyio_prestack_accessors(regular_layout):
