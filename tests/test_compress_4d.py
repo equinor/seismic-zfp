@@ -7,6 +7,7 @@ import numpy as np
 import segyio
 import zfpy
 import pytest
+from unittest import mock
 
 from seismic_zfp.conversion import SegyConverter
 from seismic_zfp.conversion_utils import (make_header_seismic_file, io_thread_func_4d, seismic_file_producer_4d,
@@ -40,14 +41,21 @@ def expected_headers(cube_shape, geom, seismic):
     return {tf: np.array(v, dtype=np.int32) for tf, v in exp.items()}
 
 
-def test_io_thread_func_4d_full_inline_set():
+@pytest.fixture(params=['segyio', 'minimal_reader'])
+def reader_for(request):
+    """Factory giving io_thread_func_4d's minimal_il_reader argument for each reading strategy"""
+    from seismic_zfp.conversion_utils import MinimalInlineReader4d
+    return lambda seismic: MinimalInlineReader4d(seismic) if request.param == 'minimal_reader' else None
+
+
+def test_io_thread_func_4d_full_inline_set(reader_for):
     cube = segyio.tools.cube(SGY_FILE_4D)
     blockshape = (4, 4, 4, 128)
     with SeismicFile.open(SGY_FILE_4D) as seismic:
         geom = Geometry4d(0, 5, 0, 5, 0, 5)
         headers_dict = blank_headers_dict(125)
         buffer = np.zeros((4, 8, 8, 128), dtype=np.float32)
-        io_thread_func_4d(blockshape, True, headers_dict, geom, 0, 4, buffer, seismic, 36)
+        io_thread_func_4d(blockshape, True, headers_dict, geom, 0, 4, buffer, seismic, reader_for(seismic), 36)
 
         # Data
         assert np.array_equal(buffer[:, 0:5, 0:5, 0:36], cube[0:4])
@@ -62,7 +70,7 @@ def test_io_thread_func_4d_full_inline_set():
             assert np.all(headers_dict[tf][100:] == 0)
 
 
-def test_io_thread_func_4d_partial_inline_set_repeats_last_plane():
+def test_io_thread_func_4d_partial_inline_set_repeats_last_plane(reader_for):
     cube = segyio.tools.cube(SGY_FILE_4D)
     blockshape = (4, 4, 4, 128)
     with SeismicFile.open(SGY_FILE_4D) as seismic:
@@ -70,7 +78,7 @@ def test_io_thread_func_4d_partial_inline_set_repeats_last_plane():
         headers_dict = blank_headers_dict(125)
         buffer = np.zeros((4, 8, 8, 128), dtype=np.float32)
         # Second plane-set only has inline 4 to read
-        io_thread_func_4d(blockshape, True, headers_dict, geom, 1, 1, buffer, seismic, 36)
+        io_thread_func_4d(blockshape, True, headers_dict, geom, 1, 1, buffer, seismic, reader_for(seismic), 36)
 
         for i in range(4):
             assert np.array_equal(buffer[i, 0:5, 0:5, 0:36], cube[4])
@@ -80,14 +88,14 @@ def test_io_thread_func_4d_partial_inline_set_repeats_last_plane():
             assert np.all(headers_dict[tf][0:100] == 0)
 
 
-def test_io_thread_func_4d_cropped():
+def test_io_thread_func_4d_cropped(reader_for):
     cube = segyio.tools.cube(SGY_FILE_4D)
     blockshape = (4, 4, 4, 128)
     with SeismicFile.open(SGY_FILE_4D) as seismic:
         geom = Geometry4d(1, 4, 2, 5, 1, 3)   # 3 il x 3 xl x 2 offsets = 18 traces
         headers_dict = blank_headers_dict(18)
         buffer = np.zeros((4, 4, 4, 128), dtype=np.float32)
-        io_thread_func_4d(blockshape, True, headers_dict, geom, 0, 3, buffer, seismic, 36)
+        io_thread_func_4d(blockshape, True, headers_dict, geom, 0, 3, buffer, seismic, reader_for(seismic), 36)
 
         assert np.array_equal(buffer[0:3, 0:3, 0:2, 0:36], cube[1:4, 2:5, 1:3])
         assert np.array_equal(buffer[3, 0:3, 0:2, 0:36], cube[3, 2:5, 1:3])
@@ -97,12 +105,12 @@ def test_io_thread_func_4d_cropped():
         assert np.array_equal(headers_dict[OFFSET], np.tile([2, 3], 9))
 
 
-def test_io_thread_func_4d_store_headers_false():
+def test_io_thread_func_4d_store_headers_false(reader_for):
     with SeismicFile.open(SGY_FILE_4D) as seismic:
         geom = Geometry4d(0, 5, 0, 5, 0, 5)
         headers_dict = blank_headers_dict(125)
         buffer = np.zeros((4, 8, 8, 128), dtype=np.float32)
-        io_thread_func_4d((4, 4, 4, 128), False, headers_dict, geom, 0, 4, buffer, seismic, 36)
+        io_thread_func_4d((4, 4, 4, 128), False, headers_dict, geom, 0, 4, buffer, seismic, reader_for(seismic), 36)
         for array in headers_dict.values():
             assert np.all(array == 0)
 
@@ -343,12 +351,80 @@ def test_segy_converter_4d_thorough_headers(tmp_path):
             assert np.array_equal(info['header_arrays'][tf], segyfile.attributes(tf)[:])
 
 
-def test_segy_converter_4d_reduce_iops_warns(tmp_path):
-    out_sgz = os.path.join(str(tmp_path), 'small-4d-iops.sgz')
-    with SegyConverter(SGY_FILE_4D) as converter:
-        with pytest.warns(UserWarning, match="not supported for 4D"):
-            converter.run(out_sgz, bits_per_voxel=16, reduce_iops=True)
+def files_identical_except_version(a, b):
+    with open(a, 'rb') as fa, open(b, 'rb') as fb:
+        da, db = bytearray(fa.read()), bytearray(fb.read())
+    da[72:76] = db[72:76] = bytes(4)
+    return da == db
+
+
+def test_minimal_inline_reader_4d_self_test():
+    from seismic_zfp.conversion_utils import MinimalInlineReader4d
+    with SeismicFile.open(SGY_FILE_4D) as seismic:
+        reader = MinimalInlineReader4d(seismic)
+        assert reader.self_test()
+        cube = segyio.tools.cube(SGY_FILE_4D)
+        for il_id in range(5):
+            fields, inline = reader.read_line(il_id, [IL, XL, OFFSET, 115])
+            assert inline.dtype == np.float32
+            assert np.array_equal(inline, cube[il_id])
+            assert np.array_equal(fields[IL], seismic.attributes(IL)[il_id * 25:(il_id + 1) * 25])
+            assert np.array_equal(fields[OFFSET], np.tile([1, 2, 3, 4, 5], 5))
+            # 2-byte field, read from the same buffer
+            assert np.array_equal(fields[115], seismic.attributes(115)[il_id * 25:(il_id + 1) * 25])
+        # No header fields requested
+        fields, inline = reader.read_line(2)
+        assert fields == {} and inline.shape == (5, 5, 36)
+
+
+def test_minimal_inline_reader_4d_wrong_format():
+    from seismic_zfp.conversion_utils import MinimalInlineReader4d
+    with SeismicFile.open(SGY_FILE_4D) as seismic:
+        reader = MinimalInlineReader4d(seismic)
+        with mock.patch.object(MinimalInlineReader4d, 'get_format_code', return_value=2):
+            with pytest.raises(RuntimeError):
+                reader.read_line(0)
+
+
+@pytest.mark.parametrize('header_detection', ['heuristic', 'thorough', 'strip'])
+def test_segy_converter_4d_reduce_iops_identical_output(tmp_path, header_detection):
+    """The minimal inline reader must produce the same file as the segyio path, byte for byte"""
+    outputs = {}
+    for reduce_iops in (False, True):
+        out_sgz = os.path.join(str(tmp_path), f'small-4d-iops-{reduce_iops}.sgz')
+        with SegyConverter(SGY_FILE_4D) as converter:
+            converter.run(out_sgz, bits_per_voxel=8, reduce_iops=reduce_iops, header_detection=header_detection)
+        outputs[reduce_iops] = out_sgz
+    assert files_identical_except_version(outputs[False], outputs[True])
+    assert np.allclose(parse_sgz_4d(outputs[True])['volume'], segyio.tools.cube(SGY_FILE_4D), rtol=1e-5)
+
+
+def test_segy_converter_4d_reduce_iops_cropped(tmp_path):
+    outputs = {}
+    for reduce_iops in (False, True):
+        out_sgz = os.path.join(str(tmp_path), f'small-4d-iops-crop-{reduce_iops}.sgz')
+        with SegyConverter(SGY_FILE_4D, min_il=1, max_il=4, min_xl=2, max_xl=5, min_offset=1, max_offset=4) as converter:
+            converter.run(out_sgz, bits_per_voxel=16, reduce_iops=reduce_iops)
+        outputs[reduce_iops] = out_sgz
+    assert files_identical_except_version(outputs[False], outputs[True])
+    assert np.allclose(parse_sgz_4d(outputs[True])['volume'], segyio.tools.cube(SGY_FILE_4D)[1:4, 2:5, 1:4], rtol=1e-6)
+
+
+def test_segy_converter_4d_reduce_iops_falls_back_on_failed_self_test(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-iops-fallback.sgz')
+    with mock.patch('seismic_zfp.conversion_utils.MinimalInlineReader4d.self_test', return_value=False):
+        with SegyConverter(SGY_FILE_4D) as converter:
+            with pytest.warns(UserWarning, match="failed self-test"):
+                converter.run(out_sgz, bits_per_voxel=16, reduce_iops=True)
     assert np.allclose(parse_sgz_4d(out_sgz)['volume'], segyio.tools.cube(SGY_FILE_4D), rtol=1e-6)
+
+
+def test_segy_converter_4d_reduce_iops_irregular_warns(tmp_path):
+    out_sgz = os.path.join(str(tmp_path), 'small-4d-iops-irregular.sgz')
+    with SegyConverter(SGY_FILE_4D_IRREG) as converter:
+        with pytest.warns(UserWarning, match="irregular"):
+            converter.run(out_sgz, bits_per_voxel=16, reduce_iops=True)
+    assert parse_sgz_4d(out_sgz)['tracecount'] == 118
 
 
 def test_segy_converter_offset_crop_rejected_for_3d():

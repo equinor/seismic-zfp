@@ -186,6 +186,22 @@ def _trace_header_field_widths():
 TRACE_HEADER_FIELD_WIDTHS = _trace_header_field_widths()
 
 
+def trace_header_fields_from_bytes(traces, tracefields):
+    """Extract trace header fields from a (n_traces, trace_bytes) uint8 view of raw SEG-Y traces
+
+    Returns
+    -------
+    dict of {tracefield: numpy.ndarray of int32, shape (n_traces,)}
+    """
+    values = {}
+    for tf in tracefields:
+        position = int(tf)   # tracefield enums are 1-based byte positions
+        width = TRACE_HEADER_FIELD_WIDTHS[position]
+        column = np.ascontiguousarray(traces[:, position - 1:position - 1 + width])
+        values[tf] = column.view('>i4' if width == 4 else '>i2').ravel().astype(np.int32)
+    return values
+
+
 def read_trace_header_fields(seismicfile, tracefields, start=0, stop=None):
     """Read trace header fields from a range of traces of a SEG-Y file
 
@@ -207,15 +223,21 @@ def read_trace_header_fields(seismicfile, tracefields, start=0, stop=None):
     trace_bytes = data_bytes // tracecount
     headers = np.memmap(seismicfile.filename, dtype=np.uint8, mode='r',
                         offset=SEGY_FILE_HEADER_BYTES + start * trace_bytes,
-                        shape=(stop - start, trace_bytes))[:, 0:SEGY_TRACE_HEADER_BYTES]
-    values = {}
-    for tf in tracefields:
-        position = int(tf)   # tracefield enums are 1-based byte positions
-        width = TRACE_HEADER_FIELD_WIDTHS[position]
-        column = np.ascontiguousarray(headers[:, position - 1:position - 1 + width])
-        values[tf] = column.view('>i4' if width == 4 else '>i2').ravel().astype(np.int32)
+                        shape=(stop - start, trace_bytes))
+    values = trace_header_fields_from_bytes(headers, tracefields)
     del headers
     return values
+
+
+def samples_to_native(array, format_code):
+    """Big-endian SEG-Y sample data (format 1 IBM or 5 IEEE) to native float32"""
+    if format_code == 1:
+        return segyio.tools.native(array)
+    elif format_code == 5:
+        return array.astype(np.float32)
+    else:
+        print("SEGY format code not in [1, 5]")
+        raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
 
 
 class MinimalInlineReader:
@@ -236,9 +258,20 @@ class MinimalInlineReader:
         self.n_il = len(segyfile.ilines)
         self.n_xl = len(segyfile.xlines)
         self.n_samp = len(segyfile.samples)
+        self.traces_per_inline = self.n_xl
+        self.trace_bytes = SEGY_TRACE_HEADER_BYTES + 4 * self.n_samp
 
     def get_format_code(self):
         return self.segyfile.bin[segyio.BinField.Format]
+
+    def _read_inline(self, i):
+        """One read of inline ordinal i: (uint8 view (traces_per_inline, trace_bytes),
+        native float32 samples (traces_per_inline, n_samp))"""
+        self.file.seek(SEGY_FILE_HEADER_BYTES + i * self.traces_per_inline * self.trace_bytes, 0)
+        buf = self.file.read(self.traces_per_inline * self.trace_bytes)
+        traces = np.frombuffer(buf, dtype=np.uint8).reshape(self.traces_per_inline, self.trace_bytes)
+        samples = traces[:, SEGY_TRACE_HEADER_BYTES:].view(np.dtype(np.float32).newbyteorder('>'))
+        return traces, samples_to_native(samples, self.get_format_code())
 
     def self_test(self):
         headers, array = self.read_line(0)
@@ -247,20 +280,35 @@ class MinimalInlineReader:
         return array_equal and headers_equal
 
     def read_line(self, i):
-        self.file.seek(SEGY_FILE_HEADER_BYTES + i * self.n_xl * (self.n_samp * 4 + SEGY_TRACE_HEADER_BYTES), 0)
-        buf = self.file.read(self.n_xl * (self.n_samp * 4 + SEGY_TRACE_HEADER_BYTES))
-        dt = np.dtype(np.float32).newbyteorder('>')
-        array = np.frombuffer(buf, dtype=dt).reshape((self.n_xl, self.n_samp + 60))[:, 60:]
-        headers = [Field(buf[h*(SEGY_TRACE_HEADER_BYTES+self.n_samp*4):
-                             h*(SEGY_TRACE_HEADER_BYTES+self.n_samp*4) + SEGY_TRACE_HEADER_BYTES], kind='trace')
+        """Inline ordinal i as (list of segyio trace header Fields, array (n_xl, n_samp))"""
+        traces, array = self._read_inline(i)
+        headers = [Field(traces[h, 0:SEGY_TRACE_HEADER_BYTES].tobytes(), kind='trace')
                    for h in range(self.n_xl)]
-        if self.get_format_code() == 1:
-            return headers, segyio.tools.native(array)
-        elif self.get_format_code() == 5:
-            return headers, array
-        else:
-            print("SEGY format code not in [1, 5]")
-            raise RuntimeError("Three things are certain: Death, taxes, and lost data. Guess which has occurred.")
+        return headers, array
+
+
+class MinimalInlineReader4d(MinimalInlineReader):
+    """MinimalInlineReader for regular prestack SEG-Y, where an inline is n_xlines * n_offsets
+    contiguous traces. Sample data is shaped (xline, offset, sample) and header fields are
+    extracted from the same buffer as arrays rather than as per-trace Field objects.
+    """
+    def __init__(self, segyfile):
+        super().__init__(segyfile)
+        self.n_off = len(segyfile.offsets)
+        self.traces_per_inline = self.n_xl * self.n_off
+
+    def self_test(self):
+        tracefields = [189, 193, 37]
+        headers, array = self.read_line(0, tracefields)
+        reference = self.segyfile.trace.raw[0:self.traces_per_inline].reshape(self.n_xl, self.n_off, self.n_samp)
+        headers_equal = all(np.array_equal(headers[tf], self.segyfile.attributes(tf)[0:self.traces_per_inline])
+                            for tf in tracefields)
+        return np.array_equal(reference, array) and headers_equal
+
+    def read_line(self, i, tracefields=()):
+        """Inline ordinal i as (header fields dict, array (n_xl, n_off, n_samp))"""
+        traces, array = self._read_inline(i)
+        return trace_header_fields_from_bytes(traces, tracefields), array.reshape(self.n_xl, self.n_off, self.n_samp)
 
 
 def io_thread_func_2d(blockshape, store_headers, headers_dict, trace_group_id,
@@ -336,7 +384,7 @@ def unstructured_io_thread_func(blockshape, store_headers, headers_dict, geom, p
 
 
 def io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
-                      seismic_buffer, seismicfile, trace_length):
+                      seismic_buffer, seismicfile, minimal_il_reader, trace_length):
     """Fill seismic_buffer with blockshape[0] inlines of prestack data, shaped (il, xl, offset, sample)
 
     Each inline is read with a single call as a contiguous run of traces, relying on
@@ -348,24 +396,25 @@ def io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_i
     xl_slice = slice(geom.xlines[0], geom.xlines[-1] + 1)
     off_slice = slice(geom.offsets[0], geom.offsets[-1] + 1)
     traces_per_inline = n_xl_file * n_off_file
+    tracefields = list(headers_dict.keys()) if store_headers else []
 
     for i in range(blockshape[0]):
         # Padding planes repeat the last populated inline. Non Quod Maneat, Sed Quod Adimimus.
         il_ordinal = geom.ilines[0] + plane_set_id * blockshape[0] + min(i, planes_to_read - 1)
         start_trace = il_ordinal * traces_per_inline
-        inline = seismicfile.trace.raw[start_trace:start_trace + traces_per_inline]
-        seismic_buffer[i, 0:n_xl, 0:n_off, 0:trace_length] = \
-            inline.reshape(n_xl_file, n_off_file, trace_length)[xl_slice, off_slice, :]
+        if minimal_il_reader is not None:
+            fields, inline = minimal_il_reader.read_line(il_ordinal, tracefields)
+        else:
+            inline = seismicfile.trace.raw[start_trace:start_trace + traces_per_inline]
+            inline = inline.reshape(n_xl_file, n_off_file, trace_length)
+            fields = read_trace_header_fields(seismicfile, tracefields, start_trace, start_trace + traces_per_inline)
+        seismic_buffer[i, 0:n_xl, 0:n_off, 0:trace_length] = inline[xl_slice, off_slice, :]
 
         if store_headers and i < planes_to_read:
             t_store_base = (plane_set_id * blockshape[0] + i) * n_xl * n_off
-            # segyio's header slice yields one Field reused in place, so consume it lazily
-            for t, header in enumerate(seismicfile.header[start_trace:start_trace + traces_per_inline]):
-                xl_ordinal, off_ordinal = divmod(t, n_off_file)
-                if xl_ordinal in geom.xlines and off_ordinal in geom.offsets:
-                    t_store = t_store_base + (xl_ordinal - geom.xlines[0]) * n_off + (off_ordinal - geom.offsets[0])
-                    for tracefield, array in headers_dict.items():
-                        array[t_store] = header[tracefield]
+            for tracefield, array in headers_dict.items():
+                values = fields[tracefield].reshape(n_xl_file, n_off_file)[xl_slice, off_slice]
+                array[t_store_base:t_store_base + n_xl * n_off] = values.reshape(-1)
 
         # Also repeat edge values across xl, offset and sample padding
         seismic_buffer[i, n_xl:, 0:n_off, 0:trace_length] = seismic_buffer[i, n_xl - 1:n_xl, 0:n_off, 0:trace_length]
@@ -545,7 +594,7 @@ def seismic_file_producer(queue, seismicfile, blockshape, store_headers,
 
 
 def seismic_file_producer_4d(queue, seismicfile, blockshape, store_headers,
-                             headers_dict, geom, hash_object, verbose=True):
+                             headers_dict, geom, hash_object, reduce_iops=False, verbose=True):
     """Reads prestack data from input file inline-set by inline-set, and puts it in the queue for compression"""
     n_ilines, n_xlines, n_offsets = len(geom.ilines), len(geom.xlines), len(geom.offsets)
     trace_length = len(seismicfile.samples)
@@ -553,6 +602,17 @@ def seismic_file_producer_4d(queue, seismicfile, blockshape, store_headers,
                     pad(n_xlines, blockshape[1]),
                     pad(n_offsets, blockshape[2]),
                     pad(trace_length, blockshape[3]))
+
+    minimal_il_reader = None
+    if reduce_iops:
+        if isinstance(geom, InferredGeometry4d):
+            warnings.warn("MinimalInlineReader is not supported for irregular prestack SEG-Y, using segyio",
+                          UserWarning)
+        else:
+            minimal_il_reader = MinimalInlineReader4d(seismicfile)
+            if not minimal_il_reader.self_test():
+                warnings.warn("MinimalInlineReader failed self-test, using fallback", UserWarning)
+                minimal_il_reader = None
 
     n_plane_sets = padded_shape[0] // blockshape[0]
     start_time = time.time()
@@ -569,7 +629,7 @@ def seismic_file_producer_4d(queue, seismicfile, blockshape, store_headers,
                                            planes_to_read, seismic_buffer, seismicfile, trace_length)
         else:
             io_thread_func_4d(blockshape, store_headers, headers_dict, geom, plane_set_id, planes_to_read,
-                              seismic_buffer, seismicfile, trace_length)
+                              seismic_buffer, seismicfile, minimal_il_reader, trace_length)
 
         for i in range(planes_to_read):
             hash_object.update(seismic_buffer[i, 0:n_xlines, 0:n_offsets, 0:trace_length].copy())
@@ -632,10 +692,8 @@ def run_conversion_loop(source, out_filehandle, bits_per_voxel, blockshape,
         seismic_file_producer_2d(compression_queue, source, blockshape, store_headers,
                                  header_info.headers_dict, geom, hash_object)
     elif isinstance(geom, Geometry4d):
-        if reduce_iops:
-            warnings.warn("MinimalInlineReader is not supported for 4D SEG-Y, using segyio", UserWarning)
         seismic_file_producer_4d(compression_queue, source, blockshape, store_headers,
-                                 header_info.headers_dict, geom, hash_object)
+                                 header_info.headers_dict, geom, hash_object, reduce_iops=reduce_iops)
     else:
         seismic_file_producer(compression_queue, source, blockshape, store_headers,
                               header_info.headers_dict, geom, hash_object, reduce_iops=reduce_iops)
