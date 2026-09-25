@@ -455,19 +455,17 @@ class SgzConverter(SgzReader):
         return header
 
     def convert_to_segy(self, out_file):
-        if self.is_4d:
-            raise NotImplementedError("Conversion of 4D SGZ files to SEG-Y is not yet supported")
-        if self.is_3d:
-            spec = segyio.spec()
-            spec.samples = self.zslices
-            spec.offsets = [0]
-            spec.xlines = self.xlines
-            spec.ilines = self.ilines
-            spec.sorting = 2
-        else:
+        if self.is_2d:
             spec = segyio.spec()
             spec.samples = self.zslices
             spec.tracecount = self.tracecount
+        else:
+            spec = segyio.spec()
+            spec.samples = self.zslices
+            spec.offsets = self.offsets if self.is_4d else [0]
+            spec.xlines = self.xlines
+            spec.ilines = self.ilines
+            spec.sorting = 2
 
         samples_per_trace = bytes_to_int(
             self.headerbytes[DISK_BLOCK_BYTES + 3221: DISK_BLOCK_BYTES + 3223])
@@ -497,9 +495,11 @@ class SgzConverter(SgzReader):
             warnings.filterwarnings("ignore", message="Implicit conversion to contiguous array")
             with segyio.create(out_file, spec) as segyfile:
                 self.read_variant_headers()
-                # Doing this is fine now there is decent caching on the loader
-                segyfile.trace = [self.get_trace(i) for i in range(self.tracecount)]
-                segyfile.header = [self.regenerate_trace_header(i) for i in range(self.tracecount)]
+                # Traces come out in file order: (il, xl, offset) with offset fastest for 4D, present
+                # traces only for irregular files. Generators keep memory use to one trace at a time,
+                # which matters for prestack volumes; the loader's chunk cache keeps this efficient.
+                segyfile.trace = (self.get_trace(i) for i in range(self.tracecount))
+                segyfile.header = (self.regenerate_trace_header(i) for i in range(self.tracecount))
 
         with open(out_file, "r+b") as f:
             f.write(self.headerbytes[DISK_BLOCK_BYTES: DISK_BLOCK_BYTES + SEGY_FILE_HEADER_BYTES])

@@ -433,8 +433,3 @@ def test_segyio_emulator_3d_has_no_gather():
         with pytest.raises(WrongDimensionalityError):
             sgzfile.gather[1, 20]
 
-
-def test_sgz_converter_to_segy_rejected(layout):
-    with SgzConverter(layout['sgz']) as converter:
-        with pytest.raises(NotImplementedError):
-            converter.convert_to_segy(os.path.join(os.path.dirname(layout['sgz']), 'no.sgy'))
