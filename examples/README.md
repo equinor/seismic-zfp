@@ -15,10 +15,11 @@ These are a set of small Python programs which demonstrate usage of seismic-zfp,
    python example.py [FILE_ROOT] [ITEM_NO]
    ```
 
-   The 4D example draws several gathers side by side, as a prestack viewer would:
+   The 4D examples draw several gathers side by side, as a prestack viewer would:
 
    ```shell
    python read-inline-4d.py [FILE_ROOT] [LINE_NO] [FIRST_XL_ORDINAL] [N_GATHERS]
+   python read-subvolume-4d.py [FILE_ROOT] [IL_SLICE] [XL_SLICE] [OFFSET_SLICE] [SAMPLE_SLICE]
    ```
 
 
