@@ -101,30 +101,32 @@ def test_sgy2sgz_convert_all_params():
     with runner.isolated_filesystem():
         with SegyConverter(input_file_absolute, min_il=0, max_il=4, min_xl=0, max_xl=3) as converter:
             expected_size = converter.get_output_size(bits_per_voxel=2, blockshape=(64, 64, -1))
-        result = runner.invoke(
-            cli,
-            [
-                "sgy2sgz",
-                input_file_absolute,
-                output_file,
-                "--bits-per-voxel",
-                "2",
-                "--blockshape",
-                "64",
-                "64",
-                "-1",
-                "--reduce-iops",
-                "true",
-                "--min-il",
-                "0",
-                "--max-il",
-                "4",
-                "--min-xl",
-                "0",
-                "--max-xl",
-                "3",
-            ],
-        )
+        # The 3D MinimalInlineReader does not support cropping, so reduce-iops falls back to segyio
+        with pytest.warns(UserWarning, match="MinimalInlineReader failed self-test, using fallback"):
+            result = runner.invoke(
+                cli,
+                [
+                    "sgy2sgz",
+                    input_file_absolute,
+                    output_file,
+                    "--bits-per-voxel",
+                    "2",
+                    "--blockshape",
+                    "64",
+                    "64",
+                    "-1",
+                    "--reduce-iops",
+                    "true",
+                    "--min-il",
+                    "0",
+                    "--max-il",
+                    "4",
+                    "--min-xl",
+                    "0",
+                    "--max-xl",
+                    "3",
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert os.stat(output_file).st_size == expected_size
         with SgzReader(output_file) as reader:

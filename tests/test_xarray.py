@@ -3,8 +3,12 @@ import pytest
 
 try:
     import xarray as xr
+    from packaging.version import Version
+    # Negative-step slices through LazilyIndexedArray are broken in these releases (pydata/xarray#11000)
+    XARRAY_NEGATIVE_STEP_BUG = Version("2025.12.0") <= Version(xr.__version__) < Version("2026.2.0")
 except ImportError:
     xr = None
+    XARRAY_NEGATIVE_STEP_BUG = False
 
 from seismic_zfp.read import SgzReader
 
@@ -12,6 +16,15 @@ SGZ_FILE = 'test_data/small_4bit.sgz'
 SGZ_FILE_4D = 'test_data/small-4d_4bit.sgz'
 
 pytestmark = pytest.mark.skipif(xr is None, reason="Requires xarray")
+
+
+def has_negative_step(key):
+    return any(isinstance(k, slice) and k.step is not None and k.step < 0 for k in key)
+
+
+def negative_step_param(key):
+    marks = pytest.mark.xfail(XARRAY_NEGATIVE_STEP_BUG, reason="xarray bug, see pydata/xarray#11000", strict=True)
+    return pytest.param(key, marks=marks) if has_negative_step(key) else key
 
 
 @pytest.fixture(scope='module')
@@ -44,7 +57,7 @@ def test_xarray_dataset_structure():
         assert "Dimensions:" in repr(ds)
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize("key", [negative_step_param(key) for key in [
     (slice(None), slice(None), slice(None)),
     (slice(1, 4), slice(2, 5), slice(10, 30)),
     (0, 0, slice(0, 5)),
@@ -57,7 +70,7 @@ def test_xarray_dataset_structure():
     (slice(3, 3), 0, 0),
     ([0, 2], 0, 0),
     (slice(1, 3), [4, 1], slice(None)),
-])
+]])
 def test_xarray_indexing_matches_numpy(key, reference):
     with xr.open_dataset(SGZ_FILE) as ds:
         got = ds.data[key].to_numpy()
@@ -109,7 +122,7 @@ def test_xarray_4d_dataset_structure():
         assert "offset" in repr(ds)
 
 
-@pytest.mark.parametrize("key", [
+@pytest.mark.parametrize("key", [negative_step_param(key) for key in [
     (slice(None), slice(None), slice(None), slice(None)),
     (slice(1, 4), slice(2, 5), slice(1, 3), slice(10, 30)),
     (0, 0, 0, slice(0, 5)),
@@ -119,7 +132,7 @@ def test_xarray_4d_dataset_structure():
     (slice(0, 5, 2), 0, slice(None, None, -1), slice(0, 3)),
     (slice(3, 3), 0, 0, 0),
     ([0, 2], 0, slice(None), 0),
-])
+]])
 def test_xarray_4d_indexing_matches_numpy(key, reference_4d):
     with xr.open_dataset(SGZ_FILE_4D) as ds:
         got = ds.data[key].to_numpy()
