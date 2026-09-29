@@ -392,7 +392,7 @@ class SgzReader(object):
 
     def get_inline_index(self, il_no):
         """Get inline index from inline number"""
-        return coord_to_index(il_no, self.ilines)
+        return coord_to_index(il_no, self.ilines, name="inline axis")
 
     def read_inline_number(self, il_no):
         """Reads one inline from SGZ file
@@ -438,7 +438,7 @@ class SgzReader(object):
 
     def get_crossline_index(self, xl_no):
         """Get crossline index from crossline number"""
-        return coord_to_index(xl_no, self.xlines)
+        return coord_to_index(xl_no, self.xlines, name="crossline axis")
 
     def read_crossline_number(self, xl_no):
         """Reads one crossline from SGZ file
@@ -484,7 +484,7 @@ class SgzReader(object):
 
     def get_zslice_index(self, zslice_no, include_stop=False):
         """Get zslice index from sample time/depth"""
-        return coord_to_index(zslice_no, self.zslices, include_stop=include_stop)
+        return coord_to_index(zslice_no, self.zslices, include_stop=include_stop, name="sample axis")
 
     def read_zslice_coord(self, zslice_no):
         """Reads one zslice from SGZ file (time or depth, depending on file contents)
@@ -811,7 +811,7 @@ class SgzReader(object):
 
     def get_offset_index(self, offset_no):
         """Get offset index from offset number"""
-        return coord_to_index(offset_no, self.offsets)
+        return coord_to_index(offset_no, self.offsets, name="offset axis")
 
     def read_gather_number(self, il_no, xl_no):
         """Reads one gather from 4D SGZ file, by inline and crossline number

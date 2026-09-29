@@ -163,13 +163,23 @@ def pad(orig, multiple):
         return multiple * (orig//multiple + 1)
 
 
-def coord_to_index(coord, coords, include_stop=False):
+def describe_axis(coords, name="axis"):
+    """e.g. 'inline axis: 193 values from 9985 to 10369, step 2'"""
+    if len(coords) == 1:
+        return f"{name}: 1 value, {coords[0]}"
+    return f"{name}: {len(coords)} values from {coords[0]} to {coords[-1]}, step {coords[1] - coords[0]}"
+
+
+def coord_to_index(coord, coords, include_stop=False, name="axis"):
     try:
         index = np.where(coords == coord)[0][0]
     except IndexError:
         if include_stop and (coord == coords[-1] + (coords[-1]-coords[-2])):
             return len(coords)
-        raise IndexError(f"Coordinate {coord} not in axis")
+        message = f"Coordinate {coord} not in {describe_axis(coords, name)}"
+        if isinstance(coord, (int, np.integer)) and 0 <= coord < len(coords):
+            message += " (a coordinate value is expected here, this looks like an ordinal)"
+        raise IndexError(message)
     return index
 
 

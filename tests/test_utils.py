@@ -17,6 +17,21 @@ def test_coord_to_index():
         coord_to_index(6, np.arange(1, 6, dtype=np.int32))
 
 
+def test_coord_to_index_error_describes_axis():
+    with pytest.raises(IndexError, match=r"Coordinate 2004 not in inline axis: 5 values from 9985 to 9993, step 2$"):
+        coord_to_index(2004, np.arange(9985, 9995, 2, dtype=np.int32), name="inline axis")
+
+    # A value which would be a valid ordinal gets a hint
+    with pytest.raises(IndexError, match=r"not in offset axis: 3 values from -100 to 100, step 100 \(a coordinate"):
+        coord_to_index(1, np.array([-100, 0, 100], dtype=np.int32), name="offset axis")
+
+    with pytest.raises(IndexError, match=r"Coordinate 5 not in axis: 1 value, 7$"):
+        coord_to_index(5, np.array([7]))
+
+    with pytest.raises(IndexError, match=r"not in axis: 3 values from 0.0 to 8.0, step 4.0$"):
+        coord_to_index(6.0, np.arange(0, 12, 4, dtype=float))
+
+
 def test_gen_coord_list():
     assert np.all(np.arange(0, 10, 5) == gen_coord_list(0, 5, 2))
     assert np.all(np.arange(0, 6, 2) == gen_coord_list(0, 2, 3))
