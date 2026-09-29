@@ -73,7 +73,8 @@ gathers_to_image(vol_sgz[0], os.path.join(base_path, 'out_subvol-4d-sgz.png'))
 with segyio.open(os.path.join(base_path, '0.sgy')) as segyfile:
     t0 = time.time()
     # segyio <= 1.9.14 drops negative offsets from gather[il, xl, offset_slice] (offset labels are
-    # treated as positional slice indices), so ask for each offset explicitly. Fixed in segyio PR #663.
+    # treated as positional slice indices), so ask for each offset explicitly. Fixed in segyio PR #666
+    # (https://github.com/equinor/segyio/pull/666).
     sample_ids = np.flatnonzero(np.isin(segyfile.samples, samples))
     vol_sgy = np.stack([np.stack([np.stack([segyfile.gather[il, xl, offset][sample_ids] for offset in offsets])
                                   for xl in xlines])
