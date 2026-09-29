@@ -1,4 +1,7 @@
-"""TEMPORARY: derive a regular prestack SEG-Y from an irregular one by zero-padding.
+"""Derive a regular prestack SEG-Y from an irregular one by zero-padding.
+
+seismic-zfp compresses irregular prestack SEG-Y directly, but a regular file is needed to use
+reduce_iops, to crop on conversion, or to compare against tools which expect a full lattice.
 
 Usage:
     python make-regular-prestack-segy.py IN.sgy OUT.sgy [--min-fill F] [--dry-run]
@@ -58,6 +61,7 @@ present = trace_index >= 0
 print(f"{present.sum()} traces on {present.size} grid positions ({100 * present.mean():.1f}% filled)")
 
 # Optionally trim axis ends whose slices are sparsely filled, keeping constant spacing
+# Nunc Id Vides, Nunc Ne Vides
 keep = [np.ones(n, dtype=bool) for n in present.shape]
 while MIN_FILL > 0:
     sub = present[np.ix_(*keep)]

@@ -79,7 +79,8 @@ For further explanation of the design and implementation of seismic-zfp, please 
 
 ## Examples ##
 
-Full example code is provided [here](examples), but the following reference is useful:
+Full example code is provided [here](examples), and standalone utilities such as a tool to regularise
+irregular prestack SEG-Y are in [tools](tools). The following reference is useful:
 
 #### Create SGZ files from SEG-Y, ZGY or VDS ####
 
