@@ -56,6 +56,15 @@ class SgzReader(object):
     read_volume(min_il, max_il, min_xl, max_xl, min_z, max_z)
         Decompresses and returns full cube from SGZ file as 3D numpy array
 
+    read_gather_number(il_no, xl_no) / read_gather(il_id, xl_id)
+        Decompresses and returns one gather (all offsets) from 4D SGZ file as 2D numpy array
+
+    read_offset_number(offset_no) / read_offset(offset_id)
+        Decompresses and returns one common-offset volume from 4D SGZ file as 3D numpy array
+
+    read_subvolume_4d(min_il, max_il, min_xl, max_xl, min_offset, max_offset, min_z, max_z)
+        Decompresses and returns an arbitrary sub-volume from 4D SGZ file as 4D numpy array
+
     get_trace(index, min_sample_id=None, max_sample_id=None)
         Decompress, optionally crop, and return a single trace from SGZ file as 1D numpy array
 
