@@ -48,6 +48,14 @@ Compression and reading follows the same pattern as 3D files, but segyio emulati
 following attributes: trace, header, samples, bin & text. However an additional funciton read_subplane() 
 is available for extracting horizontally and vertically contrained data.
 
+#### 4D (Prestack) SEG-Y Support ####
+As of v0.5.0 regular prestack SEG-Y files (inline-sorted, with the same offsets present at every IL/XL
+position, identified by the `offset` trace header) can be compressed. The offset axis is stored between
+the crossline and sample axes, and ZFP compresses the data in 4x4x4x4 units, so the blockshape becomes
+(il, xl, offset, z) with a default of (4, 4, 4, -1). 4D SGZ files can be read through `SgzReader`
+(`read_gather`, `read_offset`, `read_subvolume_4d`), the segyio-like interface (`gather`, `iline[il, offset]`,
+`subvolume`) and xarray, and can be converted back to SEG-Y.
+
 
 #### Headers ####
 The [seismic-zfp (.SGZ) format](docs/file-specification.md) also allows for preservation of information in 
@@ -71,7 +79,8 @@ For further explanation of the design and implementation of seismic-zfp, please 
 
 ## Examples ##
 
-Full example code is provided [here](examples), but the following reference is useful:
+Full example code is provided [here](examples), and standalone utilities such as a tool to regularise
+irregular prestack SEG-Y are in [tools](tools). The following reference is useful:
 
 #### Create SGZ files from SEG-Y, ZGY or VDS ####
 
@@ -85,6 +94,10 @@ with SegyConverter("in.sgy") as converter:
     converter.run("out_standard.sgz", bits_per_voxel=4)
     # Create a "z-slice optimized" SGZ file
     converter.run("out_adv.sgz", bits_per_voxel=2, blockshape=(64, 64, 4))
+
+with SegyConverter("in_prestack.sgy", min_offset=0, max_offset=16) as converter:
+    # Prestack (4D) SEG-Y is detected automatically, blockshape is (il, xl, offset, z)
+    converter.run("out_4d.sgz", bits_per_voxel=4, blockshape=(4, 4, 4, -1))
                   
 with ZgyConverter("in_8-int.zgy") as converter:
     # 8-bit integer ZGY and 1-bit SGZ have similar quality
@@ -142,6 +155,18 @@ with seismic_zfp.open("in.sgz")) as sgzfile:
                                   XL_NO_START:XL_NO_STOP:XL_NO_STEP,
                                   SAMP_NO_START:SAMP_NO_STOP:SAMP_NO_STEP]
     header_arr = sgzfile.get_tracefield_values(segyio.tracefield.TraceField.NStackedTraces)
+```
+
+#### Open SGZ files with xarray ####
+seismic-zfp registers an xarray backend, so SGZ files open lazily as a Dataset with a single `data`
+variable over dimensions (il, xl, z), or (il, xl, offset, z) for 4D files, with coordinates in line
+numbers, offset values and sample times. Only the part of the file covering a selection is decompressed.
+```python
+import xarray as xr
+with xr.open_dataset("in.sgz") as ds:
+    inline = ds.data.sel(il=IL_NO).to_numpy()
+    gather = ds.data.sel(il=IL_NO, xl=XL_NO).to_numpy()              # 4D files
+    stack = ds.data.sel(il=IL_NO).mean(dim="offset").to_numpy()      # 4D files
 ```
 
 ## Command Line Interface

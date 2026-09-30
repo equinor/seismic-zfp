@@ -477,8 +477,59 @@ def test_compress_crop(tmp_path):
     with SgzReader(out_sgz) as reader:
         sgz_data = reader.read_volume()
         assert reader.structured
+        with segyio.open(SGY_FILE) as segyfile:
+            assert np.array_equal(reader.ilines, segyfile.ilines[1:4])
+            assert np.array_equal(reader.xlines, segyfile.xlines[1:3])
+            for i in range(reader.tracecount):
+                assert reader.gen_trace_header(i)[189] == reader.ilines[i // 2]
+                assert reader.gen_trace_header(i)[193] == reader.xlines[i % 2]
 
     assert np.allclose(sgz_data, segyio.tools.cube(SGY_FILE)[1:4, 1:3, :], rtol=1e-8)
+
+
+@pytest.mark.parametrize("crop, expected", [
+    # Ordinal 0 is a valid crop bound, not "unspecified"
+    (dict(min_il=0, max_il=2, min_xl=0, max_xl=3), (slice(0, 2), slice(0, 3))),
+    # Unspecified bounds default to the full extent of that axis
+    (dict(max_il=3), (slice(0, 3), slice(None))),
+    (dict(min_xl=2), (slice(None), slice(2, None))),
+])
+def test_compress_crop_zero_and_partial_bounds(tmp_path, crop, expected):
+    out_sgz = os.path.join(str(tmp_path), 'small_crop.sgz')
+    with SegyConverter(SGY_FILE, **crop) as converter:
+        converter.run(out_sgz, bits_per_voxel=16)
+    with segyio.open(SGY_FILE) as segyfile, SgzReader(out_sgz) as reader:
+        assert np.array_equal(reader.ilines, segyfile.ilines[expected[0]])
+        assert np.array_equal(reader.xlines, segyfile.xlines[expected[1]])
+        assert np.allclose(reader.read_volume(), segyio.tools.cube(SGY_FILE)[expected], rtol=1e-8)
+
+
+def test_compress_crop_irregular_rejected():
+    with pytest.raises(NotImplementedError):
+        SegyConverter(SGY_FILE_IRREG, min_il=0, max_il=2)
+
+
+def test_compress_crop_header_arrays_sized_to_crop(tmp_path):
+    # 512 traces: full-size header arrays (2048 bytes) straddle several 512-byte
+    # pages, so a crop must size its header arrays to the cropped tracecount
+    # for the footer offsets in the SGZ header to be correct.
+    out_sgz = os.path.join(str(tmp_path), 'tracecount512_crop.sgz')
+    with SegyConverter(SGY_FILE_512, min_il=2, max_il=14, min_xl=3, max_xl=30) as converter:
+        estimated_size = converter.get_output_size(bits_per_voxel=8)
+        converter.run(out_sgz, bits_per_voxel=8)
+
+    assert os.path.getsize(out_sgz) == estimated_size
+
+    with segyio.open(SGY_FILE_512) as segyfile:
+        with SgzReader(out_sgz) as reader:
+            assert reader.tracecount == 12 * 27
+            assert np.array_equal(reader.ilines, segyfile.ilines[2:14])
+            assert np.array_equal(reader.xlines, segyfile.xlines[3:30])
+            reader.read_variant_headers()
+            for i in range(reader.tracecount):
+                segy_trace = (2 + i // 27) * 32 + 3 + i % 27
+                assert reader.gen_trace_header(i) == segyfile.header[segy_trace]
+            assert np.allclose(reader.read_volume(), segyio.tools.cube(SGY_FILE_512)[2:14, 3:30, :], rtol=1e-6)
 
 
 def test_compress_unstructured_decimated(tmp_path):
@@ -494,6 +545,46 @@ def test_compress_unstructured_decimated(tmp_path):
     segy_cube = segyio.tools.cube(SGY_FILE)[::2, ::2, :]
     segy_cube[2, 2, :] = 0
     assert np.allclose(sgz_data, segy_cube, atol=1e-4)
+
+
+def test_make_header_unstructured_axis_steps():
+    from seismic_zfp.conversion_utils import make_header
+    from seismic_zfp.utils import InferredGeometry3d, bytes_to_signed_int
+    # IL step 2, XL step 1, one trace missing so the geometry is irregular
+    traces_ref = {(il, xl): i for i, (il, xl) in enumerate(
+        (il, xl) for il in (1, 3, 5) for xl in (20, 21, 22) if (il, xl) != (5, 22))}
+    geom = InferredGeometry3d(traces_ref)
+    hw_info = HeaderwordInfo(n_traces=9, variant_header_list=[])
+    header = make_header(None, None, np.arange(0, 40, 4), 8, hw_info, 4, (4, 4, 512), geom, unstructured=True)
+    assert bytes_to_signed_int(header[20:24]) == 20   # min xl
+    assert bytes_to_signed_int(header[24:28]) == 1    # min il
+    assert bytes_to_signed_int(header[32:36]) == 1    # xl step
+    assert bytes_to_signed_int(header[36:40]) == 2    # il step
+
+
+def test_compress_unstructured_asymmetric_steps(tmp_path):
+    # Every other inline of small.sgy with one trace removed: IL step 2, XL step 1
+    sgy_dec = os.path.join(str(tmp_path), 'small-il-dec-hole.sgy')
+    with segyio.open(SGY_FILE) as src:
+        keep = [i for i, h in enumerate(src.header) if h[189] % 2 == 1 and (h[189], h[193]) != (5, 24)]
+        spec = segyio.spec()
+        spec.format, spec.samples, spec.tracecount = src.format, src.samples, len(keep)
+        with segyio.create(sgy_dec, spec) as dst:
+            dst.text[0], dst.bin = src.text[0], src.bin
+            for n, i in enumerate(keep):
+                dst.header[n], dst.trace[n] = src.header[i], src.trace[i]
+
+    out_sgz = os.path.join(str(tmp_path), 'small-il-dec-hole.sgz')
+    with SegyConverter(sgy_dec) as converter:
+        converter.run(out_sgz, bits_per_voxel=16)
+
+    with SgzReader(out_sgz) as reader:
+        assert not reader.structured
+        assert np.array_equal(reader.ilines, [1, 3, 5])
+        assert np.array_equal(reader.xlines, [20, 21, 22, 23, 24])
+        segy_cube = segyio.tools.cube(SGY_FILE)[::2, :, :]
+        segy_cube[2, 4, :] = 0
+        assert np.allclose(reader.read_volume(), segy_cube, atol=1e-4)
 
 
 def test_compress_unstructured_headers(tmp_path):

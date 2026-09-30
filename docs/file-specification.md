@@ -19,6 +19,8 @@ The length of these component parts can be calculated as follows:
 
 The padding of the IL/XL/Samples dimensions is to the logical size of those dimensions stored in a single disk-block, which is dependent on the bit-rate. For example, at 2 bits-per-voxel the logical size of the data in a 4K disk block may be 4x4x1024, or 64x64x4, etc.
 
+For 4D (prestack) files an offset axis is added between crossline and samples, so data is padded(nIL x nXL x nOffset x nS) x bitrate / 8 and the footer is nHeaders x nIL x nXL x nOffset x 4. Voxels are ordered (IL, XL, offset, sample), matching the trace ordering of an inline-sorted prestack SEG-Y file.
+
 ---
 
 ### SeismicZFP Header (v0.1.7 onwards)
@@ -50,7 +52,12 @@ Byte encoding is little-endian.
 |80-83 |uint32 |Encoded header-detection method ***
 |84-91   |float64  | Minimum sample time/depth*****
 |92-99   |float64  | Sample interval (μs/m)*****
-|100-959 |---      | --- Unused ---
+|100-127 |---      | --- Unused ---
+|128-131 |uint32 |Number of offsets (4D files only, 0 otherwise) ******
+|132-135 | int32 |Minimum offset
+|136-139 | int32 |Offset interval
+|140-143 |uint32 |Blockshape: Offset-direction
+|144-959 |---      | --- Unused ---
 |960-979 |bytes |Hash of input data
 |980-2047 |** |Default trace header values
 |2048-4095 |---  | --- Unused ---
@@ -73,3 +80,5 @@ Storing whether trace header fields are duplicates of previous ones reduces the 
 
 ***** This value may be overidden to provide higher precision by bytes 3273–3280 in the SEG-Y header, or equivalent in ZGY file
 These bytes were allocated in rev 2.0 for "Extended sample interval", as an IEEE double-precision float.
+
+****** A non-zero value here identifies a 4D (prestack) file, written by v0.5.0 onwards. Bytes 128-959 are zero in all earlier files. For 4D files the trace count (68-71) and header array length (60-63) include the offset dimension, and the number of data disk blocks (56-59) includes padding of the offset dimension to the offset-direction blockshape. The four blockshape dimensions (IL, XL, offset, samples) multiplied by the bit-rate always fill one 4K disk block, and each must be at least 4 since ZFP compresses 4D data in 4x4x4x4 units.

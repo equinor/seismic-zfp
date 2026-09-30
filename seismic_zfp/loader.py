@@ -217,3 +217,103 @@ class SgzLoader3d(SgzLoader):
                                  nz * self.blockshape[2]:(nz + 1) * self.blockshape[2]] \
                         = self._decompress(buffer, self.blockshape)
         return decompressed
+
+
+class SgzLoader4d(SgzLoader):
+    """Loader for prestack files, laid out (il, xl, offset, sample).
+
+    With blockshape (4, 4, 4, n) an inline-set of 4 inlines is a contiguous run of chunks ordered
+    (xl-block, offset-block), each chunk holding all samples for 4 IL x 4 XL x 4 offsets, and 4x4x4x4
+    compression units within it are sample-fastest. Unit (i, x, o, z) therefore starts at
+    unit_bytes * (((i * X + x) * O + o) * Z + z) where X, O, Z are the padded dimensions in units.
+    """
+
+    def _insert_into_buffer(self, buffer, buffer_start, data_offset, length):
+        buffer[buffer_start: buffer_start + length] = self._get_compressed_bytes(data_offset, length)
+
+    def clear_cache(self):
+        self.read_and_decompress_il_set.cache_clear()
+        self.read_and_decompress_xl_set.cache_clear()
+        self.read_and_decompress_chunk_range.cache_clear()
+        self.read_unshuffle_and_decompress_chunk_range.cache_clear()
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_il_set(self, i):
+        il_set_bytes = self.chunk_bytes * (self.shape_pad[1] // 4) * (self.shape_pad[2] // 4)
+        buffer = self._get_compressed_bytes(il_set_bytes * (i // 4), il_set_bytes)
+        return self._decompress(buffer, (4, self.shape_pad[1], self.shape_pad[2], self.shape_pad[3]))
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_xl_set(self, x):
+        # Within each inline-set, all offsets and samples of one xl-set are contiguous
+        xl_set_bytes = self.chunk_bytes * (self.shape_pad[2] // 4)
+        il_set_bytes = xl_set_bytes * (self.shape_pad[1] // 4)
+        buffer = bytearray(xl_set_bytes * (self.shape_pad[0] // 4))
+        with cf.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
+            for il_set in range(self.shape_pad[0] // 4):
+                executor.submit(self._insert_into_buffer, buffer, il_set * xl_set_bytes,
+                                il_set * il_set_bytes + (x // 4) * xl_set_bytes, xl_set_bytes)
+        return self._decompress(buffer, (self.shape_pad[0], 4, self.shape_pad[2], self.shape_pad[3]))
+
+    def read_chunk_range(self, min_il, min_xl, min_offset, min_z, il_units, xl_units, offset_units, z_units):
+        units_per_dim = tuple(n // 4 for n in self.shape_pad)
+        buffer = bytearray(il_units * xl_units * offset_units * z_units * self.unit_bytes)
+        read_length = self.unit_bytes * z_units
+        for i in range(il_units):
+            for x in range(xl_units):
+                for o in range(offset_units):
+                    # Samples are contiguous, so read all requested z-units in one go
+                    unit_id = ((((min_il // 4) + i) * units_per_dim[1] + (min_xl // 4) + x) * units_per_dim[2]
+                               + (min_offset // 4) + o) * units_per_dim[3] + (min_z // 4)
+                    buf_start = ((i * xl_units + x) * offset_units + o) * z_units * self.unit_bytes
+                    buffer[buf_start:buf_start + read_length] = \
+                        self._get_compressed_bytes(unit_id * self.unit_bytes, read_length)
+        return buffer
+
+    @lru_cache(maxsize=1)
+    def read_and_decompress_chunk_range(self, max_il, max_xl, max_offset, max_z,
+                                        min_il, min_xl, min_offset, min_z, multithreading):
+        z_units = (max_z + 3) // 4 - min_z // 4
+        offset_units = (max_offset + 3) // 4 - min_offset // 4
+        xl_units = (max_xl + 3) // 4 - min_xl // 4
+        il_units = (max_il + 3) // 4 - min_il // 4
+
+        buffer = self.read_chunk_range(min_il, min_xl, min_offset, min_z, il_units, xl_units, offset_units, z_units)
+        shape = (il_units * 4, xl_units * 4, offset_units * 4, z_units * 4)
+        if multithreading and il_units > 1:
+            compressed_len = len(buffer) // il_units
+            cube = np.zeros(shape, dtype='float32')
+            with cf.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False)) as executor:
+                for unit in range(il_units):
+                    executor.submit(self._decompress_into_array,
+                                    buffer[unit * compressed_len: (unit + 1) * compressed_len],
+                                    (4,) + shape[1:],
+                                    cube[unit * 4: unit * 4 + 4])
+            return cube
+        else:
+            return self._decompress(buffer, shape)
+
+    @lru_cache(maxsize=1)
+    def read_unshuffle_and_decompress_chunk_range(self, max_il, max_xl, max_offset, max_z,
+                                                  min_il, min_xl, min_offset, min_z):
+        """General layout - disk blocks are ordered (il, xl, offset, sample) and decompressed one by one"""
+        bs = self.blockshape
+        first_blocks = (min_il // bs[0], min_xl // bs[1], min_offset // bs[2], min_z // bs[3])
+        n_blocks = ((max_il + bs[0] - 1) // bs[0] - first_blocks[0],
+                    (max_xl + bs[1] - 1) // bs[1] - first_blocks[1],
+                    (max_offset + bs[2] - 1) // bs[2] - first_blocks[2],
+                    (max_z + bs[3] - 1) // bs[3] - first_blocks[3])
+        decompressed = np.zeros(tuple(n * b for n, b in zip(n_blocks, bs)), dtype=np.float32)
+        for ni in range(n_blocks[0]):
+            for nx in range(n_blocks[1]):
+                for no in range(n_blocks[2]):
+                    for nz in range(n_blocks[3]):
+                        block_id = (((first_blocks[0] + ni) * self.block_dims[1] + first_blocks[1] + nx)
+                                    * self.block_dims[2] + first_blocks[2] + no) * self.block_dims[3] \
+                                   + first_blocks[3] + nz
+                        buffer = self._get_compressed_bytes(block_id * self.block_bytes, self.block_bytes)
+                        decompressed[ni * bs[0]:(ni + 1) * bs[0],
+                                     nx * bs[1]:(nx + 1) * bs[1],
+                                     no * bs[2]:(no + 1) * bs[2],
+                                     nz * bs[3]:(nz + 1) * bs[3]] = self._decompress(buffer, bs)
+        return decompressed

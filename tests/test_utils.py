@@ -17,6 +17,21 @@ def test_coord_to_index():
         coord_to_index(6, np.arange(1, 6, dtype=np.int32))
 
 
+def test_coord_to_index_error_describes_axis():
+    with pytest.raises(IndexError, match=r"Coordinate 2004 not in inline axis: 5 values from 9985 to 9993, step 2$"):
+        coord_to_index(2004, np.arange(9985, 9995, 2, dtype=np.int32), name="inline axis")
+
+    # A value which would be a valid ordinal gets a hint
+    with pytest.raises(IndexError, match=r"not in offset axis: 3 values from -100 to 100, step 100 \(a coordinate"):
+        coord_to_index(1, np.array([-100, 0, 100], dtype=np.int32), name="offset axis")
+
+    with pytest.raises(IndexError, match=r"Coordinate 5 not in axis: 1 value, 7$"):
+        coord_to_index(5, np.array([7]))
+
+    with pytest.raises(IndexError, match=r"not in axis: 3 values from 0.0 to 8.0, step 4.0$"):
+        coord_to_index(6.0, np.arange(0, 12, 4, dtype=float))
+
+
 def test_gen_coord_list():
     assert np.all(np.arange(0, 10, 5) == gen_coord_list(0, 5, 2))
     assert np.all(np.arange(0, 6, 2) == gen_coord_list(0, 2, 3))
@@ -109,6 +124,95 @@ def test_define_blockshape_3d():
         define_blockshape_3d(-1, (4, 4, -1))
     with pytest.raises(AssertionError):
         define_blockshape_3d(1, (4, 4, 128))
+    with pytest.raises(AssertionError):
+        define_blockshape_3d(4, (4, 4, 4, -1))
+
+
+def test_define_blockshape_4d():
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, 4, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d("4", (4, 4, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, 4, 4, -1))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, 4, -1, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (4, -1, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(4, (-1, 4, 4, 128))
+    assert (4, (4, 4, 4, 128)) == define_blockshape_4d(-1, (4, 4, 4, 128))
+    assert (8, (4, 4, 4, 64)) == define_blockshape_4d(8, (4, 4, 4, -1))
+    assert (2, (4, 4, 4, 256)) == define_blockshape_4d(2, (4, 4, 4, -1))
+    assert (2, (16, 16, 4, 16)) == define_blockshape_4d(-1, (16, 16, 4, 16))
+    assert (0.5, (4, 4, 4, 1024)) == define_blockshape_4d(-2, (4, 4, 4, -1))
+    assert (0.5, (4, 4, 4, 1024)) == define_blockshape_4d(0.5, (4, 4, 4, -1))
+
+    with pytest.raises(ValueError):
+        define_blockshape_4d(-1, (4, 4, 4, -1))
+    with pytest.raises(ValueError):
+        define_blockshape_4d(4, (4, 4, -1, -1))
+    with pytest.raises(AssertionError):
+        define_blockshape_4d(4, (4, 4, 4, 64))
+    with pytest.raises(AssertionError):
+        define_blockshape_4d(4, (4, 4, -1))
+    # 4D zfp units are 4x4x4x4, dimensions below 4 are not permitted
+    with pytest.raises(ValueError):
+        define_blockshape_4d(4, (1, 4, 16, -1))
+    with pytest.raises(ValueError):
+        define_blockshape_4d(4, (4, 4, 2, -1))
+
+
+def test_geometry_4d():
+    geom = Geometry4d(0, 5, 2, 7, 1, 4)
+    assert list(geom.ilines) == [0, 1, 2, 3, 4]
+    assert list(geom.xlines) == [2, 3, 4, 5, 6]
+    assert list(geom.offsets) == [1, 2, 3]
+    assert not isinstance(geom, Geometry3d)
+    assert not isinstance(geom, Geometry2d)
+    assert 'OFFSET:[1,4]' in repr(geom)
+
+
+def test_inferred_geometry_4d():
+    # Decimated IL, regular XL, offsets 100..400 step 100, with two positions missing
+    traces_ref = {(il, xl, off): i for i, (il, xl, off) in enumerate(
+        (il, xl, off) for il in (10, 12, 14) for xl in (5, 6) for off in (100, 200, 300, 400)
+        if (il, xl, off) not in [(12, 6, 100), (14, 5, 400)])}
+    geom = InferredGeometry4d(traces_ref)
+    assert isinstance(geom, Geometry4d)
+    assert not isinstance(geom, Geometry3d)
+    assert list(geom.ilines) == [10, 12, 14]
+    assert list(geom.xlines) == [5, 6]
+    assert list(geom.offsets) == [100, 200, 300, 400]
+    assert (geom.min_il, geom.max_il, geom.il_step) == (10, 14, 2)
+    assert (geom.min_xl, geom.max_xl, geom.xl_step) == (5, 6, 1)
+    assert (geom.min_offset, geom.max_offset, geom.offset_step) == (100, 400, 100)
+    assert geom.traces_ref[(10, 5, 100)] == 0
+    assert (12, 6, 100) not in geom.traces_ref
+    assert repr(geom) == 'IL:[10,14,2] -- XL:[5,6,1] -- OFFSET:[100,400,100]'
+
+
+def test_inferred_geometry_4d_single_valued_axis():
+    traces_ref = {(il, 7, off): 0 for il in (1, 2) for off in (10, 20, 30)}
+    geom = InferredGeometry4d(traces_ref)
+    assert list(geom.xlines) == [7]
+    assert geom.xl_step == 0
+
+
+def test_inferred_geometry_4d_trace_index():
+    # Inline-sorted with IL step 2 and offsets step 100; (12, 6, 100) missing; trace 9 belongs to inline 14
+    keys = [(il, xl, off) for il in (10, 12, 14) for xl in (5, 6) for off in (100, 200)]
+    keys.remove((12, 6, 100))
+    geom = InferredGeometry4d({key: i for i, key in enumerate(keys)})
+    assert np.array_equal(geom.inline_trace_ids(0), [0, 1, 2, 3])
+    assert np.array_equal(geom.inline_trace_ids(1), [4, 5, 6])
+    assert np.array_equal(geom.inline_trace_ids(2), [7, 8, 9, 10])
+    assert len(geom.inline_trace_ids(3)) == 0
+    xl_ids, off_ids = geom.trace_ordinals(geom.inline_trace_ids(1))
+    assert np.array_equal(xl_ids, [0, 0, 1])
+    assert np.array_equal(off_ids, [0, 1, 1])
+
+    # Offset-sorted: an inline's traces are spread through the file
+    keys = [(il, xl, off) for off in (100, 200) for il in (10, 12) for xl in (5, 6)]
+    geom = InferredGeometry4d({key: i for i, key in enumerate(keys)})
+    assert np.array_equal(geom.inline_trace_ids(0), [0, 1, 4, 5])
+    xl_ids, off_ids = geom.trace_ordinals(geom.inline_trace_ids(0))
+    assert np.array_equal(xl_ids, [0, 1, 0, 1])
+    assert np.array_equal(off_ids, [0, 0, 1, 1])
 
 
 def test_get_chunk_cache_size():

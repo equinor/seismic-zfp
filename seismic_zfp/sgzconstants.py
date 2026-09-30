@@ -3,3 +3,7 @@ SEGY_FILE_HEADER_BYTES = 3600
 SEGY_TEXT_HEADER_BYTES = 3200
 SEGY_TRACE_HEADER_BYTES = 240
 HEADER_DETECTION_CODES = {'heuristic': 0, 'thorough': 10, 'exhaustive': 20, 'strip': 30}
+
+# 4D (prestack) files carry an offset axis, described from header byte 128 onwards.
+# A zero offset count at this position identifies a 3D/2D file.
+SGZ_4D_HEADER_OFFSET = 128

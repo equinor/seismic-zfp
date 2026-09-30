@@ -40,6 +40,19 @@ class Geometry3d:
         self.xlines = range(min_xl, max_xl, xl_step)
 
 
+class Geometry4d:
+    """Lightweight place to keep track of IL/XL/offset ranges (ordinals) for prestack data"""
+    def __init__(self, min_il, max_il, min_xl, max_xl, min_offset, max_offset,
+                 il_step=1, xl_step=1, offset_step=1):
+        self.ilines = range(min_il, max_il, il_step)
+        self.xlines = range(min_xl, max_xl, xl_step)
+        self.offsets = range(min_offset, max_offset, offset_step)
+
+    def __repr__(self):
+        return (f'IL:[{self.ilines.start},{self.ilines.stop}] -- XL:[{self.xlines.start},{self.xlines.stop}]'
+                f' -- OFFSET:[{self.offsets.start},{self.offsets.stop}]')
+
+
 class InferredGeometry3d(Geometry3d):
     """Subclass used to signify irregular input SEG-Y"""
     def __init__(self, traces_ref):
@@ -61,6 +74,55 @@ class InferredGeometry3d(Geometry3d):
 
     def __repr__(self):
         return f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
+
+
+class InferredGeometry4d(Geometry4d):
+    """Subclass used to signify irregular prestack input SEG-Y.
+
+    Unlike Geometry4d the ilines/xlines/offsets ranges hold IL/XL/offset *numbers* rather than
+    ordinals, spanning the regular grid which encloses every trace in traces_ref.
+    """
+    def __init__(self, traces_ref):
+        self.traces_ref = traces_ref
+        il_ids = set([k[0] for k in traces_ref.keys()])
+        xl_ids = set([k[1] for k in traces_ref.keys()])
+        offset_ids = set([k[2] for k in traces_ref.keys()])
+        self.min_il, self.max_il, self.il_step = InferredGeometry3d.get_range(il_ids)
+        self.min_xl, self.max_xl, self.xl_step = InferredGeometry3d.get_range(xl_ids)
+        self.min_offset, self.max_offset, self.offset_step = InferredGeometry3d.get_range(offset_ids)
+        # A step of 0 signifies a single value on that axis, which range() cannot express
+        super().__init__(self.min_il, self.max_il + 1, self.min_xl, self.max_xl + 1,
+                         self.min_offset, self.max_offset + 1,
+                         il_step=self.il_step or 1, xl_step=self.xl_step or 1, offset_step=self.offset_step or 1)
+        self._trace_ordinals = None
+
+    def __repr__(self):
+        return (f'IL:[{self.min_il},{self.max_il},{self.il_step}] -- XL:[{self.min_xl},{self.max_xl},{self.xl_step}]'
+                f' -- OFFSET:[{self.min_offset},{self.max_offset},{self.offset_step}]')
+
+    def _build_trace_ordinals(self):
+        """Per-trace (il, xl, offset) grid ordinals, indexed by trace number. -1 marks traces absent from traces_ref."""
+        n_traces = max(self.traces_ref.values()) + 1
+        ordinals = np.full((3, n_traces), -1, dtype=np.int32)
+        steps = (self.il_step or 1, self.xl_step or 1, self.offset_step or 1)
+        mins = (self.min_il, self.min_xl, self.min_offset)
+        for (il, xl, offset), i in self.traces_ref.items():
+            ordinals[0, i] = (il - mins[0]) // steps[0]
+            ordinals[1, i] = (xl - mins[1]) // steps[1]
+            ordinals[2, i] = (offset - mins[2]) // steps[2]
+        self._trace_ordinals = ordinals
+
+    def inline_trace_ids(self, il_id):
+        """Trace numbers of every trace on inline ordinal il_id, in file order"""
+        if self._trace_ordinals is None:
+            self._build_trace_ordinals()
+        return np.flatnonzero(self._trace_ordinals[0] == il_id)
+
+    def trace_ordinals(self, trace_ids):
+        """(xl_ids, offset_ids) grid ordinals for the given trace numbers"""
+        if self._trace_ordinals is None:
+            self._build_trace_ordinals()
+        return self._trace_ordinals[1, trace_ids], self._trace_ordinals[2, trace_ids]
 
 
 class Geometry2d:
@@ -101,13 +163,23 @@ def pad(orig, multiple):
         return multiple * (orig//multiple + 1)
 
 
-def coord_to_index(coord, coords, include_stop=False):
+def describe_axis(coords, name="axis"):
+    """e.g. 'inline axis: 193 values from 9985 to 10369, step 2'"""
+    if len(coords) == 1:
+        return f"{name}: 1 value, {coords[0]}"
+    return f"{name}: {len(coords)} values from {coords[0]} to {coords[-1]}, step {coords[1] - coords[0]}"
+
+
+def coord_to_index(coord, coords, include_stop=False, name="axis"):
     try:
         index = np.where(coords == coord)[0][0]
     except IndexError:
         if include_stop and (coord == coords[-1] + (coords[-1]-coords[-2])):
             return len(coords)
-        raise IndexError(f"Coordinate {coord} not in axis")
+        message = f"Coordinate {coord} not in {describe_axis(coords, name)}"
+        if isinstance(coord, (int, np.integer)) and 0 <= coord < len(coords):
+            message += " (a coordinate value is expected here, this looks like an ordinal)"
+        raise IndexError(message)
     return index
 
 
@@ -169,7 +241,24 @@ def define_blockshape_2d(bits_per_voxel, blockshape):
 
 
 def define_blockshape_3d(bits_per_voxel, blockshape):
-    if sum([1 for n in list(blockshape) + [bits_per_voxel] if n == -1]) > 1:
+    assert len(blockshape) == 3
+    return _define_blockshape(bits_per_voxel, blockshape)
+
+
+def define_blockshape_4d(bits_per_voxel, blockshape):
+    assert len(blockshape) == 4
+    bits_per_voxel, blockshape = _define_blockshape(bits_per_voxel, blockshape)
+    # zfp compresses 4D data in 4x4x4x4 units, so no dimension may be smaller than that
+    if any(n < 4 for n in blockshape):
+        raise ValueError(f"All 4D blockshape dimensions must be at least 4, got {blockshape}")
+    return bits_per_voxel, blockshape
+
+
+def _define_blockshape(bits_per_voxel, blockshape):
+    """Resolve one -1 placeholder among blockshape dimensions and bits_per_voxel such that
+    the product fills one disk block exactly. Dimension-agnostic."""
+    blockshape = tuple(blockshape)
+    if sum([1 for n in blockshape + (bits_per_voxel,) if n == -1]) > 1:
         raise ValueError("Blockshape is underdefined")
 
     if isinstance(bits_per_voxel, str):
@@ -178,19 +267,14 @@ def define_blockshape_3d(bits_per_voxel, blockshape):
     bits_per_voxel = 1 / -bits_per_voxel if bits_per_voxel < -1 else bits_per_voxel
 
     if bits_per_voxel == -1:
-        bits_per_voxel = DISK_BLOCK_BYTES * 8 / (blockshape[0] * blockshape[1] * blockshape[2])
+        bits_per_voxel = DISK_BLOCK_BYTES * 8 / int(np.prod(blockshape))
+    elif -1 in blockshape:
+        i = blockshape.index(-1)
+        known_voxels = int(np.prod(blockshape[:i] + blockshape[i+1:]))
+        resolved = int(DISK_BLOCK_BYTES * 8 // (known_voxels * bits_per_voxel))
+        blockshape = blockshape[:i] + (resolved,) + blockshape[i+1:]
     else:
-        if blockshape[0] == -1:
-            blockshape = (int(DISK_BLOCK_BYTES * 8 //
-                              (blockshape[1] * blockshape[2] * bits_per_voxel)), blockshape[1], blockshape[2])
-        elif blockshape[1] == -1:
-            blockshape = (blockshape[0], int(DISK_BLOCK_BYTES * 8 //
-                          (blockshape[2] * blockshape[0] * bits_per_voxel)), blockshape[2])
-        elif blockshape[2] == -1:
-            blockshape = (blockshape[0], blockshape[1], int(DISK_BLOCK_BYTES * 8 //
-                                                            (blockshape[0] * blockshape[1] * bits_per_voxel)))
-        else:
-            assert(bits_per_voxel * blockshape[0] * blockshape[1] * blockshape[2] == DISK_BLOCK_BYTES * 8)
+        assert(bits_per_voxel * int(np.prod(blockshape)) == DISK_BLOCK_BYTES * 8)
     return bits_per_voxel, blockshape
 
 
