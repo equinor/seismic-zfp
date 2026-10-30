@@ -5,10 +5,10 @@ Usage:
 
 Reads the gather at (INLINE, CROSSLINE) from FILE_ROOT/0.sgz three ways:
   - sgzfile.gather[il, xl] through seismic-zfp's segyio emulation, all offsets at once
-  - sgzfile.gather[il, xl, offset] trace by trace, as segyio itself is used below
+  - sgzfile.gather[il, xl, offset] trace by trace
   - SgzReader.read_gather_number(il, xl), the underlying call
-and the same gather from FILE_ROOT/0.sgy with segyio. The gather is drawn as an (offset x time)
-panel, offsets across and time downwards, along with the seismic-zfp / segyio difference.
+and the same gather from FILE_ROOT/0.sgy with segyio (>= 1.9.15). The gather is drawn as an
+(offset x time) panel, offsets across and time downwards, along with the seismic-zfp / segyio difference.
 """
 import seismic_zfp
 from seismic_zfp.read import SgzReader
@@ -58,10 +58,8 @@ save_image(gather_sgz, 'out_gather-sgz.png')
 
 with segyio.open(os.path.join(base_path, '0.sgy')) as segyfile:
     t0 = time.time()
-    # segyio <= 1.9.14 drops negative offsets from gather[il, xl] (offset labels are treated as
-    # positional slice indices), so ask for each offset explicitly. Fixed in segyio PR #666
-    # (https://github.com/equinor/segyio/pull/666): once released, this is simply gather[il, xl].
-    gather_sgy = np.stack([segyfile.gather[INLINE, CROSSLINE, offset] for offset in segyfile.offsets])
+    # Requires segyio >= 1.9.15: earlier releases drop negative offsets from gather[il, xl]
+    gather_sgy = segyfile.gather[INLINE, CROSSLINE]
     print("segyio took", time.time() - t0)
 
 print("max abs difference to segyio (compression error):",

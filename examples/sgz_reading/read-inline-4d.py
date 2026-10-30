@@ -54,12 +54,8 @@ gathers_to_image(gathers_sgz, os.path.join(base_path, 'out_gathers-sgz.png'))
 
 with segyio.open(os.path.join(base_path, '0.sgy')) as segyfile:
     t0 = time.time()
-    # segyio <= 1.9.14 drops negative offsets from gather[il, xl] (offset labels are treated as
-    # positional slice indices), so ask for each offset explicitly. Fixed in segyio PR #666
-    # (https://github.com/equinor/segyio/pull/666): once that is released, this is simply
-    # segyfile.gather[LINE_NO, xl] as for seismic-zfp above.
-    gathers_sgy = np.stack([np.stack([segyfile.gather[LINE_NO, xl, offset] for offset in segyfile.offsets])
-                            for xl in xlines])
+    # Requires segyio >= 1.9.15: earlier releases drop negative offsets from gather[il, xl]
+    gathers_sgy = np.stack([segyfile.gather[LINE_NO, xl] for xl in xlines])
     print("segyio took", time.time() - t0)
 
 gathers_to_image(gathers_sgy, os.path.join(base_path, 'out_gathers-sgy.png'))
