@@ -280,6 +280,7 @@ class SgzReader(object):
         self.structured = False if self.is_2d else self.tracecount == self.n_grid_traces
 
         self.mask = None
+        self._unstructured_trace_indices = None
 
     def __repr__(self):
         return f'SgzReader({self._filename})'
@@ -967,6 +968,7 @@ class SgzReader(object):
         ----------
         index : int
             The ordinal number of the trace in the file
+            For unstructured files, the ordinal-to-grid mapping is cached on first use.
 
         min_sample_id : int
             The index of the beginning of the range for a cropped trace
@@ -1001,8 +1003,10 @@ class SgzReader(object):
 
         else:
             if (not self.structured) and (not override_unstructured_mapping):
-                self.get_unstructured_mask()
-                index = int(np.arange(self.mask.shape[0])[self.mask != 0][index])
+                if self._unstructured_trace_indices is None:
+                    self.get_unstructured_mask()
+                    self._unstructured_trace_indices = np.flatnonzero(self.mask)
+                index = int(self._unstructured_trace_indices[index])
 
             if not 0 <= index < self.n_grid_traces:
                 if platform.system() == 'Windows':

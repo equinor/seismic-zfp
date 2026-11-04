@@ -126,6 +126,37 @@ def test_read_irregular_file_not_structred():
         assert reader.structured is False
 
 
+@pytest.mark.parametrize('filename', [SGZ_FILE_IRREG, SGZ_FILE_HOLE])
+@pytest.mark.parametrize('preload_mask', [False, True])
+def test_unstructured_trace_mapping_cached(filename, preload_mask):
+    with SgzReader(filename) as reader:
+        if preload_mask:
+            reader.get_unstructured_mask()
+        assert reader._unstructured_trace_indices is None
+        grid_traces = reader.read_volume().reshape(reader.n_grid_traces, reader.n_samples)
+        with mock.patch('seismic_zfp.read.np.flatnonzero', wraps=np.flatnonzero) as flatnonzero:
+            reader.get_trace(0)
+            positions = np.arange(reader.mask.size)[reader.mask]
+            for index, position in enumerate(positions):
+                assert np.array_equal(reader.get_trace(index), grid_traces[position])
+            assert np.array_equal(reader.get_trace(-1), grid_traces[positions[-1]])
+            assert np.array_equal(reader.get_trace(0, 3, 10), grid_traces[positions[0], 3:10])
+            with pytest.raises(IndexError):
+                reader.get_trace(reader.tracecount)
+            assert flatnonzero.call_count == 1
+
+
+def test_unstructured_grid_reads_skip_trace_mapping():
+    with SgzReader(SGZ_FILE_HOLE) as reader:
+        grid_traces = reader.read_volume().reshape(reader.n_grid_traces, reader.n_samples)
+        with mock.patch('seismic_zfp.read.np.flatnonzero', wraps=np.flatnonzero) as flatnonzero:
+            for index in range(reader.n_grid_traces):
+                assert np.array_equal(reader.get_trace(index, override_unstructured_mapping=True),
+                                      grid_traces[index])
+            flatnonzero.assert_not_called()
+        assert reader.mask is None
+
+
 def test_read_variant_headers_padding_mismatch():
     with SgzReader(SGZ_FILE_IRREG) as reader:
         reader.read_variant_headers(include_padding=True)
